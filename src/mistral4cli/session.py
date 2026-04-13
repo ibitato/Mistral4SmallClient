@@ -93,6 +93,39 @@ class _RenderedSegment:
 
 
 @dataclass(slots=True)
+class _DeferredAnswerBuffer:
+    enabled: bool
+    _buffer: list[str] = field(default_factory=list)
+    _streaming_passthrough: bool = False
+
+    def feed(self, text: str) -> str:
+        """Buffer likely JSON tool-call text until the turn is complete."""
+
+        if not self.enabled or not text:
+            return text
+        if self._streaming_passthrough:
+            return text
+
+        self._buffer.append(text)
+        combined = "".join(self._buffer)
+        stripped = combined.lstrip()
+        if not stripped:
+            return ""
+        if stripped.startswith(("```", "{", "[")):
+            return ""
+
+        self._streaming_passthrough = True
+        return combined
+
+    def finalize(self) -> str:
+        """Return any buffered text that was never streamed to the terminal."""
+
+        if not self.enabled or self._streaming_passthrough:
+            return ""
+        return "".join(self._buffer)
+
+
+@dataclass(slots=True)
 class _ReasoningParser:
     in_reasoning: bool = False
     pending: str = ""
@@ -606,6 +639,11 @@ class MistralCodingSession:
         parsed = _parse_reasoning_text(raw_content)
         content = parsed.answer
         reasoning = str(raw_reasoning).strip() or parsed.reasoning
+        if not tool_calls and tools:
+            tool_calls = _extract_tool_calls_from_text(raw_content)
+            if tool_calls:
+                finish_reason = "tool_calls"
+                content = ""
 
         if tool_calls:
             return _ModelTurn(
@@ -645,7 +683,9 @@ class MistralCodingSession:
         finish_reason = ""
         tool_states: dict[int, _ToolCallState] = {}
         parser = _ReasoningParser()
+        deferred_answer = _DeferredAnswerBuffer(enabled=bool(tools))
         reasoning_parts: list[str] = []
+        answer_parts: list[str] = []
         printed_anything = False
         reasoning_printed = False
         answer_started = False
@@ -679,11 +719,14 @@ class MistralCodingSession:
                                 self._print_reasoning(segment.text)
                                 reasoning_printed = True
                             else:
-                                answer_started = self._print_answer_separator(
-                                    reasoning_printed=reasoning_printed,
-                                    answer_started=answer_started,
-                                )
-                                self._print(segment.text)
+                                answer_parts.append(segment.text)
+                                display_text = deferred_answer.feed(segment.text)
+                                if display_text:
+                                    answer_started = self._print_answer_separator(
+                                        reasoning_printed=reasoning_printed,
+                                        answer_started=answer_started,
+                                    )
+                                    self._print(display_text)
                             printed_anything = True
                     for tool_call in delta.get("tool_calls") or []:
                         index = int(_field(tool_call, "index", 0) or 0)
@@ -708,21 +751,39 @@ class MistralCodingSession:
                 self._print_reasoning(segment.text)
                 reasoning_printed = True
             else:
-                answer_started = self._print_answer_separator(
-                    reasoning_printed=reasoning_printed,
-                    answer_started=answer_started,
-                )
-                self._print(segment.text)
+                answer_parts.append(segment.text)
+                display_text = deferred_answer.feed(segment.text)
+                if display_text:
+                    answer_started = self._print_answer_separator(
+                        reasoning_printed=reasoning_printed,
+                        answer_started=answer_started,
+                    )
+                    self._print(display_text)
             printed_anything = True
 
-        content = parser.answer
+        content = "".join(answer_parts).strip() or parser.answer
         reasoning = "".join(reasoning_parts).strip() or parser.reasoning
+        tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
+        if not tool_calls and tools:
+            tool_calls = _extract_tool_calls_from_text(content)
+            if tool_calls:
+                finish_reason = "tool_calls"
+                content = ""
+
+        deferred_tail = deferred_answer.finalize()
+        if deferred_tail and not tool_calls:
+            answer_started = self._print_answer_separator(
+                reasoning_printed=reasoning_printed,
+                answer_started=answer_started,
+            )
+            self._print(deferred_tail)
+            printed_anything = True
+
         if printed_anything and not content.endswith("\n"):
             self._print("\n")
         if finish_reason == "length" and not content:
             self._print("[truncated response without text]\n")
 
-        tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
         return _ModelTurn(
             content=content,
             finish_reason=finish_reason or "stop",
@@ -753,6 +814,12 @@ class MistralCodingSession:
         segments = _content_segments_from_value(content_value)
         content = _join_segments(segments, kind="answer")
         reasoning = _join_segments(segments, kind="reasoning")
+        if not tool_calls and tools:
+            if isinstance(content_value, str):
+                tool_calls = _extract_tool_calls_from_text(content_value)
+            if tool_calls:
+                finish_reason = "tool_calls"
+                content = ""
         reasoning_printed = False
         answer_started = False
 
@@ -789,6 +856,7 @@ class MistralCodingSession:
         finish_reason = ""
         tool_states: dict[int, _ToolCallState] = {}
         parser = _ReasoningParser()
+        deferred_answer = _DeferredAnswerBuffer(enabled=bool(tools))
         printed_anything = False
         reasoning_printed = False
         answer_started = False
@@ -815,12 +883,14 @@ class MistralCodingSession:
                                 reasoning_printed = True
                                 reasoning_parts.append(segment.text)
                             else:
-                                answer_started = self._print_answer_separator(
-                                    reasoning_printed=reasoning_printed,
-                                    answer_started=answer_started,
-                                )
-                                self._print(segment.text)
                                 answer_parts.append(segment.text)
+                                display_text = deferred_answer.feed(segment.text)
+                                if display_text:
+                                    answer_started = self._print_answer_separator(
+                                        reasoning_printed=reasoning_printed,
+                                        answer_started=answer_started,
+                                    )
+                                    self._print(display_text)
                             printed_anything = True
                     elif isinstance(content, list):
                         for segment in _content_segments_from_value(content):
@@ -829,12 +899,14 @@ class MistralCodingSession:
                                 reasoning_printed = True
                                 reasoning_parts.append(segment.text)
                             else:
-                                answer_started = self._print_answer_separator(
-                                    reasoning_printed=reasoning_printed,
-                                    answer_started=answer_started,
-                                )
-                                self._print(segment.text)
                                 answer_parts.append(segment.text)
+                                display_text = deferred_answer.feed(segment.text)
+                                if display_text:
+                                    answer_started = self._print_answer_separator(
+                                        reasoning_printed=reasoning_printed,
+                                        answer_started=answer_started,
+                                    )
+                                    self._print(display_text)
                             printed_anything = True
                     for tool_call in getattr(delta, "tool_calls", None) or []:
                         index = int(getattr(tool_call, "index", 0) or 0)
@@ -860,21 +932,38 @@ class MistralCodingSession:
                 reasoning_printed = True
                 reasoning_parts.append(segment.text)
             else:
-                answer_started = self._print_answer_separator(
-                    reasoning_printed=reasoning_printed,
-                    answer_started=answer_started,
-                )
-                self._print(segment.text)
                 answer_parts.append(segment.text)
+                display_text = deferred_answer.feed(segment.text)
+                if display_text:
+                    answer_started = self._print_answer_separator(
+                        reasoning_printed=reasoning_printed,
+                        answer_started=answer_started,
+                    )
+                    self._print(display_text)
             printed_anything = True
 
         content = "".join(answer_parts).strip()
+        tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
+        if not tool_calls and tools:
+            tool_calls = _extract_tool_calls_from_text(content)
+            if tool_calls:
+                finish_reason = "tool_calls"
+                content = ""
+
+        deferred_tail = deferred_answer.finalize()
+        if deferred_tail and not tool_calls:
+            answer_started = self._print_answer_separator(
+                reasoning_printed=reasoning_printed,
+                answer_started=answer_started,
+            )
+            self._print(deferred_tail)
+            printed_anything = True
+
         if printed_anything and not content.endswith("\n"):
             self._print("\n")
         if finish_reason == "length" and not content:
             self._print("[truncated response without text]\n")
 
-        tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
         return _ModelTurn(
             content=content,
             finish_reason=finish_reason or "stop",
@@ -1003,3 +1092,69 @@ def _content_segments_from_value(content: Any) -> list[_RenderedSegment]:
 
 def _join_segments(segments: list[_RenderedSegment], *, kind: str) -> str:
     return "".join(segment.text for segment in segments if segment.kind == kind).strip()
+
+
+def _extract_tool_calls_from_text(text: str) -> list[dict[str, Any]]:
+    cleaned = _strip_json_code_fence(text)
+    if not cleaned:
+        return []
+    try:
+        payload = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return []
+    return _normalize_textual_tool_calls(payload)
+
+
+def _strip_json_code_fence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    lines = stripped.splitlines()
+    if len(lines) < 3 or lines[-1].strip() != "```":
+        return stripped
+    return "\n".join(lines[1:-1]).strip()
+
+
+def _normalize_textual_tool_calls(payload: Any) -> list[dict[str, Any]]:
+    raw_calls: Any
+    if isinstance(payload, dict) and "tool_calls" in payload:
+        raw_calls = payload.get("tool_calls")
+    else:
+        raw_calls = payload
+
+    if isinstance(raw_calls, dict):
+        candidates = [raw_calls]
+    elif isinstance(raw_calls, list):
+        candidates = raw_calls
+    else:
+        return []
+
+    normalized: list[dict[str, Any]] = []
+    for index, candidate in enumerate(candidates):
+        if not isinstance(candidate, dict):
+            continue
+        function = candidate.get("function")
+        if isinstance(function, dict):
+            name = function.get("name")
+            arguments = function.get("arguments", {})
+        else:
+            name = candidate.get("name")
+            arguments = candidate.get("arguments", {})
+
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if isinstance(arguments, str):
+            arguments_text = arguments
+        else:
+            arguments_text = json.dumps(arguments, ensure_ascii=False)
+        normalized.append(
+            {
+                "id": str(candidate.get("id") or f"tool_call_{index}"),
+                "type": "function",
+                "function": {
+                    "name": name.strip(),
+                    "arguments": arguments_text or "{}",
+                },
+            }
+        )
+    return normalized

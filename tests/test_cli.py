@@ -389,6 +389,228 @@ def test_tool_command_and_session_tool_loop() -> None:
     }
 
 
+def test_textual_json_tool_call_fallback_executes_tool_loop() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            content=(
+                                "```json\n"
+                                '{\n  "name": "web_search",\n'
+                                '  "arguments": {"query": "mcp"}\n}\n'
+                                "```"
+                            )
+                        ),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="Found a source."),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    bridge = FakeToolBridge()
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=bridge,
+        stdout=output,
+    )
+
+    result = session.send("Busca MCP.", stream=False)
+
+    assert result.cancelled is False
+    assert result.finish_reason == "stop"
+    assert result.content == "Found a source."
+    assert bridge.calls == [("web_search", {"query": "mcp"})]
+    assert "```json" not in output.getvalue()
+    assert session.messages[-2]["role"] == "tool"
+    assert session.messages[-1] == {
+        "role": "assistant",
+        "content": "Found a source.",
+    }
+
+
+def test_textual_json_tool_call_fallback_executes_shell_tool(tmp_path: Path) -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            content=(
+                                "```json\n"
+                                "{\n"
+                                '  "name": "shell",\n'
+                                '  "arguments": {\n'
+                                '    "command": "printf ok",\n'
+                                '    "cwd": ".",\n'
+                                '    "max_lines": 20\n'
+                                "  }\n"
+                                "}\n"
+                                "```"
+                            )
+                        ),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="shell tool executed"),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send("Run a shell command.", stream=False)
+
+    assert result.cancelled is False
+    assert result.finish_reason == "stop"
+    assert result.content == "shell tool executed"
+    assert session.messages[-2]["role"] == "tool"
+    assert "exit_code=0" in session.messages[-2]["content"]
+    assert "ok" in session.messages[-2]["content"]
+    assert session.messages[-1] == {
+        "role": "assistant",
+        "content": "shell tool executed",
+    }
+
+
+def test_textual_json_tool_call_fallback_executes_read_file_tool(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    notes = tmp_path / "notes.txt"
+    notes.write_text("hello from file\n", encoding="utf-8")
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            content=(
+                                "{\n"
+                                '  "name": "read_file",\n'
+                                '  "arguments": {\n'
+                                '    "path": "notes.txt"\n'
+                                "  }\n"
+                                "}"
+                            )
+                        ),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="read tool executed"),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send("Read a file.", stream=False)
+
+    assert result.cancelled is False
+    assert result.finish_reason == "stop"
+    assert result.content == "read tool executed"
+    assert session.messages[-2]["role"] == "tool"
+    assert "hello from file" in session.messages[-2]["content"]
+    assert session.messages[-1] == {
+        "role": "assistant",
+        "content": "read tool executed",
+    }
+
+
+def test_textual_json_tool_call_fallback_executes_search_text_tool(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    notes = tmp_path / "notes.txt"
+    notes.write_text("needle\nhaystack\n", encoding="utf-8")
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            content=(
+                                '{\n  "tool_calls": [\n'
+                                "    {\n"
+                                '      "name": "search_text",\n'
+                                '      "arguments": {\n'
+                                '        "query": "needle",\n'
+                                '        "path": "."\n'
+                                "      }\n"
+                                "    }\n"
+                                "  ]\n"
+                                "}"
+                            )
+                        ),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="search tool executed"),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send("Search the repo.", stream=False)
+
+    assert result.cancelled is False
+    assert result.finish_reason == "stop"
+    assert result.content == "search tool executed"
+    assert session.messages[-2]["role"] == "tool"
+    assert "notes.txt" in session.messages[-2]["content"]
+    assert "needle" in session.messages[-2]["content"]
+    assert session.messages[-1] == {
+        "role": "assistant",
+        "content": "search tool executed",
+    }
+
+
 def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
     output = io.StringIO()
     fake_client = FakeClient(stream_chunks=["hello", " world"], interrupt_after=1)
@@ -407,6 +629,85 @@ def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
         {"role": "user", "content": "Haz una respuesta larga."},
     ]
     assert "[interrupted]" in output.getvalue()
+
+
+def test_streaming_textual_json_tool_call_fallback_executes_tool_loop() -> None:
+    output = io.StringIO()
+    bridge = FakeToolBridge()
+
+    first_stream = FakeStream(
+        [
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(content="```json\n"),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+            ),
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(
+                                content=(
+                                    '{\n  "name": "web_search",\n'
+                                    '  "arguments": {"query": "mcp"}\n}\n```'
+                                )
+                            ),
+                            finish_reason="stop",
+                        )
+                    ]
+                )
+            ),
+        ]
+    )
+    second_stream = FakeStream(
+        [
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(content="Found a source."),
+                            finish_reason="stop",
+                        )
+                    ]
+                )
+            )
+        ]
+    )
+
+    class SequencedChat:
+        def __init__(self) -> None:
+            self.stream_calls: list[dict[str, Any]] = []
+            self.complete_calls: list[dict[str, Any]] = []
+            self._streams = [first_stream, second_stream]
+
+        def stream(self, **kwargs: Any) -> FakeStream:
+            self.stream_calls.append(kwargs)
+            return self._streams.pop(0)
+
+    class SequencedClient:
+        def __init__(self) -> None:
+            self.chat = SequencedChat()
+
+    session = MistralCodingSession(
+        client=SequencedClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=bridge,
+        stdout=output,
+    )
+
+    result = session.send("Busca MCP.", stream=True)
+
+    assert result.cancelled is False
+    assert result.finish_reason == "stop"
+    assert result.content == "Found a source."
+    assert bridge.calls == [("web_search", {"query": "mcp"})]
+    assert "```json" not in output.getvalue()
+    assert "Found a source." in output.getvalue()
 
 
 def test_non_stream_cancel_does_not_break_followup() -> None:
