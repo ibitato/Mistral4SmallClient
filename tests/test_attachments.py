@@ -8,11 +8,13 @@ import pytest
 from mistral4cli.attachments import (
     DEFAULT_DOCUMENT_PROMPT,
     DEFAULT_IMAGE_PROMPT,
+    MAX_DOCUMENT_PAGES,
     build_document_message,
     build_image_message,
     choose_paths,
     format_selection_summary,
     load_document,
+    render_document,
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "internet"
@@ -102,3 +104,24 @@ def test_build_document_message_combines_prompt_and_docs(
 def test_document_defaults_are_available() -> None:
     assert DEFAULT_IMAGE_PROMPT
     assert DEFAULT_DOCUMENT_PROMPT
+
+
+def test_render_text_document_does_not_flag_exact_page_limit_as_truncated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    text_file = tmp_path / "exact-pages.txt"
+    text_file.write_text("placeholder", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "mistral4cli.attachments._wrap_text_for_document",
+        lambda _text: ["line"] * (42 * MAX_DOCUMENT_PAGES),
+    )
+    monkeypatch.setattr(
+        "mistral4cli.attachments._render_text_page",
+        lambda *, title, lines: b"png",
+    )
+
+    rendered = render_document(text_file)
+
+    assert rendered.truncated is False
+    assert len(rendered.content_blocks) == MAX_DOCUMENT_PAGES

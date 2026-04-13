@@ -193,11 +193,14 @@ class MistralCodingSession:
         if normalized is None:
             return TurnResult(content="", finish_reason="empty", cancelled=False)
 
+        message_start = len(self.messages)
         self.messages.append({"role": "user", "content": normalized})
         try:
             tools = self._resolve_tools()
             if not tools:
                 turn = self._send_single_turn(stream=stream, tools=None)
+                if turn.error:
+                    self._rollback_to(message_start)
                 if not turn.cancelled and not turn.error:
                     self._commit_assistant_message(turn)
                 return TurnResult(
@@ -209,6 +212,8 @@ class MistralCodingSession:
             for _ in range(self.max_tool_rounds):
                 turn = self._send_single_turn(stream=stream, tools=tools)
                 if turn.cancelled or turn.error:
+                    if turn.error:
+                        self._rollback_to(message_start)
                     return TurnResult(
                         content=turn.content,
                         finish_reason=turn.finish_reason,
@@ -246,6 +251,7 @@ class MistralCodingSession:
                         result = self._call_tool_bridge(name, arguments)
                     self.messages.append(self._tool_message(call=call, result=result))
 
+            self._rollback_to(message_start)
             self._print("[error] tool loop limit reached\n")
             return TurnResult(content="", finish_reason="error", cancelled=False)
         except KeyboardInterrupt:
@@ -283,6 +289,9 @@ class MistralCodingSession:
         assert self.stdout is not None
         self.stdout.write(text)
         self.stdout.flush()
+
+    def _rollback_to(self, message_count: int) -> None:
+        self.messages = self.messages[:message_count]
 
     def _commit_assistant_message(self, turn: _ModelTurn) -> None:
         if turn.tool_calls:

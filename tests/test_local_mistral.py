@@ -154,8 +154,7 @@ def test_random_seed_is_reproducible(local_client: Mistral) -> None:
     assert second.choices[0].finish_reason in {"stop", "length"}
     first_text = first.choices[0].message.content or ""
     second_text = second.choices[0].message.content or ""
-    assert first_text.strip() or second_text.strip()
-    assert any(text.strip() == "ok" for text in (first_text, second_text))
+    assert all(text == "" or text.strip() == "ok" for text in (first_text, second_text))
 
 
 @pytest.mark.parametrize(

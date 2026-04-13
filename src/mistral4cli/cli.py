@@ -399,10 +399,14 @@ def _run_image_shortcut(
     summary = format_selection_summary(paths)
     stdout.write(f"[image] selected: {summary}\n")
     stdout.flush()
-    session.send_content(
-        build_image_message(paths, prompt=prompt),
-        stream=session.stream_enabled,
-    )
+    try:
+        message = build_image_message(paths, prompt=prompt)
+    except Exception as exc:
+        stdout.write(f"[image] could not prepare attachment: {exc}\n")
+        stdout.flush()
+        return False
+
+    session.send_content(message, stream=session.stream_enabled)
     return False
 
 
@@ -432,10 +436,14 @@ def _run_doc_shortcut(
     summary = format_selection_summary(paths)
     stdout.write(f"[doc] selected: {summary}\n")
     stdout.flush()
-    session.send_content(
-        build_document_message(paths, prompt=prompt),
-        stream=session.stream_enabled,
-    )
+    try:
+        message = build_document_message(paths, prompt=prompt)
+    except Exception as exc:
+        stdout.write(f"[doc] could not prepare attachment: {exc}\n")
+        stdout.flush()
+        return False
+
+    session.send_content(message, stream=session.stream_enabled)
     return False
 
 

@@ -381,7 +381,9 @@ def _render_pdf_document(path: Path) -> RenderedDocument:
 def _render_text_document(path: Path) -> RenderedDocument:
     loaded = load_document(path)
     lines = _wrap_text_for_document(loaded.text)
-    pages = _split_lines_into_pages(lines, max_lines=42)
+    max_visible_lines = 42 * MAX_DOCUMENT_PAGES
+    truncated = loaded.truncated or len(lines) > max_visible_lines
+    pages = _split_lines_into_pages(lines[:max_visible_lines], max_lines=42)
     if not pages:
         pages = [["[Empty document]"]]
 
@@ -398,7 +400,7 @@ def _render_text_document(path: Path) -> RenderedDocument:
     return RenderedDocument(
         path=path,
         content_blocks=content_blocks,
-        truncated=loaded.truncated or len(pages) >= MAX_DOCUMENT_PAGES,
+        truncated=truncated,
     )
 
 
@@ -434,7 +436,7 @@ def _split_lines_into_pages(lines: Sequence[str], *, max_lines: int) -> list[lis
             current = []
     if current:
         pages.append(current)
-    return pages[:MAX_DOCUMENT_PAGES]
+    return pages
 
 
 def _wrap_text_for_document(text: str) -> list[str]:

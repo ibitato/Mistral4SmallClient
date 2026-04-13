@@ -387,6 +387,34 @@ def test_non_stream_cancel_does_not_break_followup() -> None:
     assert "[interrupted]" in output.getvalue()
 
 
+def test_model_error_rolls_back_failed_turn() -> None:
+    output = io.StringIO()
+
+    class ErrorChat(FakeChat):
+        def complete(self, **kwargs: Any) -> FakeResponse:
+            self.complete_calls.append(kwargs)
+            raise RuntimeError("boom")
+
+    class ErrorClient:
+        def __init__(self) -> None:
+            self.chat = ErrorChat()
+
+    session = MistralCodingSession(
+        client=ErrorClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("first prompt", stream=False)
+
+    assert result.finish_reason == "error"
+    assert result.cancelled is False
+    assert session.messages == [
+        {"role": "system", "content": session.system_prompt},
+    ]
+    assert "[error] boom" in output.getvalue()
+
+
 def test_parse_command_supports_system_reset_and_tools() -> None:
     assert _parse_command("/system change the tone") == (
         "system",
@@ -516,3 +544,55 @@ def test_doc_shortcut_uses_picker_and_document_payload(
         for block in content
     )
     assert sum(1 for block in content if block["type"] == "image_url") >= 2
+
+
+def test_image_shortcut_reports_invalid_selection_without_crashing(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    invalid_file = tmp_path / "notes.md"
+    invalid_file.write_text("not an image", encoding="utf-8")
+    session = MistralCodingSession(
+        client=FakeClient(stream_chunks=["ok"]),
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    should_exit = _run_command(
+        "image",
+        "",
+        session,
+        output,
+        input_func=lambda _prompt: "",
+        path_picker=lambda **_kwargs: [invalid_file],
+    )
+
+    assert should_exit is False
+    assert "could not prepare attachment" in output.getvalue()
+
+
+def test_doc_shortcut_reports_invalid_selection_without_crashing(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    invalid_file = tmp_path / "archive.zip"
+    invalid_file.write_text("not a document", encoding="utf-8")
+    session = MistralCodingSession(
+        client=FakeClient(stream_chunks=["ok"]),
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    should_exit = _run_command(
+        "doc",
+        "",
+        session,
+        output,
+        input_func=lambda _prompt: "",
+        path_picker=lambda **_kwargs: [invalid_file],
+    )
+
+    assert should_exit is False
+    assert "could not prepare attachment" in output.getvalue()
