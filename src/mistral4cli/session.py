@@ -274,53 +274,63 @@ class MistralCodingSession:
             return TurnResult(content="", finish_reason="empty", cancelled=False)
 
         self.messages.append({"role": "user", "content": clean_text})
-        tools = self._resolve_tools()
-        if not tools:
-            turn = self._send_single_turn(stream=stream, tools=None)
-            if not turn.cancelled and not turn.error:
-                self._commit_assistant_message(turn)
-            return TurnResult(
-                content=turn.content,
-                finish_reason=turn.finish_reason,
-                cancelled=turn.cancelled,
-            )
-
-        for _ in range(self.max_tool_rounds):
-            turn = self._send_single_turn(stream=stream, tools=tools)
-            if turn.cancelled or turn.error:
+        try:
+            tools = self._resolve_tools()
+            if not tools:
+                turn = self._send_single_turn(stream=stream, tools=None)
+                if not turn.cancelled and not turn.error:
+                    self._commit_assistant_message(turn)
                 return TurnResult(
                     content=turn.content,
                     finish_reason=turn.finish_reason,
                     cancelled=turn.cancelled,
                 )
 
-            if turn.finish_reason != "tool_calls" or not turn.tool_calls:
-                self._commit_assistant_message(turn)
-                return TurnResult(
-                    content=turn.content,
-                    finish_reason=turn.finish_reason,
-                    cancelled=False,
-                )
-
-            self._commit_assistant_message(turn)
-            for call in turn.tool_calls:
-                function = call["function"]
-                name = str(function["name"])
-                try:
-                    arguments = self._parse_tool_arguments(function.get("arguments"))
-                except json.JSONDecodeError as exc:
-                    result = MCPToolResult(
-                        text=f"[tool-error] invalid JSON arguments for {name}: {exc}",
-                        is_error=True,
+            for _ in range(self.max_tool_rounds):
+                turn = self._send_single_turn(stream=stream, tools=tools)
+                if turn.cancelled or turn.error:
+                    return TurnResult(
+                        content=turn.content,
+                        finish_reason=turn.finish_reason,
+                        cancelled=turn.cancelled,
                     )
-                except Exception as exc:  # pragma: no cover - defensive
-                    result = MCPToolResult(text=f"[tool-error] {exc}", is_error=True)
-                else:
-                    result = self._call_tool_bridge(name, arguments)
-                self.messages.append(self._tool_message(call=call, result=result))
 
-        self._print("[error] tool loop limit reached\n")
-        return TurnResult(content="", finish_reason="error", cancelled=False)
+                if turn.finish_reason != "tool_calls" or not turn.tool_calls:
+                    self._commit_assistant_message(turn)
+                    return TurnResult(
+                        content=turn.content,
+                        finish_reason=turn.finish_reason,
+                        cancelled=False,
+                    )
+
+                self._commit_assistant_message(turn)
+                for call in turn.tool_calls:
+                    function = call["function"]
+                    name = str(function["name"])
+                    try:
+                        arguments = self._parse_tool_arguments(
+                            function.get("arguments")
+                        )
+                    except json.JSONDecodeError as exc:
+                        result = MCPToolResult(
+                            text=(
+                                f"[tool-error] invalid JSON arguments for {name}: {exc}"
+                            ),
+                            is_error=True,
+                        )
+                    except Exception as exc:  # pragma: no cover - defensive
+                        result = MCPToolResult(
+                            text=f"[tool-error] {exc}", is_error=True
+                        )
+                    else:
+                        result = self._call_tool_bridge(name, arguments)
+                    self.messages.append(self._tool_message(call=call, result=result))
+
+            self._print("[error] tool loop limit reached\n")
+            return TurnResult(content="", finish_reason="error", cancelled=False)
+        except KeyboardInterrupt:
+            self._print("\n[interrumpido]\n")
+            return TurnResult(content="", finish_reason="cancelled", cancelled=True)
 
     def _send_single_turn(
         self,
@@ -337,6 +347,9 @@ class MistralCodingSession:
             response = self.client.chat.complete(
                 **self._request_kwargs(stream=False, tools=tools)
             )
+        except KeyboardInterrupt:
+            self._print("\n[interrumpido]\n")
+            return _ModelTurn(content="", finish_reason="cancelled", cancelled=True)
         except Exception as exc:  # pragma: no cover - exercised by CLI smoke
             self._print(f"[error] {exc}\n")
             return _ModelTurn(content="", finish_reason="error", error=True)

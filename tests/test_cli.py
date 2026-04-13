@@ -95,11 +95,13 @@ class FakeChat:
         complete_text: str = "ok",
         complete_responses: list[FakeResponse] | None = None,
         stream_chunks: list[str] | None = None,
+        complete_interrupt_once: bool = False,
         interrupt_after: int | None = None,
     ) -> None:
         self.complete_text = complete_text
         self.complete_responses = complete_responses or []
         self.stream_chunks = stream_chunks or ["ok"]
+        self.complete_interrupt_once = complete_interrupt_once
         self.interrupt_after = interrupt_after
         self.complete_calls: list[dict[str, Any]] = []
         self.stream_calls: list[dict[str, Any]] = []
@@ -107,6 +109,9 @@ class FakeChat:
 
     def complete(self, **kwargs: Any) -> FakeResponse:
         self.complete_calls.append(kwargs)
+        if self.complete_interrupt_once:
+            self.complete_interrupt_once = False
+            raise KeyboardInterrupt
         if self.complete_responses:
             return self.complete_responses.pop(0)
         return FakeResponse(
@@ -146,12 +151,14 @@ class FakeClient:
         complete_text: str = "ok",
         complete_responses: list[FakeResponse] | None = None,
         stream_chunks: list[str] | None = None,
+        complete_interrupt_once: bool = False,
         interrupt_after: int | None = None,
     ) -> None:
         self.chat = FakeChat(
             complete_text=complete_text,
             complete_responses=complete_responses,
             stream_chunks=stream_chunks,
+            complete_interrupt_once=complete_interrupt_once,
             interrupt_after=interrupt_after,
         )
 
@@ -351,6 +358,28 @@ def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
         {"role": "system", "content": session.system_prompt},
         {"role": "user", "content": "Haz una respuesta larga."},
     ]
+    assert "[interrumpido]" in output.getvalue()
+
+
+def test_non_stream_cancel_does_not_break_followup() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(complete_interrupt_once=True, complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client, generation=LocalGenerationConfig(), stdout=output
+    )
+
+    first = session.send("Haz una respuesta larga.", stream=False)
+    second = session.send("Devuelve solo ok.", stream=False)
+
+    assert first.cancelled is True
+    assert first.finish_reason == "cancelled"
+    assert first.content == ""
+    assert second.cancelled is False
+    assert second.finish_reason == "stop"
+    assert second.content == "ok"
+    assert session.messages[0] == {"role": "system", "content": session.system_prompt}
+    assert session.messages[1]["role"] == "user"
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
     assert "[interrumpido]" in output.getvalue()
 
 

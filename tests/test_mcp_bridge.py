@@ -47,3 +47,24 @@ def test_bridge_runtime_summary_mentions_mcp_json(tmp_path: Path) -> None:
     bridge = MCPToolBridge(MCPConfig.load(config_path))
 
     assert bridge.runtime_summary() == "FireCrawl MCP: disabled"
+
+
+def test_bridge_autodetects_streamable_http_for_v2_mcp(tmp_path: Path) -> None:
+    config_path = tmp_path / "mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "FireCrawl": {
+                        "type": "sse",
+                        "url": "https://mcp.firecrawl.dev/example/v2/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    bridge = MCPToolBridge(MCPConfig.load(config_path))
+
+    assert bridge._transport_for_server(bridge.config.servers[0]) == "streamable-http"

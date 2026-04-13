@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -11,6 +13,7 @@ from typing import Any
 import anyio
 from mcp import ClientSession
 from mcp.client.sse import sse_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult, ListToolsResult
 
 ENV_MCP_CONFIG = "MISTRAL_LOCAL_MCP_CONFIG"
@@ -274,18 +277,15 @@ class MCPToolBridge:
         used_names: set[str] = set()
 
         for server in self.config.servers:
-            if server.type != "sse":
-                raise MCPBridgeError(
-                    f"Unsupported MCP transport {server.type!r} for {server.name}"
+            async with (
+                self._open_server_streams(server) as streams,
+                ClientSession(*streams) as session,
+            ):
+                await session.initialize()
+                result = await session.list_tools()
+                tool_specs.extend(
+                    self._server_tools_to_specs(server.name, result, used_names)
                 )
-
-            async with sse_client(server.url) as streams:  # noqa: SIM117
-                async with ClientSession(*streams) as session:
-                    await session.initialize()
-                    result = await session.list_tools()
-                    tool_specs.extend(
-                        self._server_tools_to_specs(server.name, result, used_names)
-                    )
 
         return tool_specs
 
@@ -293,11 +293,13 @@ class MCPToolBridge:
         self, spec: MCPToolSpec, arguments: dict[str, Any]
     ) -> MCPToolResult:
         server = self._server_by_name(spec.server_name)
-        async with sse_client(server.url) as streams:  # noqa: SIM117
-            async with ClientSession(*streams) as session:
-                await session.initialize()
-                result = await session.call_tool(spec.remote_name, arguments=arguments)
-                return self._normalize_tool_result(result)
+        async with (
+            self._open_server_streams(server) as streams,
+            ClientSession(*streams) as session,
+        ):
+            await session.initialize()
+            result = await session.call_tool(spec.remote_name, arguments=arguments)
+            return self._normalize_tool_result(result)
 
     def _server_by_name(self, server_name: str) -> MCPServerConfig:
         for server in self.config.servers:
@@ -331,3 +333,43 @@ class MCPToolBridge:
             is_error=result.isError,
             structured_content=result.structuredContent,
         )
+
+    @asynccontextmanager
+    async def _open_server_streams(
+        self, server: MCPServerConfig
+    ) -> AsyncIterator[tuple[Any, Any]]:
+        transport = self._transport_for_server(server)
+        try:
+            if transport == "streamable-http":
+                async with streamable_http_client(server.url) as streams:
+                    yield streams[0], streams[1]
+                return
+
+            async with sse_client(server.url) as streams:
+                yield streams
+        except Exception as exc:  # pragma: no cover - surfaced in CLI smoke
+            raise MCPBridgeError(
+                f"Could not connect to MCP server {server.name!r} at {server.url}: "
+                f"{self._friendly_transport_error(server, exc)}"
+            ) from exc
+
+    def _transport_for_server(self, server: MCPServerConfig) -> str:
+        if server.type in {"streamable-http", "streamablehttp", "http"}:
+            return "streamable-http"
+        if "/v2/mcp" in server.url:
+            return "streamable-http"
+        return "sse"
+
+    def _friendly_transport_error(
+        self, server: MCPServerConfig, exc: BaseException
+    ) -> str:
+        if (
+            "400 Bad Request" in str(exc)
+            and self._transport_for_server(server) == "sse"
+        ):
+            return (
+                "the endpoint returned HTTP 400 when opened as SSE. "
+                "This FireCrawl URL looks like Streamable HTTP; set type to "
+                "'streamable-http' or keep /v2/mcp and let the bridge auto-detect it."
+            )
+        return str(exc)

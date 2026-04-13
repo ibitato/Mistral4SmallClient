@@ -60,7 +60,7 @@ an actionable help system:
 
 FireCrawl MCP is configured in [`mcp.json`](../mcp.json) and loaded
 automatically when present. The current setup uses the official MCP Python SDK
-against the SSE endpoint provided by FireCrawl, while local inference continues
+against FireCrawl's Streamable HTTP endpoint, while local inference continues
 to go through the official `mistralai` client pointed at `llama.cpp`.
 Use `--mcp-config <path>` to point at a different config file or `--no-mcp` to
 disable tool loading for a run.
