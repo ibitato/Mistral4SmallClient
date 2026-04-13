@@ -1,14 +1,24 @@
 [project]
 name = "mistral4cli"
-version = "0.10.0"
-description = "Retro CLI for local Mistral Small 4 with MCP FireCrawl support"
+version = "0.10.1"
+description = "Retro CLI for validating and using Mistral Small 4 locally and remotely"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
     { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
 ]
 requires-python = ">=3.10,<3.11"
-keywords = ["mistral", "llama.cpp", "cli", "mcp", "vision", "ocr"]
+keywords = [
+    "mistral",
+    "mistral-small-4",
+    "mistralai",
+    "llama.cpp",
+    "cli",
+    "mcp",
+    "vision",
+    "ocr",
+    "testing",
+]
 dependencies = [
     "mcp>=1.23,<2.0",
     "mistralai>=2.3.2,<3.0",

@@ -599,7 +599,7 @@ def test_remote_command_switches_backend_and_resets_conversation(
         stdout=output,
     )
     session.messages.append({"role": "user", "content": "stale"})
-    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    monkeypatch.setenv("MISTRAL_API_KEY", "example-mistral-key")
 
     def client_factory(config: object) -> FakeClient:
         captured.append(config)

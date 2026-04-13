@@ -33,7 +33,7 @@ def test_load_mcp_config_parses_firecrawl_server(tmp_path: Path) -> None:
 
 def test_load_mcp_config_expands_firecrawl_api_key(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "mcp.json"
-    monkeypatch.setenv("FIRECRAWL_API_KEY", "secret-token")
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "example-firecrawl-token")
     config_path.write_text(
         json.dumps(
             {
@@ -51,7 +51,10 @@ def test_load_mcp_config_expands_firecrawl_api_key(tmp_path: Path, monkeypatch) 
     config = MCPConfig.load(config_path)
 
     assert config.configured is True
-    assert config.servers[0].url == "https://mcp.firecrawl.dev/secret-token/v2/mcp"
+    assert (
+        config.servers[0].url
+        == "https://mcp.firecrawl.dev/example-firecrawl-token/v2/mcp"
+    )
 
 
 def test_load_mcp_config_skips_unresolved_env_placeholder(

@@ -7,14 +7,15 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
 
-Retro terminal CLI for testing and using **Mistral Small 4** locally against
-`llama.cpp`, and remotely against Mistral cloud, with the official `mistralai`
-Python SDK.
+Retro terminal CLI for validating and using **Mistral Small 4** both locally
+against `llama.cpp` and remotely against Mistral cloud, with the official
+`mistralai` Python SDK.
 
 The repository is intentionally focused on one workflow:
 
-- run Mistral Small 4 locally
-- exercise the official SDK against that deployment
+- run Mistral Small 4 locally with `llama.cpp`
+- switch to the hosted `mistral-small-latest` cloud model when needed
+- exercise the official SDK against both backends
 - validate image, document, tool and MCP flows
 - keep the CLI useful for day-to-day experimentation
 
@@ -34,6 +35,15 @@ The repository is intentionally focused on one workflow:
 make sync
 uv run python -m mistral4cli
 ```
+
+## Requirements
+
+- Python `3.10`
+- `uv`
+- a local `llama.cpp` server at `http://127.0.0.1:8080` if you want local mode
+- `MISTRAL_API_KEY` in your shell if you want remote mode
+- `FIRECRAWL_API_KEY` in your shell if you want FireCrawl MCP tools
+- `pdftoppm` available in `PATH` if you want PDF document rasterization via `/doc`
 
 Useful one-shot smoke test:
 
@@ -60,6 +70,13 @@ Remote mode requirements:
 - export `MISTRAL_API_KEY` in your shell
 - remote mode uses `mistral-small-latest`
 - backend switching resets the active conversation
+
+Typical environment setup:
+
+```bash
+export MISTRAL_API_KEY=...
+export FIRECRAWL_API_KEY=...
+```
 
 ## Local Mistral Small 4 setup
 
@@ -116,6 +133,15 @@ that require the `llama.cpp` server.
 Remote cloud integration is available as an opt-in smoke test with
 `MISTRAL_RUN_REMOTE_TESTS=1 MISTRAL_API_KEY=...`.
 `make docs` regenerates the checked-in API reference from public docstrings.
+
+## Security
+
+- Secrets are not stored in the repository.
+- `mcp.json` uses `${FIRECRAWL_API_KEY}` interpolation instead of a checked-in token.
+- Remote cloud mode reads `MISTRAL_API_KEY` from the user environment at runtime.
+- The repository is intended for local developer use and exposes powerful local tools:
+  `shell`, `read_file`, `write_file`, `list_dir`, and `search_text`.
+- Keep `.venv`, `.env`, and any ad hoc credential files out of version control.
 
 ## Repository layout
 

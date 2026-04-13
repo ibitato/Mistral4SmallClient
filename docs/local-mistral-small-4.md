@@ -1,9 +1,24 @@
-# Local Mistral Small 4 Harness
+# Mistral Small 4 Local and Remote Harness
 
-This repository validates the official `mistralai` Python SDK against a local
-`llama.cpp` deployment of Mistral Small 4.
+This repository validates and exercises the official `mistralai` Python SDK
+against two backends for Mistral Small 4:
 
-## Runtime under test
+- a local `llama.cpp` deployment
+- the hosted Mistral cloud model exposed as `mistral-small-latest`
+
+The CLI is designed to switch between those backends without changing tools,
+attachments, or the general REPL workflow.
+
+## Runtime requirements
+
+- Python `3.10`
+- `uv`
+- local mode: a running `llama.cpp` server at `http://127.0.0.1:8080`
+- remote mode: `MISTRAL_API_KEY` in the environment
+- FireCrawl MCP: `FIRECRAWL_API_KEY` in the environment
+- `/doc` with PDF inputs: `pdftoppm` available in `PATH`
+
+## Local runtime under test
 
 - Model: `unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL`
 - Server URL: `http://127.0.0.1:8080`
@@ -45,9 +60,9 @@ The integration test uses a `2x2` PNG fixture to avoid that crash.
 
 ## CLI
 
-The repository now ships a dedicated `mistral4cli` REPL for this local model.
-It uses the official `mistralai` SDK directly and inherits the local runtime
-defaults from the same configuration layer used by the tests.
+The repository now ships a dedicated `mistral4cli` REPL for Mistral Small 4.
+It uses the official `mistralai` SDK directly and can target either the local
+or remote backend at runtime.
 
 The REPL has a retro green/orange presentation, an ASCII welcome banner, and
 an actionable help system:
@@ -191,6 +206,14 @@ Current constraints from the official SDK and live API:
 Because of that, remote mode is implemented through the official SDK with
 `reasoning_effort`, while the local backend still needs the raw fallback for
 llama.cpp reasoning visibility.
+
+## Security notes
+
+- `MISTRAL_API_KEY` and `FIRECRAWL_API_KEY` must come from the user environment.
+- `mcp.json` only stores `${FIRECRAWL_API_KEY}` interpolation, never a literal key.
+- No cloud secret is required for local mode.
+- The CLI intentionally exposes powerful local OS tools for developer use, so it
+  should be run in a workspace you trust.
 
 ## Cancellation behavior
 

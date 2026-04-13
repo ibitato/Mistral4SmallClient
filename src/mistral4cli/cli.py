@@ -1,4 +1,4 @@
-"""Command-line entrypoint for the local Mistral Small 4 coding CLI."""
+"""Command-line entrypoint for the Mistral Small 4 coding CLI."""
 
 from __future__ import annotations
 

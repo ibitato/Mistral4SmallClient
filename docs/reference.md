@@ -48,7 +48,7 @@ Render a supported document into image blocks for the model.
 
 ## `mistral4cli.cli`
 
-Command-line entrypoint for the local Mistral Small 4 coding CLI.
+Command-line entrypoint for the Mistral Small 4 coding CLI.
 
 #### `build_parser() -> 'argparse.ArgumentParser'`
 
@@ -224,11 +224,11 @@ Resolve the MCP config path from CLI, env or repo defaults.
 
 ## `mistral4cli.session`
 
-Interactive session management for the local Mistral Small 4 CLI.
+Interactive session management for the Mistral Small 4 CLI.
 
 ### Class `MistralCodingSession`
 
-Stateful conversation helper for the local Mistral CLI.
+Stateful conversation helper for the Mistral Small 4 CLI.
 
 #### Methods
 
