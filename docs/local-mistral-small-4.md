@@ -61,6 +61,18 @@ to go through the official `mistralai` client pointed at `llama.cpp`.
 Use `--mcp-config <path>` to point at a different config file or `--no-mcp` to
 disable tool loading for a run.
 
+The CLI also exposes always-on local OS tools, so the model can inspect and edit
+the workspace without asking for extra setup:
+
+- `shell`
+- `read_file`
+- `write_file`
+- `list_dir`
+- `search_text`
+
+When FireCrawl is available, those remote tools are added on top of the local
+OS tool set.
+
 Runtime defaults:
 
 - temperature: `0.7`

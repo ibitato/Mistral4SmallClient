@@ -23,6 +23,7 @@ from mistral4cli.local_mistral import (
     LocalMistralConfig,
     build_client,
 )
+from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import (
     MCPConfig,
     MCPToolBridge,
@@ -33,6 +34,7 @@ from mistral4cli.session import (
     MistralCodingSession,
     render_defaults_summary,
 )
+from mistral4cli.tooling import CompositeToolBridge, ToolBridge
 from mistral4cli.ui import render_help_screen, render_welcome_banner
 
 
@@ -114,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-mcp",
         action="store_true",
-        help="Disable MCP tools even if a config file is present.",
+        help="Disable the FireCrawl MCP backend for this run.",
     )
     parser.add_argument(
         "--once",
@@ -168,7 +170,7 @@ def _resolve_local_configs(
     return resolved_config, resolved_generation, system_prompt
 
 
-def _resolve_mcp_bridge(
+def _resolve_remote_mcp_bridge(
     args: argparse.Namespace, stderr: TextIO
 ) -> MCPToolBridge | None:
     if args.no_mcp:
@@ -194,6 +196,14 @@ def _resolve_mcp_bridge(
         return None
 
     return MCPToolBridge(config)
+
+
+def _build_tool_bridge(args: argparse.Namespace, stderr: TextIO) -> CompositeToolBridge:
+    bridges: list[ToolBridge] = [LocalToolBridge()]
+    remote_bridge = _resolve_remote_mcp_bridge(args, stderr)
+    if remote_bridge is not None:
+        bridges.append(remote_bridge)
+    return CompositeToolBridge(bridges=bridges)
 
 
 def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
@@ -307,7 +317,7 @@ def _build_session(
     config: LocalMistralConfig,
     generation: LocalGenerationConfig,
     system_prompt: str,
-    tool_bridge: MCPToolBridge | None,
+    tool_bridge: ToolBridge,
     stdout: TextIO,
     stream: bool,
 ) -> MistralCodingSession:
@@ -337,19 +347,16 @@ def main(
     parser = build_parser()
     args = parser.parse_args(argv)
     config, generation, system_prompt = _resolve_local_configs(args)
-    tool_bridge = _resolve_mcp_bridge(args, stderr)
+    tool_bridge = _build_tool_bridge(args, stderr)
 
     if args.print_defaults:
-        tool_summary = (
-            tool_bridge.runtime_summary() if tool_bridge else "FireCrawl MCP: disabled"
-        )
         stdout.write(
             render_defaults_summary(
                 model_id=config.model_id,
                 server_url=config.server_url,
                 generation=generation,
                 stream_enabled=not args.no_stream,
-                tool_summary=tool_summary,
+                tool_summary=tool_bridge.runtime_summary(),
             )
             + "\nSystem prompt:\n"
             + system_prompt

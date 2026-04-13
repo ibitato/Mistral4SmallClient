@@ -13,7 +13,8 @@ from mistral4cli.local_mistral import (
     DEFAULT_SERVER_URL,
     LocalGenerationConfig,
 )
-from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolBridge, MCPToolResult
+from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolResult
+from mistral4cli.tooling import ToolBridge
 from mistral4cli.ui import render_runtime_summary
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -115,7 +116,7 @@ class MistralCodingSession:
     server_url: str = DEFAULT_SERVER_URL
     generation: LocalGenerationConfig = field(default_factory=LocalGenerationConfig)
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
-    tool_bridge: MCPToolBridge | None = None
+    tool_bridge: ToolBridge | None = None
     stdout: TextIO | None = None
     stream_enabled: bool = True
     max_tool_rounds: int = 4

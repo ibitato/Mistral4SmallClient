@@ -230,11 +230,11 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert client_factory_called is False
     rendered = output.getvalue()
     assert "Mistral Small 4 local CLI" in rendered
+    assert "Local OS tools: ready" in rendered
     assert "temperature=0.7" in rendered
     assert "top_p=0.95" in rendered
     assert "prompt_mode=reasoning" in rendered
     assert "stream=on" in rendered
-    assert "FireCrawl MCP" in rendered
 
 
 def test_once_uses_effective_defaults_and_prints_answer() -> None:

@@ -119,7 +119,7 @@ def render_help_screen(
         _paint("Commands", ORANGE, stream, bold=True),
         "/help        Show this screen.",
         "/defaults    Show the current runtime defaults.",
-        "/tools       Inspect FireCrawl MCP status and tools.",
+        "/tools       Inspect local OS tools and FireCrawl MCP tools.",
         "/reset       Clear the conversation but keep the system prompt.",
         "/system TXT  Replace the system prompt and reset the chat.",
         "/exit        Leave the REPL.",
@@ -128,7 +128,10 @@ def render_help_screen(
         _paint("How to use", ORANGE, stream, bold=True),
         "Ask for code, debugging, refactors, explanations, or tests.",
         "For web-backed questions, mention that you want FireCrawl or sources.",
-        "The CLI auto-loads MCP tools from mcp.json when present.",
+        (
+            "The CLI always exposes local OS tools and auto-loads MCP tools "
+            "from mcp.json when present."
+        ),
         "Tool-assisted turns are managed automatically by the session.",
     ]
     shortcuts_section = [
@@ -139,11 +142,13 @@ def render_help_screen(
     examples_section = [
         _paint("Examples", ORANGE, stream, bold=True),
         '  - "Explícame este error y propone un fix mínimo."',
+        '  - "Usa shell para ejecutar `git status` y resume el resultado."',
+        '  - "Lee src/mistral4cli/cli.py y resume la estructura."',
         '  - "Busca documentación oficial sobre X y resume la API."',
         '  - "/system Eres un revisor estricto de Python 3.10."',
         '  - "/reset"',
     ]
-    tools_section = [_paint("FireCrawl MCP", ORANGE, stream, bold=True)]
+    tools_section = [_paint("Available tools", ORANGE, stream, bold=True)]
     if tool_lines:
         tools_section.extend(f"  - {line}" for line in tool_lines)
     else:
@@ -169,7 +174,7 @@ def render_help_screen(
 def render_tools_screen(tool_lines: Sequence[str], *, stream: TextIO) -> str:
     """Render a detailed tool status screen."""
 
-    header = _paint("FireCrawl MCP tools", ORANGE, stream, bold=True)
+    header = _paint("Available tools", ORANGE, stream, bold=True)
     if tool_lines:
         body = [f"  - {line}" for line in tool_lines]
     else:
