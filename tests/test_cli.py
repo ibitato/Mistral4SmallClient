@@ -5,7 +5,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mistral4cli.cli import _InputHistory, _parse_command, _run_command, main
+from mistral4cli.cli import (
+    _InputHistory,
+    _parse_command,
+    _run_command,
+    _write_tty_newline,
+    main,
+)
 from mistral4cli.local_mistral import LocalGenerationConfig
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import MCPToolResult
@@ -501,6 +507,14 @@ def test_input_history_skips_empty_and_consecutive_duplicates() -> None:
     history.add("second")
 
     assert history.entries == ["first", "second"]
+
+
+def test_write_tty_newline_emits_crlf() -> None:
+    output = io.StringIO()
+
+    _write_tty_newline(output)
+
+    assert output.getvalue() == "\r\n"
 
 
 def test_shortcuts_call_local_tools(tmp_path: Path) -> None:

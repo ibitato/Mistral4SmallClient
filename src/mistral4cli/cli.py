@@ -535,6 +535,13 @@ def _redraw_prompt_line(stdout: TextIO, prompt: str, buffer: str) -> None:
     stdout.flush()
 
 
+def _write_tty_newline(stdout: TextIO) -> None:
+    """Emit a proper CRLF while the terminal is in raw mode."""
+
+    stdout.write("\r\n")
+    stdout.flush()
+
+
 def _read_tty_line(
     prompt: str, stdin: TextIO, stdout: TextIO, history: _InputHistory
 ) -> str:
@@ -555,8 +562,7 @@ def _read_tty_line(
             if char == "":
                 raise EOFError
             if char in {"\r", "\n"}:
-                stdout.write("\n")
-                stdout.flush()
+                _write_tty_newline(stdout)
                 history.reset_navigation()
                 return buffer
             if char == "\x03":
