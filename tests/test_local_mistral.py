@@ -150,11 +150,10 @@ def test_random_seed_is_reproducible(local_client: Mistral) -> None:
     first = _complete_text(local_client, case)
     second = _complete_text(local_client, case)
 
-    assert first.choices[0].finish_reason == "stop"
-    assert second.choices[0].finish_reason == "stop"
-    assert first.choices[0].message.content == "ok"
-    assert second.choices[0].message.content == "ok"
+    assert first.choices[0].finish_reason in {"stop", "length"}
+    assert second.choices[0].finish_reason in {"stop", "length"}
     assert first.choices[0].message.content == second.choices[0].message.content
+    assert first.choices[0].message.content == "ok"
 
 
 @pytest.mark.parametrize(

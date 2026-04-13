@@ -39,3 +39,41 @@ def test_local_shell_runs_commands(tmp_path: Path) -> None:
     assert result.is_error is False
     assert "exit_code=0" in result.text
     assert "ok" in result.text
+
+
+def test_shell_output_can_be_paginated(tmp_path: Path) -> None:
+    bridge = LocalToolBridge(root=tmp_path)
+
+    result = bridge.call_tool(
+        "shell",
+        {
+            "command": "printf 'one\\ntwo\\nthree\\nfour\\n'",
+            "max_lines": 4,
+            "offset_lines": 2,
+        },
+    )
+
+    assert result.is_error is False
+    assert "[page offset_lines=2" in result.text
+    assert "[more output available" in result.text
+
+
+def test_search_text_can_be_paginated(tmp_path: Path) -> None:
+    bridge = LocalToolBridge(root=tmp_path)
+    for index in range(4):
+        bridge.call_tool(
+            "write_file",
+            {
+                "path": f"notes/file{index}.txt",
+                "content": f"needle {index}\n",
+            },
+        )
+
+    result = bridge.call_tool(
+        "search_text",
+        {"query": "needle", "path": ".", "max_results": 2, "offset": 1},
+    )
+
+    assert result.is_error is False
+    assert "[page offset=1" in result.text
+    assert "[more results available" in result.text

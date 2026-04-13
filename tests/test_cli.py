@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import io
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
-from mistral4cli.cli import _parse_command, main
+from mistral4cli.cli import _parse_command, _run_command, main
 from mistral4cli.local_mistral import LocalGenerationConfig
+from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.session import MistralCodingSession
 from mistral4cli.ui import render_help_screen, render_welcome_banner
@@ -278,6 +280,10 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "Type /help for actionable commands" in banner
     assert "/tools" in help_text
     assert "FireCrawl MCP" in help_text
+    assert "/run" in help_text
+    assert "/edit" in help_text
+    assert "/find" in help_text
+    assert "/ls" in help_text
     assert "Busca documentación oficial" in help_text
     assert "Ctrl-C cancels the current response" in help_text
 
@@ -355,3 +361,42 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     )
     assert _parse_command(":reset") == ("reset", "")
     assert _parse_command("/tools") == ("tools", "")
+    assert _parse_command("/run --cwd . -- git status") == (
+        "run",
+        "--cwd . -- git status",
+    )
+    assert _parse_command("/find --path src -- shell") == (
+        "find",
+        "--path src -- shell",
+    )
+
+
+def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    assert _run_command("edit", "notes.txt -- hola mundo", session, output) is False
+    assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hola mundo"
+
+    assert (
+        _run_command(
+            "run",
+            "--cwd . --lines 4 -- printf 'one\\ntwo\\nthree\\n'",
+            session,
+            output,
+        )
+        is False
+    )
+    assert "exit_code=0" in output.getvalue()
+    assert "[more output available" in output.getvalue()
+
+    assert _run_command("ls", ".", session, output) is False
+    assert "notes.txt" in output.getvalue()
+
+    assert _run_command("find", "--path . --limit 5 -- hola", session, output) is False
+    assert "notes.txt" in output.getvalue()

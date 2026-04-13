@@ -14,7 +14,8 @@ Este repositorio usa Python 3.10, `uv` como gestor de entorno y dependencias, y 
 - Si trabajas con imágenes, usa siempre una imagen de al menos `2x2` píxeles.
 - Si trabajas con MCP, usa `mcp.json` en la raíz del repo o `MISTRAL_LOCAL_MCP_CONFIG` para apuntar a otra configuración.
 - El CLI debe exponer siempre herramientas locales para OS: `shell`, `read_file`, `write_file`, `list_dir` y `search_text`.
-- La REPL debe mantener ayuda clara y accionable: `/help`, `/defaults`, `/tools`, `/reset`, `/system`, `/exit`.
+- La REPL debe mantener ayuda clara y accionable: `/help`, `/defaults`, `/tools`, `/run`, `/ls`, `/find`, `/edit`, `/reset`, `/system`, `/exit`.
+- Para salidas largas, `shell` y `search_text` deben soportar paginación o truncado con indicadores claros de continuación.
 - La UI del CLI debe conservar el estilo retro verde/naranja y un banner ASCII legible en terminales TTY.
 - No uses `pip`, `poetry`, `pipenv` ni instalaciones globales para el flujo normal del proyecto.
 - Ejecuta código siempre dentro del entorno de `uv` con `uv run ...` o mediante `make ...`.

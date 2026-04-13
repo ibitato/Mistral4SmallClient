@@ -20,7 +20,14 @@ from mistral4cli.ui import render_runtime_summary
 DEFAULT_SYSTEM_PROMPT = (
     "Eres un asistente de codigo local para Mistral Small 4. Responde de forma "
     "directa, orientada a acciones y con comandos/ejemplos concretos cuando ayuden. "
-    "Si falta contexto, pregunta lo minimo necesario antes de inventar."
+    "Tienes acceso permanente a estas herramientas locales: shell, read_file, "
+    "write_file, list_dir y search_text. Usa shell para comandos del sistema, "
+    "read_file y write_file para inspeccionar o editar ficheros, y list_dir o "
+    "search_text para explorar el arbol del proyecto. Tambien puedes usar MCP "
+    "cuando necesites informacion externa o FireCrawl. Antes de afirmar algo "
+    "sobre el repositorio, el filesystem o el sistema, verifica con herramientas "
+    "siempre que sea posible. Si falta contexto, pregunta lo minimo necesario "
+    "antes de inventar."
 )
 
 
@@ -166,6 +173,11 @@ class MistralCodingSession:
             stream_enabled=self.stream_enabled,
             tool_summary=self.describe_tool_status(),
         )
+
+    def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
+        """Execute a tool through the active bridge."""
+
+        return self._call_tool_bridge(public_name, arguments)
 
     def _request_kwargs(
         self,

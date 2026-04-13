@@ -50,6 +50,10 @@ an actionable help system:
 - `/help` shows commands, examples and MCP status
 - `/defaults` prints the active runtime defaults
 - `/tools` shows the loaded FireCrawl MCP catalogue
+- `/run -- ...` runs a shell command through the local shell tool
+- `/ls [PATH]` lists files and directories
+- `/find -- ...` searches text in the project tree
+- `/edit PATH -- ...` writes text to a file
 - `/reset` clears the conversation but keeps the system prompt
 - `/system <texto>` replaces the system prompt and resets the chat
 - `/exit` or `/quit` leaves the REPL
@@ -72,6 +76,10 @@ the workspace without asking for extra setup:
 
 When FireCrawl is available, those remote tools are added on top of the local
 OS tool set.
+
+For long outputs the local shell and search tools are paginated, so you can use
+`offset`/`lines` style arguments to continue from a later page instead of
+dumping everything at once.
 
 Runtime defaults:
 

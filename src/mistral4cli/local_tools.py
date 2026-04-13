@@ -9,6 +9,9 @@ from typing import Any
 
 from mistral4cli.mcp_bridge import MCPToolResult
 
+DEFAULT_SHELL_MAX_LINES = 120
+DEFAULT_SEARCH_MAX_RESULTS = 25
+
 
 @dataclass(frozen=True, slots=True)
 class LocalToolSpec:
@@ -66,13 +69,18 @@ class LocalToolBridge:
         return [
             LocalToolSpec(
                 name="shell",
-                description="Run a shell command under the current user.",
+                description=(
+                    "Run a shell command under the current user. Output is "
+                    "paginated; use offset_lines/max_lines to page."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "command": {"type": "string"},
                         "cwd": {"type": "string"},
                         "timeout_seconds": {"type": "integer", "minimum": 1},
+                        "offset_lines": {"type": "integer", "minimum": 0},
+                        "max_lines": {"type": "integer", "minimum": 1},
                     },
                     "required": ["command"],
                     "additionalProperties": False,
@@ -118,13 +126,17 @@ class LocalToolBridge:
             ),
             LocalToolSpec(
                 name="search_text",
-                description="Search for text in project files.",
+                description=(
+                    "Search for text in project files. Results are paginated; "
+                    "use offset/max_results to page."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
                         "query": {"type": "string"},
                         "path": {"type": "string"},
                         "max_results": {"type": "integer", "minimum": 1},
+                        "offset": {"type": "integer", "minimum": 0},
                     },
                     "required": ["query"],
                     "additionalProperties": False,
@@ -142,6 +154,8 @@ class LocalToolBridge:
         command = str(arguments.get("command", "")).strip()
         cwd = self._resolve_path(str(arguments.get("cwd", ".")))
         timeout_seconds = int(arguments.get("timeout_seconds", 30))
+        offset_lines = max(0, int(arguments.get("offset_lines", 0)))
+        max_lines = max(1, int(arguments.get("max_lines", DEFAULT_SHELL_MAX_LINES)))
 
         if not command:
             return MCPToolResult(text="[tool-error] command is required", is_error=True)
@@ -183,7 +197,13 @@ class LocalToolBridge:
                 completed.stderr.rstrip(),
             ]
         ).strip()
-        return MCPToolResult(text=output, is_error=completed.returncode != 0)
+        paginated = self._paginate_text(
+            output,
+            label="shell output",
+            offset=offset_lines,
+            max_lines=max_lines,
+        )
+        return MCPToolResult(text=paginated, is_error=completed.returncode != 0)
 
     def _read_file(self, arguments: dict[str, Any]) -> MCPToolResult:
         path = self._resolve_path(str(arguments.get("path", "")))
@@ -246,7 +266,10 @@ class LocalToolBridge:
             return MCPToolResult(text="[tool-error] query is required", is_error=True)
 
         root = self._resolve_path(str(arguments.get("path", ".")))
-        max_results = int(arguments.get("max_results", 25))
+        max_results = max(
+            1, int(arguments.get("max_results", DEFAULT_SEARCH_MAX_RESULTS))
+        )
+        offset = max(0, int(arguments.get("offset", 0)))
         try:
             if not root.exists():
                 return MCPToolResult(
@@ -257,8 +280,6 @@ class LocalToolBridge:
             results: list[str] = []
             paths = [root] if root.is_file() else root.rglob("*")
             for path in paths:
-                if len(results) >= max_results:
-                    break
                 if path.is_dir():
                     continue
                 if not self._looks_textual(path):
@@ -272,10 +293,37 @@ class LocalToolBridge:
                         excerpt = line.strip()
                         results.append(f"{path}:{line_number}: {excerpt}")
                         break
-            return MCPToolResult(
-                text="\n".join(results) if results else "No matches found.",
-                is_error=False,
-            )
+            if not results:
+                return MCPToolResult(text="No matches found.", is_error=False)
+
+            total_results = len(results)
+            page = results[offset : offset + max_results]
+            if not page:
+                return MCPToolResult(
+                    text=(
+                        f"No more matches. total_matches={total_results} "
+                        f"offset={offset} max_results={max_results}"
+                    ),
+                    is_error=False,
+                )
+
+            footer: list[str] = []
+            end = offset + len(page)
+            if offset > 0:
+                footer.append(
+                    f"[page offset={offset} max_results={max_results} "
+                    f"total_matches={total_results}]"
+                )
+            if end < total_results:
+                footer.append(
+                    f"[more results available: use offset={end} "
+                    f"max_results={max_results}]"
+                )
+
+            text = "\n".join(page)
+            if footer:
+                text = "\n".join([text, *footer])
+            return MCPToolResult(text=text, is_error=False)
         except Exception as exc:  # pragma: no cover - defensive
             return MCPToolResult(
                 text=f"[tool-error] search_text failed: {exc}",
@@ -292,3 +340,40 @@ class LocalToolBridge:
             ".jpeg",
             ".gif",
         }
+
+    def _paginate_text(
+        self,
+        text: str,
+        *,
+        label: str,
+        offset: int,
+        max_lines: int,
+    ) -> str:
+        lines = text.splitlines()
+        total_lines = len(lines)
+        if total_lines == 0:
+            return f"[{label}] no output"
+
+        start = min(offset, total_lines)
+        if start >= total_lines:
+            return (
+                f"[{label}] no more output. total_lines={total_lines} "
+                f"offset_lines={offset} max_lines={max_lines}"
+            )
+        end = min(start + max_lines, total_lines)
+        page = lines[start:end]
+        footer: list[str] = []
+        if start > 0:
+            footer.append(
+                f"[page offset_lines={start} max_lines={max_lines} "
+                f"total_lines={total_lines}]"
+            )
+        if end < total_lines:
+            footer.append(
+                f"[more output available: use offset_lines={end} max_lines={max_lines}]"
+            )
+
+        rendered = "\n".join(page)
+        if footer:
+            rendered = "\n".join([rendered, *footer])
+        return rendered
