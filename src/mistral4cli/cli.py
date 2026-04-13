@@ -496,6 +496,24 @@ def _run_command(
         stdout.write(session.describe_tools() + "\n")
         stdout.flush()
         return False
+    if command == "reasoning":
+        normalized = argument.strip().lower()
+        if not normalized:
+            state = "on" if session.show_reasoning else "off"
+            stdout.write(f"Visible reasoning: {state}\n")
+        elif normalized in {"on", "true", "1"}:
+            session.set_reasoning_visibility(True)
+            stdout.write("Visible reasoning enabled.\n")
+        elif normalized in {"off", "false", "0"}:
+            session.set_reasoning_visibility(False)
+            stdout.write("Visible reasoning disabled.\n")
+        elif normalized == "toggle":
+            state = "on" if session.toggle_reasoning_visibility() else "off"
+            stdout.write(f"Visible reasoning: {state}\n")
+        else:
+            stdout.write("Usage: /reasoning [on|off|toggle]\n")
+        stdout.flush()
+        return False
     if command == "run":
         return _run_shell_shortcut(argument, session, stdout)
     if command == "ls":
@@ -659,6 +677,7 @@ def main(
                 server_url=config.server_url,
                 generation=generation,
                 stream_enabled=not args.no_stream,
+                reasoning_visible=True,
                 tool_summary=tool_bridge.runtime_summary(),
             )
             + "\nSystem prompt:\n"

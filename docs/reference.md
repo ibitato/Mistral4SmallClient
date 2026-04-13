@@ -238,15 +238,23 @@ Stateful conversation helper for the local Mistral CLI.
 
   Send a text or multimodal user turn and update the conversation.
 
+  #### `set_reasoning_visibility(self, visible: 'bool') -> 'None'`
+
+  Enable or disable visible reasoning output.
+
   #### `set_system_prompt(self, system_prompt: 'str') -> 'None'`
 
   Replace the active system prompt and reset the conversation.
+
+  #### `toggle_reasoning_visibility(self) -> 'bool'`
+
+  Toggle visible reasoning output and return the new state.
 
 ### Class `TurnResult`
 
 Result of a single user turn.
 
-#### `render_defaults_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_defaults_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -310,7 +318,11 @@ Terminal rendering helpers for the Mistral Small 4 CLI.
 
 Render a concise but actionable help screen.
 
-#### `render_runtime_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_reasoning_chunk(text: 'str', stream: 'TextIO') -> 'str'`
+
+Render one visible reasoning fragment for the terminal.
+
+#### `render_runtime_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
 
 Render a compact runtime summary.
 

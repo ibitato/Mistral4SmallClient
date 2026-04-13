@@ -15,7 +15,7 @@ from mistral4cli.local_mistral import (
 )
 from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolResult
 from mistral4cli.tooling import ToolBridge
-from mistral4cli.ui import render_runtime_summary
+from mistral4cli.ui import render_reasoning_chunk, render_runtime_summary
 
 DEFAULT_SYSTEM_PROMPT = (
     "You are a local coding assistant for Mistral Small 4. Respond directly, "
@@ -30,6 +30,9 @@ DEFAULT_SYSTEM_PROMPT = (
     "attached images or documents, analyze them carefully before replying."
 )
 
+THINK_OPEN = "<think>"
+THINK_CLOSE = "</think>"
+
 
 def render_defaults_summary(
     *,
@@ -37,6 +40,7 @@ def render_defaults_summary(
     server_url: str,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
+    reasoning_visible: bool,
     tool_summary: str,
 ) -> str:
     """Render the active runtime defaults as human-readable text."""
@@ -46,6 +50,7 @@ def render_defaults_summary(
         server_url=server_url,
         generation=generation,
         stream_enabled=stream_enabled,
+        reasoning_visible=reasoning_visible,
         tool_summary=tool_summary,
     )
 
@@ -56,6 +61,7 @@ class TurnResult:
 
     content: str
     finish_reason: str
+    reasoning: str = ""
     cancelled: bool = False
 
 
@@ -65,9 +71,99 @@ class _ModelTurn:
 
     content: str
     finish_reason: str
+    reasoning: str = ""
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     cancelled: bool = False
     error: bool = False
+
+
+@dataclass(slots=True)
+class _RenderedSegment:
+    kind: str
+    text: str
+
+
+@dataclass(slots=True)
+class _ReasoningParser:
+    in_reasoning: bool = False
+    pending: str = ""
+    answer_parts: list[str] = field(default_factory=list)
+    reasoning_parts: list[str] = field(default_factory=list)
+
+    def feed(self, text: str) -> list[_RenderedSegment]:
+        segments: list[_RenderedSegment] = []
+        if not text:
+            return segments
+
+        self.pending += text
+        while self.pending:
+            if self.in_reasoning:
+                close_index = self.pending.find(THINK_CLOSE)
+                if close_index == -1:
+                    emit, keep = _split_possible_tag_suffix(self.pending, [THINK_CLOSE])
+                    if emit:
+                        self.reasoning_parts.append(emit)
+                        segments.append(_RenderedSegment(kind="reasoning", text=emit))
+                    self.pending = keep
+                    break
+
+                if close_index > 0:
+                    emit = self.pending[:close_index]
+                    self.reasoning_parts.append(emit)
+                    segments.append(_RenderedSegment(kind="reasoning", text=emit))
+                self.pending = self.pending[close_index + len(THINK_CLOSE) :]
+                self.in_reasoning = False
+                continue
+
+            open_index = self.pending.find(THINK_OPEN)
+            close_index = self.pending.find(THINK_CLOSE)
+            if close_index != -1 and (open_index == -1 or close_index < open_index):
+                if close_index > 0:
+                    emit = self.pending[:close_index]
+                    self.answer_parts.append(emit)
+                    segments.append(_RenderedSegment(kind="answer", text=emit))
+                self.pending = self.pending[close_index + len(THINK_CLOSE) :]
+                continue
+            if open_index == -1:
+                emit, keep = _split_possible_tag_suffix(
+                    self.pending, [THINK_OPEN, THINK_CLOSE]
+                )
+                if emit:
+                    self.answer_parts.append(emit)
+                    segments.append(_RenderedSegment(kind="answer", text=emit))
+                self.pending = keep
+                break
+
+            if open_index > 0:
+                emit = self.pending[:open_index]
+                self.answer_parts.append(emit)
+                segments.append(_RenderedSegment(kind="answer", text=emit))
+            self.pending = self.pending[open_index + len(THINK_OPEN) :]
+            self.in_reasoning = True
+
+        return segments
+
+    def finish(self) -> list[_RenderedSegment]:
+        if not self.pending:
+            return []
+        segment = _RenderedSegment(
+            kind="reasoning" if self.in_reasoning else "answer",
+            text=self.pending,
+        )
+        if self.in_reasoning:
+            self.reasoning_parts.append(self.pending)
+        else:
+            self.answer_parts.append(self.pending)
+        self.pending = ""
+        return [segment]
+
+    @property
+    def answer(self) -> str:
+        return "".join(self.answer_parts).strip()
+
+    @property
+    def reasoning(self) -> str:
+        return "".join(self.reasoning_parts).strip()
 
 
 @dataclass(slots=True)
@@ -126,6 +222,7 @@ class MistralCodingSession:
     tool_bridge: ToolBridge | None = None
     stdout: TextIO | None = None
     stream_enabled: bool = True
+    show_reasoning: bool = True
     max_tool_rounds: int = 4
     messages: list[dict[str, Any]] = field(init=False, repr=False, default_factory=list)
     _mcp_warning_shown: bool = field(init=False, repr=False, default=False)
@@ -173,8 +270,20 @@ class MistralCodingSession:
             server_url=self.server_url,
             generation=self.generation,
             stream_enabled=self.stream_enabled,
+            reasoning_visible=self.show_reasoning,
             tool_summary=self.describe_tool_status(),
         )
+
+    def set_reasoning_visibility(self, visible: bool) -> None:
+        """Enable or disable visible reasoning output."""
+
+        self.show_reasoning = visible
+
+    def toggle_reasoning_visibility(self) -> bool:
+        """Toggle visible reasoning output and return the new state."""
+
+        self.show_reasoning = not self.show_reasoning
+        return self.show_reasoning
 
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
         """Execute a tool through the active bridge."""
@@ -206,6 +315,7 @@ class MistralCodingSession:
                 return TurnResult(
                     content=turn.content,
                     finish_reason=turn.finish_reason,
+                    reasoning=turn.reasoning,
                     cancelled=turn.cancelled,
                 )
 
@@ -217,6 +327,7 @@ class MistralCodingSession:
                     return TurnResult(
                         content=turn.content,
                         finish_reason=turn.finish_reason,
+                        reasoning=turn.reasoning,
                         cancelled=turn.cancelled,
                     )
 
@@ -225,6 +336,7 @@ class MistralCodingSession:
                     return TurnResult(
                         content=turn.content,
                         finish_reason=turn.finish_reason,
+                        reasoning=turn.reasoning,
                         cancelled=False,
                     )
 
@@ -288,6 +400,13 @@ class MistralCodingSession:
     def _print(self, text: str) -> None:
         assert self.stdout is not None
         self.stdout.write(text)
+        self.stdout.flush()
+
+    def _print_reasoning(self, text: str) -> None:
+        if not text or not self.show_reasoning:
+            return
+        assert self.stdout is not None
+        self.stdout.write(render_reasoning_chunk(text, stream=self.stdout))
         self.stdout.flush()
 
     def _rollback_to(self, message_count: int) -> None:
@@ -377,30 +496,42 @@ class MistralCodingSession:
 
         choice = response.choices[0]
         content_value = choice.message.content
-        content = content_value if isinstance(content_value, str) else ""
+        raw_content = content_value if isinstance(content_value, str) else ""
         finish_reason = choice.finish_reason or "stop"
         tool_calls = _normalize_tool_calls(getattr(choice.message, "tool_calls", None))
+        parsed = _parse_reasoning_text(raw_content)
+        content = parsed.answer
+        reasoning = parsed.reasoning
 
         if tool_calls:
             return _ModelTurn(
                 content=content,
                 finish_reason=finish_reason,
+                reasoning=reasoning,
                 tool_calls=tool_calls,
             )
 
-        if content:
-            self._print(content)
-            if not content.endswith("\n"):
-                self._print("\n")
+        for segment in parsed.segments:
+            if segment.kind == "reasoning":
+                self._print_reasoning(segment.text)
+            else:
+                self._print(segment.text)
+        if parsed.segments and not raw_content.endswith("\n"):
+            self._print("\n")
         elif finish_reason == "length":
             self._print("[truncated response without text]\n")
 
-        return _ModelTurn(content=content, finish_reason=finish_reason)
+        return _ModelTurn(
+            content=content,
+            finish_reason=finish_reason,
+            reasoning=reasoning,
+        )
 
     def _send_streaming(self, *, tools: list[dict[str, Any]] | None) -> _ModelTurn:
-        chunks: list[str] = []
         finish_reason = ""
         tool_states: dict[int, _ToolCallState] = {}
+        parser = _ReasoningParser()
+        printed_anything = False
 
         try:
             stream = self.client.chat.stream(
@@ -416,8 +547,12 @@ class MistralCodingSession:
                     delta = choice.delta
                     content = getattr(delta, "content", None)
                     if isinstance(content, str) and content:
-                        chunks.append(content)
-                        self._print(content)
+                        for segment in parser.feed(content):
+                            if segment.kind == "reasoning":
+                                self._print_reasoning(segment.text)
+                            else:
+                                self._print(segment.text)
+                            printed_anything = True
                     for tool_call in getattr(delta, "tool_calls", None) or []:
                         index = int(getattr(tool_call, "index", 0) or 0)
                         state = tool_states.setdefault(
@@ -427,7 +562,8 @@ class MistralCodingSession:
         except KeyboardInterrupt:
             self._print("\n[interrupted]\n")
             return _ModelTurn(
-                content="".join(chunks),
+                content=parser.answer,
+                reasoning=parser.reasoning,
                 finish_reason="cancelled",
                 cancelled=True,
             )
@@ -435,8 +571,15 @@ class MistralCodingSession:
             self._print(f"\n[error] {exc}\n")
             return _ModelTurn(content="", finish_reason="error", error=True)
 
-        content = "".join(chunks)
-        if content and not content.endswith("\n"):
+        for segment in parser.finish():
+            if segment.kind == "reasoning":
+                self._print_reasoning(segment.text)
+            else:
+                self._print(segment.text)
+            printed_anything = True
+
+        content = parser.answer
+        if printed_anything and not content.endswith("\n"):
             self._print("\n")
         if finish_reason == "length" and not content:
             self._print("[truncated response without text]\n")
@@ -445,6 +588,7 @@ class MistralCodingSession:
         return _ModelTurn(
             content=content,
             finish_reason=finish_reason or "stop",
+            reasoning=parser.reasoning,
             tool_calls=tool_calls,
         )
 
@@ -483,3 +627,34 @@ def _normalize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+def _split_possible_tag_suffix(text: str, tags: list[str]) -> tuple[str, str]:
+    keep = 0
+    for tag in tags:
+        max_prefix = min(len(tag) - 1, len(text))
+        for prefix_length in range(max_prefix, 0, -1):
+            if text.endswith(tag[:prefix_length]):
+                keep = max(keep, prefix_length)
+                break
+    if keep == 0:
+        return text, ""
+    return text[:-keep], text[-keep:]
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedReasoningText:
+    segments: list[_RenderedSegment]
+    answer: str
+    reasoning: str
+
+
+def _parse_reasoning_text(text: str) -> _ParsedReasoningText:
+    parser = _ReasoningParser()
+    segments = parser.feed(text)
+    segments.extend(parser.finish())
+    return _ParsedReasoningText(
+        segments=segments,
+        answer=parser.answer,
+        reasoning=parser.reasoning,
+    )

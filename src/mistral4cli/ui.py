@@ -13,6 +13,7 @@ ORANGE = "\x1b[38;5;208m"
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
 DIM = "\x1b[2m"
+ITALIC = "\x1b[3m"
 
 ASCII_BANNER = (
     r" __  __ _       _        _            _     _____ _ _ "
@@ -45,6 +46,12 @@ def _paint(text: str, color: str, stream: TextIO, *, bold: bool = False) -> str:
     return f"{prefix}{text}{RESET}"
 
 
+def _paint_reasoning(text: str, stream: TextIO) -> str:
+    if not _supports_color(stream):
+        return text
+    return f"{DIM}{ITALIC}{ORANGE}{text}{RESET}"
+
+
 def _paint_multiline(
     text: str, color: str, stream: TextIO, *, bold: bool = False
 ) -> str:
@@ -59,6 +66,7 @@ def render_runtime_summary(
     server_url: str,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
+    reasoning_visible: bool,
     tool_summary: str,
 ) -> str:
     """Render a compact runtime summary."""
@@ -68,6 +76,7 @@ def render_runtime_summary(
     )
     prompt_mode = generation.prompt_mode or "unset"
     stream_mode = "on" if stream_enabled else "off"
+    reasoning_mode = "on" if reasoning_visible else "off"
     lines = [
         "Mistral Small 4 local CLI",
         f"Server: {server_url}",
@@ -78,7 +87,8 @@ def render_runtime_summary(
             f"top_p={generation.top_p} "
             f"prompt_mode={prompt_mode} "
             f"max_tokens={max_tokens} "
-            f"stream={stream_mode}"
+            f"stream={stream_mode} "
+            f"reasoning={reasoning_mode}"
         ),
         f"Tools: {tool_summary}",
     ]
@@ -126,6 +136,7 @@ def render_help_screen(
         "/edit        Write text to a file.",
         "/image       Pick images and ask the model to analyze them.",
         "/doc         Pick documents and send page images for OCR analysis.",
+        "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
         "/reset       Clear the conversation but keep the system prompt.",
         "/system TXT  Replace the system prompt and reset the chat.",
         "/exit        Leave the REPL.",
@@ -144,6 +155,7 @@ def render_help_screen(
         _paint("Shortcuts", ORANGE, stream, bold=True),
         "Ctrl-C cancels the current response without dropping the session.",
         "Ctrl-D exits the REPL.",
+        "Visible reasoning is rendered in dim italic text when the model emits it.",
     ]
     examples_section = [
         _paint("Examples", ORANGE, stream, bold=True),
@@ -155,6 +167,8 @@ def render_help_screen(
         '  - "/edit notes.txt -- Replace this text."',
         '  - "/image --prompt Describe the selected image."',
         '  - "/doc --prompt Summarize the file contents."',
+        '  - "/reasoning off"',
+        '  - "/reasoning toggle"',
         '  - "Use shell to run `git status` and summarize the result."',
         '  - "Read src/mistral4cli/cli.py and summarize the structure."',
         '  - "Search official documentation about X and summarize the API."',
@@ -193,3 +207,9 @@ def render_tools_screen(tool_lines: Sequence[str], *, stream: TextIO) -> str:
     else:
         body = ["  - No MCP tools available."]
     return "\n".join([header, *body])
+
+
+def render_reasoning_chunk(text: str, *, stream: TextIO) -> str:
+    """Render one visible reasoning fragment for the terminal."""
+
+    return _paint_reasoning(text, stream)

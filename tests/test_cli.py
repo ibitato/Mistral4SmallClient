@@ -245,6 +245,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "temperature=0.7" in rendered
     assert "top_p=0.95" in rendered
     assert "prompt_mode=reasoning" in rendered
+    assert "reasoning=on" in rendered
     assert "stream=on" in rendered
 
 
@@ -295,6 +296,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/ls" in help_text
     assert "/image" in help_text
     assert "/doc" in help_text
+    assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
     assert "Ctrl-C cancels the current response" in help_text
 
@@ -427,6 +429,7 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
         "--prompt describe",
     )
     assert _parse_command("/doc --prompt resume") == ("doc", "--prompt resume")
+    assert _parse_command("/reasoning off") == ("reasoning", "off")
     assert _parse_command("/run --cwd . -- git status") == (
         "run",
         "--cwd . -- git status",
@@ -503,6 +506,43 @@ def test_image_shortcut_uses_picker_and_multimodal_payload(
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
+def test_visible_reasoning_is_rendered_but_not_committed() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(complete_text="<think>check file</think>ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return ok.", stream=False)
+
+    assert result.finish_reason == "stop"
+    assert result.reasoning == "check file"
+    assert result.content == "ok"
+    assert "check file" in output.getvalue()
+    assert output.getvalue().endswith("ok\n")
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_reasoning_can_be_hidden() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(stream_chunks=["<think>hidden</think>", "ok"])
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        show_reasoning=False,
+    )
+
+    result = session.send("Return ok.", stream=True)
+
+    assert result.reasoning == "hidden"
+    assert result.content == "ok"
+    assert "hidden" not in output.getvalue()
+    assert output.getvalue().endswith("ok\n")
+
+
 def test_doc_shortcut_uses_picker_and_document_payload(
     tmp_path: Path,
 ) -> None:
@@ -544,6 +584,30 @@ def test_doc_shortcut_uses_picker_and_document_payload(
         for block in content
     )
     assert sum(1 for block in content if block["type"] == "image_url") >= 2
+
+
+def test_reasoning_command_updates_session_state() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("reasoning", "", session, output) is False
+    assert "Visible reasoning: on" in output.getvalue()
+
+    output.truncate(0)
+    output.seek(0)
+    assert _run_command("reasoning", "off", session, output) is False
+    assert session.show_reasoning is False
+    assert "Visible reasoning disabled." in output.getvalue()
+
+    output.truncate(0)
+    output.seek(0)
+    assert _run_command("reasoning", "toggle", session, output) is False
+    assert session.show_reasoning is True
+    assert "Visible reasoning: on" in output.getvalue()
 
 
 def test_image_shortcut_reports_invalid_selection_without_crashing(
