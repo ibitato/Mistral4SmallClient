@@ -1,12 +1,319 @@
-"""Command-line entrypoint for mistral4cli."""
+"""Command-line entrypoint for the local Mistral Small 4 coding CLI."""
 
 from __future__ import annotations
 
+import argparse
+import sys
+from collections.abc import Callable, Sequence
+from dataclasses import replace
+from typing import TextIO
 
-def main() -> int:
-    """Run the CLI."""
-    print("Hello from mistral4cli!")
+from mistralai import Mistral
+
+from mistral4cli.local_mistral import (
+    DEFAULT_API_KEY,
+    DEFAULT_MODEL_ID,
+    DEFAULT_PROMPT_MODE,
+    DEFAULT_SERVER_URL,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TIMEOUT_MS,
+    DEFAULT_TOP_P,
+    LocalGenerationConfig,
+    LocalMistralConfig,
+    build_client,
+)
+from mistral4cli.session import (
+    DEFAULT_SYSTEM_PROMPT,
+    MistralCodingSession,
+    render_defaults_summary,
+)
+
+COMMAND_HELP = (
+    "Comandos: /help /defaults /reset /system <texto> /exit /quit\n"
+    "Atajos: Ctrl-C cancela una respuesta en curso; Ctrl-D sale."
+)
+
+
+def _optional_prompt_mode(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    if normalized.lower() in {"", "none", "null", "off"}:
+        return None
+    return normalized
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="mistral4cli",
+        description="Interactive coding CLI for the local Mistral Small 4 server.",
+    )
+    parser.add_argument(
+        "--server-url",
+        default=None,
+        help=f"Local server URL (default: {DEFAULT_SERVER_URL}).",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help=f"Model identifier (default: {DEFAULT_MODEL_ID}).",
+    )
+    parser.add_argument(
+        "--api-key",
+        default=None,
+        help=f"API key placeholder for the local server (default: {DEFAULT_API_KEY}).",
+    )
+    parser.add_argument(
+        "--timeout-ms",
+        type=int,
+        default=None,
+        help=f"Request timeout in milliseconds (default: {DEFAULT_TIMEOUT_MS}).",
+    )
+    parser.add_argument(
+        "--temperature",
+        type=float,
+        default=None,
+        help=f"Sampling temperature (default: {DEFAULT_TEMPERATURE}).",
+    )
+    parser.add_argument(
+        "--top-p",
+        type=float,
+        default=None,
+        help=f"Nucleus sampling top-p (default: {DEFAULT_TOP_P}).",
+    )
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=None,
+        help="Optional maximum generated tokens; unset by default.",
+    )
+    parser.add_argument(
+        "--prompt-mode",
+        type=_optional_prompt_mode,
+        default=None,
+        help=(
+            "Prompt mode for the local template; use 'reasoning' or 'none' "
+            f"(default: {DEFAULT_PROMPT_MODE})."
+        ),
+    )
+    parser.add_argument(
+        "--system-prompt",
+        default=None,
+        help="Override the default coding assistant system prompt.",
+    )
+    parser.add_argument(
+        "--once",
+        default=None,
+        help="Send one prompt and exit instead of opening the REPL.",
+    )
+    parser.add_argument(
+        "--no-stream",
+        action="store_true",
+        help="Disable token streaming and wait for the full response.",
+    )
+    parser.add_argument(
+        "--print-defaults",
+        action="store_true",
+        help="Print the effective defaults and exit.",
+    )
+    return parser
+
+
+def _resolve_local_configs(
+    args: argparse.Namespace,
+) -> tuple[LocalMistralConfig, LocalGenerationConfig, str]:
+    base_config = LocalMistralConfig.from_env()
+    generation = LocalGenerationConfig.from_env()
+
+    resolved_config = replace(
+        base_config,
+        api_key=args.api_key if args.api_key is not None else base_config.api_key,
+        model_id=args.model if args.model is not None else base_config.model_id,
+        server_url=(
+            args.server_url if args.server_url is not None else base_config.server_url
+        ),
+        timeout_ms=(
+            args.timeout_ms if args.timeout_ms is not None else base_config.timeout_ms
+        ),
+    )
+    resolved_generation = replace(
+        generation,
+        temperature=(
+            args.temperature if args.temperature is not None else generation.temperature
+        ),
+        top_p=args.top_p if args.top_p is not None else generation.top_p,
+        max_tokens=(
+            args.max_tokens if args.max_tokens is not None else generation.max_tokens
+        ),
+        prompt_mode=(
+            args.prompt_mode if args.prompt_mode is not None else generation.prompt_mode
+        ),
+    )
+    system_prompt = args.system_prompt or DEFAULT_SYSTEM_PROMPT
+    return resolved_config, resolved_generation, system_prompt
+
+
+def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
+    stdout.write(session.describe_defaults() + "\n")
+    stdout.write(COMMAND_HELP + "\n")
+    stdout.flush()
+
+
+def _run_command(
+    command: str,
+    argument: str,
+    session: MistralCodingSession,
+    stdout: TextIO,
+) -> bool:
+    if command in {"help", "h", "?"}:
+        stdout.write(COMMAND_HELP + "\n")
+        stdout.flush()
+        return False
+    if command in {"exit", "quit", "q"}:
+        return True
+    if command in {"reset", "new"}:
+        session.reset()
+        stdout.write("Conversation reset.\n")
+        stdout.flush()
+        return False
+    if command == "defaults":
+        stdout.write(session.describe_defaults() + "\n")
+        stdout.flush()
+        return False
+    if command == "system":
+        if argument:
+            session.set_system_prompt(argument)
+            stdout.write("System prompt updated and conversation reset.\n")
+        else:
+            stdout.write("Current system prompt:\n")
+            stdout.write(session.system_prompt + "\n")
+        stdout.flush()
+        return False
+
+    stdout.write(f"Unknown command: /{command}\n")
+    stdout.flush()
+    return False
+
+
+def _parse_command(line: str) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if stripped[0] not in {"/", ":"}:
+        return None
+    command_body = stripped[1:].strip()
+    if not command_body:
+        return None
+    command, _, argument = command_body.partition(" ")
+    return command.lower(), argument.strip()
+
+
+def _run_repl(
+    session: MistralCodingSession,
+    *,
+    input_func: Callable[[str], str],
+    stdout: TextIO,
+    stream: bool,
+) -> int:
+    _print_banner(stdout, session)
+    while True:
+        try:
+            line = input_func("mistral4small> ")
+        except EOFError:
+            stdout.write("\n")
+            stdout.flush()
+            return 0
+        except KeyboardInterrupt:
+            stdout.write("\n")
+            stdout.flush()
+            continue
+
+        stripped = line.strip()
+        if not stripped:
+            continue
+
+        command = _parse_command(stripped)
+        if command is not None:
+            should_exit = _run_command(command[0], command[1], session, stdout)
+            if should_exit:
+                return 0
+            continue
+
+        result = session.send(stripped, stream=stream)
+        if result.cancelled:
+            continue
+
     return 0
+
+
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    input_func: Callable[[str], str] = input,
+    stdin: TextIO = sys.stdin,
+    stdout: TextIO = sys.stdout,
+    client_factory: Callable[[LocalMistralConfig], Mistral] = build_client,
+) -> int:
+    """Run the CLI."""
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    config, generation, system_prompt = _resolve_local_configs(args)
+
+    if args.print_defaults:
+        stdout.write(
+            render_defaults_summary(
+                model_id=config.model_id,
+                server_url=config.server_url,
+                generation=generation,
+                stream_enabled=not args.no_stream,
+            )
+            + "\nSystem prompt:\n"
+            + system_prompt
+            + "\n"
+        )
+        stdout.flush()
+        return 0
+
+    stream = not args.no_stream
+    if args.once is not None:
+        session = MistralCodingSession(
+            client=client_factory(config),
+            model_id=config.model_id,
+            server_url=config.server_url,
+            generation=generation,
+            system_prompt=system_prompt,
+            stdout=stdout,
+            stream_enabled=stream,
+        )
+        session.send(args.once, stream=stream)
+        return 0
+
+    if not stdin.isatty():
+        piped_prompt = stdin.read().strip()
+        if piped_prompt:
+            session = MistralCodingSession(
+                client=client_factory(config),
+                model_id=config.model_id,
+                server_url=config.server_url,
+                generation=generation,
+                system_prompt=system_prompt,
+                stdout=stdout,
+                stream_enabled=stream,
+            )
+            session.send(piped_prompt, stream=stream)
+        return 0
+
+    session = MistralCodingSession(
+        client=client_factory(config),
+        model_id=config.model_id,
+        server_url=config.server_url,
+        generation=generation,
+        system_prompt=system_prompt,
+        stdout=stdout,
+        stream_enabled=stream,
+    )
+    return _run_repl(session, input_func=input_func, stdout=stdout, stream=stream)
 
 
 if __name__ == "__main__":
