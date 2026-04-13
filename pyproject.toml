@@ -1,12 +1,13 @@
 [project]
 name = "mistral4cli"
 version = "0.1.0"
-description = "CLI project scaffold"
+description = "Retro CLI for local Mistral Small 4 with MCP FireCrawl support"
 authors = [
     { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
 ]
 requires-python = ">=3.10,<3.11"
 dependencies = [
+    "mcp>=1.23,<2.0",
     "mistralai>=1.12.4,<2.0",
 ]
 

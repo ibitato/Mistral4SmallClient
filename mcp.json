@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "FireCrawl": {
+      "type": "sse",
+      "url": "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp"
+    }
+  }
+}

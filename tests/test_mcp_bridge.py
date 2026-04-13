@@ -1,0 +1,49 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from mistral4cli.mcp_bridge import MCPConfig, MCPToolBridge, discover_mcp_config_path
+
+
+def test_load_mcp_config_parses_firecrawl_server(tmp_path: Path) -> None:
+    config_path = tmp_path / "mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "FireCrawl": {
+                        "type": "sse",
+                        "url": "https://example.test/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = MCPConfig.load(config_path)
+
+    assert config.configured is True
+    assert config.path == config_path
+    assert config.servers[0].name == "FireCrawl"
+    assert config.servers[0].type == "sse"
+    assert config.servers[0].url == "https://example.test/mcp"
+
+
+def test_discover_mcp_config_path_prefers_env(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "custom-mcp.json"
+    config_path.write_text('{"mcpServers": {}}', encoding="utf-8")
+    monkeypatch.setenv("MISTRAL_LOCAL_MCP_CONFIG", str(config_path))
+
+    discovered = discover_mcp_config_path()
+
+    assert discovered == config_path
+
+
+def test_bridge_runtime_summary_mentions_mcp_json(tmp_path: Path) -> None:
+    config_path = tmp_path / "mcp.json"
+    config_path.write_text('{"mcpServers": {}}', encoding="utf-8")
+    bridge = MCPToolBridge(MCPConfig.load(config_path))
+
+    assert bridge.runtime_summary() == "FireCrawl MCP: disabled"

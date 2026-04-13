@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import replace
@@ -22,16 +23,17 @@ from mistral4cli.local_mistral import (
     LocalMistralConfig,
     build_client,
 )
+from mistral4cli.mcp_bridge import (
+    MCPConfig,
+    MCPToolBridge,
+    discover_mcp_config_path,
+)
 from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralCodingSession,
     render_defaults_summary,
 )
-
-COMMAND_HELP = (
-    "Comandos: /help /defaults /reset /system <texto> /exit /quit\n"
-    "Atajos: Ctrl-C cancela una respuesta en curso; Ctrl-D sale."
-)
+from mistral4cli.ui import render_help_screen, render_welcome_banner
 
 
 def _optional_prompt_mode(value: str | None) -> str | None:
@@ -102,6 +104,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override the default coding assistant system prompt.",
     )
     parser.add_argument(
+        "--mcp-config",
+        default=None,
+        help=(
+            "Path to mcp.json (default: ./mcp.json or "
+            "${MISTRAL_LOCAL_MCP_CONFIG} if set)."
+        ),
+    )
+    parser.add_argument(
+        "--no-mcp",
+        action="store_true",
+        help="Disable MCP tools even if a config file is present.",
+    )
+    parser.add_argument(
         "--once",
         default=None,
         help="Send one prompt and exit instead of opening the REPL.",
@@ -153,9 +168,38 @@ def _resolve_local_configs(
     return resolved_config, resolved_generation, system_prompt
 
 
+def _resolve_mcp_bridge(
+    args: argparse.Namespace, stderr: TextIO
+) -> MCPToolBridge | None:
+    if args.no_mcp:
+        return None
+
+    config_path = discover_mcp_config_path(args.mcp_config)
+    if config_path is None:
+        return None
+
+    try:
+        config = MCPConfig.load(config_path)
+    except FileNotFoundError:
+        if args.mcp_config is not None or os.environ.get("MISTRAL_LOCAL_MCP_CONFIG"):
+            stderr.write(f"[mcp] config not found: {config_path}\n")
+            stderr.flush()
+        return None
+    except Exception as exc:
+        stderr.write(f"[mcp] could not load {config_path}: {exc}\n")
+        stderr.flush()
+        return None
+
+    if not config.configured:
+        return None
+
+    return MCPToolBridge(config)
+
+
 def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
-    stdout.write(session.describe_defaults() + "\n")
-    stdout.write(COMMAND_HELP + "\n")
+    stdout.write(
+        render_welcome_banner(session.describe_defaults(), stream=stdout) + "\n"
+    )
     stdout.flush()
 
 
@@ -166,7 +210,18 @@ def _run_command(
     stdout: TextIO,
 ) -> bool:
     if command in {"help", "h", "?"}:
-        stdout.write(COMMAND_HELP + "\n")
+        stdout.write(
+            render_help_screen(
+                summary=session.describe_defaults(),
+                tools=session.describe_tools().splitlines(),
+                stream=stdout,
+            )
+            + "\n"
+        )
+        stdout.flush()
+        return False
+    if command == "tools":
+        stdout.write(session.describe_tools() + "\n")
         stdout.flush()
         return False
     if command in {"exit", "quit", "q"}:
@@ -246,12 +301,35 @@ def _run_repl(
     return 0
 
 
+def _build_session(
+    *,
+    client_factory: Callable[[LocalMistralConfig], Mistral],
+    config: LocalMistralConfig,
+    generation: LocalGenerationConfig,
+    system_prompt: str,
+    tool_bridge: MCPToolBridge | None,
+    stdout: TextIO,
+    stream: bool,
+) -> MistralCodingSession:
+    return MistralCodingSession(
+        client=client_factory(config),
+        model_id=config.model_id,
+        server_url=config.server_url,
+        generation=generation,
+        system_prompt=system_prompt,
+        tool_bridge=tool_bridge,
+        stdout=stdout,
+        stream_enabled=stream,
+    )
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     input_func: Callable[[str], str] = input,
     stdin: TextIO = sys.stdin,
     stdout: TextIO = sys.stdout,
+    stderr: TextIO = sys.stderr,
     client_factory: Callable[[LocalMistralConfig], Mistral] = build_client,
 ) -> int:
     """Run the CLI."""
@@ -259,14 +337,19 @@ def main(
     parser = build_parser()
     args = parser.parse_args(argv)
     config, generation, system_prompt = _resolve_local_configs(args)
+    tool_bridge = _resolve_mcp_bridge(args, stderr)
 
     if args.print_defaults:
+        tool_summary = (
+            tool_bridge.runtime_summary() if tool_bridge else "FireCrawl MCP: disabled"
+        )
         stdout.write(
             render_defaults_summary(
                 model_id=config.model_id,
                 server_url=config.server_url,
                 generation=generation,
                 stream_enabled=not args.no_stream,
+                tool_summary=tool_summary,
             )
             + "\nSystem prompt:\n"
             + system_prompt
@@ -277,14 +360,14 @@ def main(
 
     stream = not args.no_stream
     if args.once is not None:
-        session = MistralCodingSession(
-            client=client_factory(config),
-            model_id=config.model_id,
-            server_url=config.server_url,
+        session = _build_session(
+            client_factory=client_factory,
+            config=config,
             generation=generation,
             system_prompt=system_prompt,
+            tool_bridge=tool_bridge,
             stdout=stdout,
-            stream_enabled=stream,
+            stream=stream,
         )
         session.send(args.once, stream=stream)
         return 0
@@ -292,26 +375,26 @@ def main(
     if not stdin.isatty():
         piped_prompt = stdin.read().strip()
         if piped_prompt:
-            session = MistralCodingSession(
-                client=client_factory(config),
-                model_id=config.model_id,
-                server_url=config.server_url,
+            session = _build_session(
+                client_factory=client_factory,
+                config=config,
                 generation=generation,
                 system_prompt=system_prompt,
+                tool_bridge=tool_bridge,
                 stdout=stdout,
-                stream_enabled=stream,
+                stream=stream,
             )
             session.send(piped_prompt, stream=stream)
         return 0
 
-    session = MistralCodingSession(
-        client=client_factory(config),
-        model_id=config.model_id,
-        server_url=config.server_url,
+    session = _build_session(
+        client_factory=client_factory,
+        config=config,
         generation=generation,
         system_prompt=system_prompt,
+        tool_bridge=tool_bridge,
         stdout=stdout,
-        stream_enabled=stream,
+        stream=stream,
     )
     return _run_repl(session, input_func=input_func, stdout=stdout, stream=stream)
 

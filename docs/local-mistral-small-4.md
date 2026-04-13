@@ -44,6 +44,23 @@ The repository now ships a dedicated `mistral4cli` REPL for this local model.
 It uses the official `mistralai` SDK directly and inherits the local runtime
 defaults from the same configuration layer used by the tests.
 
+The REPL now has a retro green/orange presentation, an ASCII welcome banner and
+an actionable help system:
+
+- `/help` shows commands, examples and MCP status
+- `/defaults` prints the active runtime defaults
+- `/tools` shows the loaded FireCrawl MCP catalogue
+- `/reset` clears the conversation but keeps the system prompt
+- `/system <texto>` replaces the system prompt and resets the chat
+- `/exit` or `/quit` leaves the REPL
+
+FireCrawl MCP is configured in [`mcp.json`](../mcp.json) and loaded
+automatically when present. The current setup uses the official MCP Python SDK
+against the SSE endpoint provided by FireCrawl, while local inference continues
+to go through the official `mistralai` client pointed at `llama.cpp`.
+Use `--mcp-config <path>` to point at a different config file or `--no-mcp` to
+disable tool loading for a run.
+
 Runtime defaults:
 
 - temperature: `0.7`
@@ -51,6 +68,7 @@ Runtime defaults:
 - prompt mode: `reasoning`
 - max tokens: unset, so the server can decide
 - streaming: on
+- MCP: FireCrawl auto-tools on when `mcp.json` is present
 
 Session commands:
 
@@ -66,6 +84,8 @@ Operational notes:
 - `Ctrl-D` exits the CLI.
 - `uv run python -m mistral4cli --once "..." --no-stream` runs a one-shot smoke
   prompt against the local server.
+- The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set, otherwise it falls back
+  to `./mcp.json` if the file exists.
 
 ## Validation targets
 
@@ -75,6 +95,7 @@ Operational notes:
 - Streaming completions
 - Cancellation recovery after closing a stream early
 - Tool calling
+- MCP tool loading and tool-call execution through FireCrawl
 - Multimodal request acceptance
 - The current local build may return generic or empty text for image prompts, so
   the multimodal test only asserts that image requests are accepted without

@@ -4,9 +4,11 @@ import io
 from dataclasses import dataclass, field
 from typing import Any
 
-from mistral4cli.cli import main
+from mistral4cli.cli import _parse_command, main
 from mistral4cli.local_mistral import LocalGenerationConfig
+from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.session import MistralCodingSession
+from mistral4cli.ui import render_help_screen, render_welcome_banner
 
 
 class FakeStdin(io.StringIO):
@@ -19,13 +21,31 @@ class FakeStdin(io.StringIO):
 
 
 @dataclass(slots=True)
+class FakeToolFunction:
+    name: str
+    arguments: str
+
+
+@dataclass(slots=True)
+class FakeToolCall:
+    id: str = "tool_call_1"
+    type: str = "function"
+    index: int = 0
+    function: FakeToolFunction = field(
+        default_factory=lambda: FakeToolFunction(name="tool", arguments="{}")
+    )
+
+
+@dataclass(slots=True)
 class FakeMessage:
     content: str | None = None
+    tool_calls: list[FakeToolCall] | None = None
 
 
 @dataclass(slots=True)
 class FakeDelta:
     content: str | None = None
+    tool_calls: list[FakeToolCall] | None = None
 
 
 @dataclass(slots=True)
@@ -71,10 +91,12 @@ class FakeChat:
         self,
         *,
         complete_text: str = "ok",
+        complete_responses: list[FakeResponse] | None = None,
         stream_chunks: list[str] | None = None,
         interrupt_after: int | None = None,
     ) -> None:
         self.complete_text = complete_text
+        self.complete_responses = complete_responses or []
         self.stream_chunks = stream_chunks or ["ok"]
         self.interrupt_after = interrupt_after
         self.complete_calls: list[dict[str, Any]] = []
@@ -83,6 +105,8 @@ class FakeChat:
 
     def complete(self, **kwargs: Any) -> FakeResponse:
         self.complete_calls.append(kwargs)
+        if self.complete_responses:
+            return self.complete_responses.pop(0)
         return FakeResponse(
             choices=[
                 FakeChoice(
@@ -118,13 +142,58 @@ class FakeClient:
         self,
         *,
         complete_text: str = "ok",
+        complete_responses: list[FakeResponse] | None = None,
         stream_chunks: list[str] | None = None,
         interrupt_after: int | None = None,
     ) -> None:
         self.chat = FakeChat(
             complete_text=complete_text,
+            complete_responses=complete_responses,
             stream_chunks=stream_chunks,
             interrupt_after=interrupt_after,
+        )
+
+
+class FakeToolBridge:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def runtime_summary(self) -> str:
+        return "FireCrawl MCP: auto-tools on (tests/mcp.json)"
+
+    def describe_tools(self) -> str:
+        return "\n".join(
+            [
+                self.runtime_summary(),
+                "Tools:",
+                "  - web_search: Search the web.",
+            ]
+        )
+
+    def to_mistral_tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": {
+                    "name": "web_search",
+                    "description": "Search the web.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "query": {"type": "string"},
+                        },
+                        "required": ["query"],
+                        "additionalProperties": False,
+                    },
+                },
+            }
+        ]
+
+    def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
+        self.calls.append((public_name, arguments))
+        return MCPToolResult(
+            text='{"results":[{"title":"Example","url":"https://example.com"}]}',
+            is_error=False,
         )
 
 
@@ -151,7 +220,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
         return FakeClient()
 
     exit_code = main(
-        ["--print-defaults"],
+        ["--print-defaults", "--no-mcp"],
         stdin=FakeStdin(""),
         stdout=output,
         client_factory=client_factory,
@@ -165,6 +234,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "top_p=0.95" in rendered
     assert "prompt_mode=reasoning" in rendered
     assert "stream=on" in rendered
+    assert "FireCrawl MCP" in rendered
 
 
 def test_once_uses_effective_defaults_and_prints_answer() -> None:
@@ -172,7 +242,7 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     fake_client = FakeClient(complete_text="ok")
 
     exit_code = main(
-        ["--once", "Devuelve solo la palabra ok.", "--no-stream"],
+        ["--once", "Devuelve solo la palabra ok.", "--no-stream", "--no-mcp"],
         stdin=FakeStdin(""),
         stdout=output,
         client_factory=lambda _config: fake_client,
@@ -186,6 +256,76 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     assert call["top_p"] == 0.95
     assert call["prompt_mode"] == "reasoning"
     assert "max_tokens" not in call
+
+
+def test_help_and_banner_are_actionable_and_retro() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+
+    banner = render_welcome_banner(session.describe_defaults(), stream=output)
+    help_text = render_help_screen(
+        summary=session.describe_defaults(),
+        tools=session.describe_tools().splitlines(),
+        stream=output,
+    )
+
+    assert "Mistral4Small retro console" in banner
+    assert "Type /help for actionable commands" in banner
+    assert "/tools" in help_text
+    assert "FireCrawl MCP" in help_text
+    assert "Busca documentación oficial" in help_text
+    assert "Ctrl-C cancels the current response" in help_text
+
+
+def test_tool_command_and_session_tool_loop() -> None:
+    output = io.StringIO()
+    tool_call = FakeToolCall(
+        function=FakeToolFunction(name="web_search", arguments='{"query":"mcp"}')
+    )
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(tool_calls=[tool_call]),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="Encontré una fuente."),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    bridge = FakeToolBridge()
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=bridge,
+        stdout=output,
+    )
+
+    result = session.send("Busca MCP.", stream=False)
+
+    assert result.cancelled is False
+    assert result.finish_reason == "stop"
+    assert result.content == "Encontré una fuente."
+    assert bridge.calls == [("web_search", {"query": "mcp"})]
+    assert session.messages[-2]["role"] == "tool"
+    assert session.messages[-1] == {
+        "role": "assistant",
+        "content": "Encontré una fuente.",
+    }
 
 
 def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
@@ -208,11 +348,10 @@ def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
     assert "[interrumpido]" in output.getvalue()
 
 
-def test_parse_command_supports_system_and_reset() -> None:
-    from mistral4cli.cli import _parse_command
-
+def test_parse_command_supports_system_reset_and_tools() -> None:
     assert _parse_command("/system cambia el tono") == (
         "system",
         "cambia el tono",
     )
     assert _parse_command(":reset") == ("reset", "")
+    assert _parse_command("/tools") == ("tools", "")
