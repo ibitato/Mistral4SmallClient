@@ -1,12 +1,51 @@
+# Local virtual environments
 .venv/
-.mypy_cache/
-.ruff_cache/
-.pytest_cache/
+venv/
+env/
+ENV/
+
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
+*$py.class
+
+# Build and packaging artifacts
 build/
 dist/
-htmlcov/
+site/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test, type-check, and coverage artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
 .coverage
 .coverage.*
-*.egg-info/
+htmlcov/
+coverage.xml
+
+# Editor and OS metadata
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.python_history
+.ipynb_checkpoints/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.orig
+*.rej
+
+# Optional local environment files
+.env
+.env.local
+.env.*.local

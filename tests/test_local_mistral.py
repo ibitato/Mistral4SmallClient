@@ -4,13 +4,28 @@ import base64
 import json
 import struct
 import zlib
+from dataclasses import dataclass
 from typing import Any
 
 import pytest
+from mistralai import Mistral
 
 from mistral4cli.local_mistral import DEFAULT_MODEL_ID
 
 pytestmark = pytest.mark.integration
+
+
+@dataclass(frozen=True, slots=True)
+class CompletionCase:
+    name: str
+    prompt: str
+    temperature: float
+    top_p: float
+    random_seed: int
+    max_tokens: int
+    prompt_mode: str | None = None
+    expected_text: str | None = None
+    expected_finish_reason: str = "stop"
 
 
 def _png_2x2_solid_rgba(red: int, green: int, blue: int, alpha: int = 255) -> str:
@@ -43,34 +58,124 @@ def test_models_endpoint_lists_target_model(local_models: dict[str, object]) -> 
     )
 
 
-def test_chat_completion_returns_expected_text(local_client: Any) -> None:
-    response = local_client.chat.complete(
-        model=DEFAULT_MODEL_ID,
-        messages=[
-            {"role": "system", "content": "Responde solo con ok."},
-            {"role": "user", "content": "Devuelve solo: ok"},
-        ],
-        temperature=0,
-        max_tokens=128,
-        stream=False,
-        response_format={"type": "text"},
+def _complete_text(client: Mistral, case: CompletionCase) -> Any:
+    kwargs: dict[str, Any] = {
+        "model": DEFAULT_MODEL_ID,
+        "messages": [{"role": "user", "content": case.prompt}],
+        "temperature": case.temperature,
+        "top_p": case.top_p,
+        "random_seed": case.random_seed,
+        "max_tokens": case.max_tokens,
+        "stream": False,
+        "response_format": {"type": "text"},
+    }
+    if case.prompt_mode is not None:
+        kwargs["prompt_mode"] = case.prompt_mode
+    return client.chat.complete(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        CompletionCase(
+            name="baseline",
+            prompt="Devuelve solo la palabra ok.",
+            temperature=0,
+            top_p=1.0,
+            random_seed=11,
+            max_tokens=64,
+            expected_text="ok",
+        ),
+        CompletionCase(
+            name="temperature_tuned",
+            prompt="Devuelve solo la palabra ok.",
+            temperature=0.2,
+            top_p=0.9,
+            random_seed=7,
+            max_tokens=64,
+            expected_text="ok",
+        ),
+        CompletionCase(
+            name="temperature_high",
+            prompt="Devuelve solo la palabra ok.",
+            temperature=0.7,
+            top_p=0.95,
+            random_seed=7,
+            max_tokens=256,
+            expected_text="ok",
+        ),
+        CompletionCase(
+            name="reasoning_mode",
+            prompt="Devuelve solo la palabra ok.",
+            temperature=0,
+            top_p=1.0,
+            random_seed=11,
+            max_tokens=64,
+            prompt_mode="reasoning",
+            expected_text="ok",
+        ),
+        CompletionCase(
+            name="length_cutoff",
+            prompt="Devuelve solo la palabra ok.",
+            temperature=0,
+            top_p=1.0,
+            random_seed=11,
+            max_tokens=4,
+            expected_finish_reason="length",
+        ),
+    ],
+    ids=lambda case: case.name,
+)
+def test_chat_completion_matrix(local_client: Mistral, case: CompletionCase) -> None:
+    response = _complete_text(local_client, case)
+    choice = response.choices[0]
+
+    assert choice.finish_reason == case.expected_finish_reason
+    assert isinstance(choice.message.content, str)
+    if case.expected_text is not None:
+        assert choice.message.content == case.expected_text
+
+
+def test_random_seed_is_reproducible(local_client: Mistral) -> None:
+    case = CompletionCase(
+        name="seeded",
+        prompt="Devuelve solo la palabra ok.",
+        temperature=0.4,
+        top_p=0.95,
+        random_seed=11,
+        max_tokens=64,
+        expected_text="ok",
     )
 
-    choice = response.choices[0]
-    assert choice.finish_reason == "stop"
-    assert choice.message.content == "ok"
+    first = _complete_text(local_client, case)
+    second = _complete_text(local_client, case)
+
+    assert first.choices[0].finish_reason == "stop"
+    assert second.choices[0].finish_reason == "stop"
+    assert first.choices[0].message.content == "ok"
+    assert second.choices[0].message.content == "ok"
+    assert first.choices[0].message.content == second.choices[0].message.content
 
 
-def test_chat_streaming_returns_expected_text(local_client: Any) -> None:
+@pytest.mark.parametrize(
+    "prompt_mode",
+    [None, "reasoning"],
+    ids=["stream-default", "stream-reasoning"],
+)
+def test_chat_streaming_returns_expected_text(
+    local_client: Mistral, prompt_mode: str | None
+) -> None:
     stream = local_client.chat.stream(
         model=DEFAULT_MODEL_ID,
         messages=[
-            {"role": "system", "content": "Responde solo con ok."},
-            {"role": "user", "content": "Devuelve solo: ok"},
+            {"role": "user", "content": "Devuelve solo la palabra ok."},
         ],
         temperature=0,
+        top_p=1.0,
+        random_seed=11,
         max_tokens=128,
         response_format={"type": "text"},
+        prompt_mode=prompt_mode,
     )
 
     text = ""
@@ -88,7 +193,49 @@ def test_chat_streaming_returns_expected_text(local_client: Any) -> None:
     assert text == "ok"
 
 
-def test_tool_call_arguments_are_structured(local_client: Any) -> None:
+def test_stream_cancel_then_followup_request_succeeds(local_client: Mistral) -> None:
+    stream = local_client.chat.stream(
+        model=DEFAULT_MODEL_ID,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    "Escribe un texto largo de varias parrafos sobre por que los "
+                    "sistemas distribuidos son dificiles, con al menos 1000 palabras."
+                ),
+            }
+        ],
+        temperature=0.7,
+        top_p=0.95,
+        random_seed=11,
+        max_tokens=1024,
+        response_format={"type": "text"},
+    )
+
+    with stream:
+        for idx, _event in enumerate(stream, start=1):
+            if idx >= 5:
+                break
+
+    follow_up = _complete_text(
+        local_client,
+        CompletionCase(
+            name="post-cancel",
+            prompt="Devuelve solo la palabra ok.",
+            temperature=0,
+            top_p=1.0,
+            random_seed=11,
+            max_tokens=64,
+            expected_text="ok",
+        ),
+    )
+
+    choice = follow_up.choices[0]
+    assert choice.finish_reason == "stop"
+    assert choice.message.content == "ok"
+
+
+def test_tool_call_arguments_are_structured(local_client: Mistral) -> None:
     tools = [
         {
             "type": "function",
@@ -124,7 +271,7 @@ def test_tool_call_arguments_are_structured(local_client: Any) -> None:
     assert arguments == {"a": 2, "b": 3}
 
 
-def test_multimodal_image_request_is_accepted(local_client: Any) -> None:
+def test_multimodal_image_request_is_accepted(local_client: Mistral) -> None:
     image_b64 = _png_2x2_solid_rgba(255, 0, 0)
     # This validates request transport and multimodal parsing, not image
     # semantics. The local build may still return a generic or empty text.

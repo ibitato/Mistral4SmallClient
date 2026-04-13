@@ -1,4 +1,4 @@
-.PHONY: help sync lock format format-check lint typecheck test check run clean
+.PHONY: help sync lock format format-check lint typecheck test check run cancel-probe clean
 
 UV ?= uv
 
@@ -12,6 +12,7 @@ help:
 		'  make lint       - lint Python code with ruff' \
 		'  make typecheck  - run mypy' \
 		'  make test       - run pytest' \
+		'  make cancel-probe - probe stream cancellation and follow-up recovery' \
 		'  make check      - verify format, lint, and typecheck' \
 		'  make run        - run the CLI entrypoint' \
 		'  make clean      - remove local caches and the virtual environment'
@@ -36,6 +37,9 @@ typecheck:
 
 test:
 	$(UV) run pytest
+
+cancel-probe:
+	$(UV) run python scripts/cancel_probe.py
 
 check: format-check lint typecheck
 
