@@ -7,7 +7,7 @@ import os
 import shlex
 import sys
 from collections.abc import Callable, Sequence
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from typing import TextIO
 
 from mistralai import Mistral
@@ -46,6 +46,56 @@ from mistral4cli.session import (
 )
 from mistral4cli.tooling import CompositeToolBridge, ToolBridge
 from mistral4cli.ui import render_help_screen, render_welcome_banner
+
+
+@dataclass(slots=True)
+class _InputHistory:
+    """In-memory REPL input history with up/down navigation state."""
+
+    entries: list[str] = field(default_factory=list)
+    browse_index: int | None = None
+    draft: str = ""
+
+    def add(self, line: str) -> None:
+        """Append a non-empty line unless it duplicates the last entry."""
+
+        clean = line.strip()
+        if not clean:
+            self.reset_navigation()
+            return
+        if not self.entries or self.entries[-1] != clean:
+            self.entries.append(clean)
+        self.reset_navigation()
+
+    def previous(self, current_buffer: str) -> str:
+        """Move one step back in history."""
+
+        if not self.entries:
+            return current_buffer
+        if self.browse_index is None:
+            self.draft = current_buffer
+            self.browse_index = len(self.entries) - 1
+        elif self.browse_index > 0:
+            self.browse_index -= 1
+        return self.entries[self.browse_index]
+
+    def next(self) -> str:
+        """Move one step forward in history."""
+
+        if self.browse_index is None:
+            return self.draft
+        if self.browse_index < len(self.entries) - 1:
+            self.browse_index += 1
+            return self.entries[self.browse_index]
+        draft = self.draft
+        self.reset_navigation()
+        return draft
+
+    def reset_navigation(self) -> None:
+        """Reset history navigation state after a committed line."""
+
+        self.browse_index = None
+        self.draft = ""
 
 
 def _optional_prompt_mode(value: str | None) -> str | None:
@@ -472,6 +522,89 @@ def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
     stdout.flush()
 
 
+def _is_default_input_func(input_func: Callable[[str], str]) -> bool:
+    """Return whether the REPL uses the standard input() function."""
+
+    return input_func is input
+
+
+def _redraw_prompt_line(stdout: TextIO, prompt: str, buffer: str) -> None:
+    """Redraw the current prompt line after history navigation or editing."""
+
+    stdout.write(f"\r{prompt}{buffer}\x1b[K")
+    stdout.flush()
+
+
+def _read_tty_line(
+    prompt: str, stdin: TextIO, stdout: TextIO, history: _InputHistory
+) -> str:
+    """Read one REPL line with simple raw-mode editing and history navigation."""
+
+    import termios
+    import tty
+
+    fileno = stdin.fileno()
+    original_attrs = termios.tcgetattr(fileno)
+    buffer = ""
+    stdout.write(prompt)
+    stdout.flush()
+    try:
+        tty.setraw(fileno)
+        while True:
+            char = stdin.read(1)
+            if char == "":
+                raise EOFError
+            if char in {"\r", "\n"}:
+                stdout.write("\n")
+                stdout.flush()
+                history.reset_navigation()
+                return buffer
+            if char == "\x03":
+                raise KeyboardInterrupt
+            if char == "\x04":
+                if not buffer:
+                    raise EOFError
+                continue
+            if char in {"\x7f", "\b"}:
+                if buffer:
+                    buffer = buffer[:-1]
+                    _redraw_prompt_line(stdout, prompt, buffer)
+                continue
+            if char == "\x1b":
+                next_char = stdin.read(1)
+                if next_char != "[":
+                    continue
+                direction = stdin.read(1)
+                if direction == "A":
+                    buffer = history.previous(buffer)
+                    _redraw_prompt_line(stdout, prompt, buffer)
+                elif direction == "B":
+                    buffer = history.next()
+                    _redraw_prompt_line(stdout, prompt, buffer)
+                continue
+            if char.isprintable():
+                buffer += char
+                stdout.write(char)
+                stdout.flush()
+    finally:
+        termios.tcsetattr(fileno, termios.TCSADRAIN, original_attrs)
+
+
+def _read_repl_line(
+    *,
+    prompt: str,
+    input_func: Callable[[str], str],
+    stdin: TextIO,
+    stdout: TextIO,
+    history: _InputHistory,
+) -> str:
+    """Read one REPL line using raw TTY mode when available."""
+
+    if stdin.isatty() and _is_default_input_func(input_func):
+        return _read_tty_line(prompt, stdin, stdout, history)
+    return input_func(prompt)
+
+
 def _run_command(
     command: str,
     argument: str,
@@ -589,14 +722,22 @@ def _run_repl(
     session: MistralCodingSession,
     *,
     input_func: Callable[[str], str],
+    stdin: TextIO,
     stdout: TextIO,
     stream: bool,
     path_picker: PathPicker | None,
 ) -> int:
     _print_banner(stdout, session)
+    history = _InputHistory()
     while True:
         try:
-            line = input_func("mistral4small> ")
+            line = _read_repl_line(
+                prompt="mistral4small> ",
+                input_func=input_func,
+                stdin=stdin,
+                stdout=stdout,
+                history=history,
+            )
         except EOFError:
             stdout.write("\n")
             stdout.flush()
@@ -609,6 +750,7 @@ def _run_repl(
         stripped = line.strip()
         if not stripped:
             continue
+        history.add(stripped)
 
         command = _parse_command(stripped)
         if command is not None:
@@ -728,6 +870,7 @@ def main(
     return _run_repl(
         session,
         input_func=input_func,
+        stdin=stdin,
         stdout=stdout,
         stream=stream,
         path_picker=path_picker,

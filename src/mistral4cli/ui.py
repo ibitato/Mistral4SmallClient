@@ -153,6 +153,7 @@ def render_help_screen(
     ]
     shortcuts_section = [
         _paint("Shortcuts", ORANGE, stream, bold=True),
+        "Up/Down arrows browse previous prompts.",
         "Ctrl-C cancels the current response without dropping the session.",
         "Ctrl-D exits the REPL.",
         "Visible reasoning is rendered in dim italic text when the model emits it.",

@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mistral4cli.cli import _parse_command, _run_command, main
+from mistral4cli.cli import _InputHistory, _parse_command, _run_command, main
 from mistral4cli.local_mistral import LocalGenerationConfig
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import MCPToolResult
@@ -468,6 +468,41 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     )
 
 
+def test_input_history_supports_up_down_navigation() -> None:
+    history = _InputHistory()
+    history.add("first")
+    history.add("second")
+
+    assert history.previous("") == "second"
+    assert history.previous("") == "first"
+    assert history.previous("") == "first"
+    assert history.next() == "second"
+    assert history.next() == ""
+    assert history.next() == ""
+
+
+def test_input_history_restores_draft_after_navigation() -> None:
+    history = _InputHistory()
+    history.add("first")
+    history.add("second")
+
+    assert history.previous("draft command") == "second"
+    assert history.previous("ignored") == "first"
+    assert history.next() == "second"
+    assert history.next() == "draft command"
+
+
+def test_input_history_skips_empty_and_consecutive_duplicates() -> None:
+    history = _InputHistory()
+
+    history.add("")
+    history.add("first")
+    history.add("first")
+    history.add("second")
+
+    assert history.entries == ["first", "second"]
+
+
 def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
     output = io.StringIO()
     session = MistralCodingSession(
@@ -549,7 +584,7 @@ def test_visible_reasoning_is_rendered_but_not_committed() -> None:
     assert result.reasoning == "check file"
     assert result.content == "ok"
     assert "check file" in output.getvalue()
-    assert output.getvalue().endswith("ok\n")
+    assert "check file\n\nok\n" in output.getvalue()
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 
 
@@ -567,6 +602,7 @@ def test_uppercase_think_reasoning_is_rendered_but_not_committed() -> None:
     assert result.reasoning == "plan"
     assert result.content == "ok"
     assert "plan" in output.getvalue()
+    assert "plan\n\nok\n" in output.getvalue()
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 
 
@@ -594,7 +630,7 @@ def test_raw_reasoning_content_is_rendered_and_committed_cleanly(
     assert result.reasoning == "plan first"
     assert result.content == "ok"
     assert "plan first" in output.getvalue()
-    assert output.getvalue().endswith("ok\n")
+    assert "plan first\n\nok\n" in output.getvalue()
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 
 
@@ -636,7 +672,7 @@ def test_raw_stream_reasoning_content_is_rendered_and_committed_cleanly(
     assert result.reasoning == "plan first"
     assert result.content == "ok"
     assert "plan first" in output.getvalue()
-    assert output.getvalue().endswith("ok\n")
+    assert "plan first\n\nok\n" in output.getvalue()
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 
 
