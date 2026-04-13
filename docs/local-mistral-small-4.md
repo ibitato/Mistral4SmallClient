@@ -69,6 +69,7 @@ an actionable help system:
 
 - `/help` shows commands, examples, and MCP status
 - `/defaults` prints the active runtime defaults
+- `/timeout [value]` shows or updates the active request timeout
 - `/remote on|off` switches between local `llama.cpp` and Mistral cloud
 - `/tools` shows the loaded FireCrawl MCP catalog
 - `/run -- ...` runs a shell command through the local shell tool
@@ -125,6 +126,7 @@ Runtime defaults:
 - temperature: `0.7`
 - top-p: `0.95`
 - prompt mode: `reasoning`
+- timeout: `300000 ms` (`5m`)
 - max tokens: unset, so the server can decide
 - streaming: on
 - MCP: FireCrawl auto-tools on when `mcp.json` is present

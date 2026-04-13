@@ -36,6 +36,7 @@ from mistral4cli.local_mistral import (
     RemoteAPIKeyError,
     RemoteMistralConfig,
     build_client,
+    get_client_timeout_ms,
     remote_api_key_available,
 )
 from mistral4cli.local_tools import LocalToolBridge
@@ -652,6 +653,8 @@ def _run_command(
             local_config=local_config,
             client_factory=client_factory,
         )
+    if command == "timeout":
+        return _run_timeout_command(argument, session, stdout)
     if command == "reasoning":
         normalized = argument.strip().lower()
         if not normalized:
@@ -761,7 +764,7 @@ def _run_remote_command(
     if normalized == "on":
         try:
             remote_config = RemoteMistralConfig.from_env(
-                timeout_ms=getattr(session.client, "timeout_ms", DEFAULT_TIMEOUT_MS)
+                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS)
             )
         except RemoteAPIKeyError as exc:
             stdout.write(f"[remote] {exc}\n")
@@ -796,6 +799,53 @@ def _run_remote_command(
     stdout.write("Usage: /remote [on|off]\n")
     stdout.flush()
     return False
+
+
+def _run_timeout_command(
+    argument: str,
+    session: MistralCodingSession,
+    stdout: TextIO,
+) -> bool:
+    normalized = argument.strip().lower()
+    if not normalized:
+        stdout.write(f"Timeout: {session.timeout_ms} ms\n")
+        stdout.flush()
+        return False
+
+    try:
+        timeout_ms = _parse_timeout_ms(normalized)
+    except ValueError as exc:
+        stdout.write(f"[timeout] {exc}\n")
+        stdout.flush()
+        return False
+
+    session.set_timeout_ms(timeout_ms)
+    stdout.write(f"Timeout set to {timeout_ms} ms.\n")
+    stdout.flush()
+    return False
+
+
+def _parse_timeout_ms(value: str) -> int:
+    text = value.strip().lower()
+    if not text:
+        raise ValueError("Usage: /timeout [MILLISECONDS|SECONDSs|MINUTESm]")
+    if text.endswith("ms"):
+        amount = int(text[:-2].strip())
+        multiplier = 1
+    elif text.endswith("s"):
+        amount = int(text[:-1].strip())
+        multiplier = 1_000
+    elif text.endswith("m"):
+        amount = int(text[:-1].strip())
+        multiplier = 60_000
+    else:
+        amount = int(text)
+        multiplier = 1
+
+    timeout_ms = amount * multiplier
+    if timeout_ms < 1_000:
+        raise ValueError("Timeout must be at least 1000 ms.")
+    return timeout_ms
 
 
 def _run_repl(
@@ -903,6 +953,7 @@ def main(
                 backend_kind=BackendKind.LOCAL,
                 model_id=config.model_id,
                 server_url=config.server_url,
+                timeout_ms=config.timeout_ms,
                 generation=generation,
                 stream_enabled=not args.no_stream,
                 reasoning_visible=True,

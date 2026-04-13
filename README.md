@@ -56,6 +56,7 @@ Inside the REPL:
 - `/help` for actionable usage
 - `/defaults` to inspect runtime parameters
 - `/tools` to inspect loaded tools
+- `/timeout [VALUE]` to inspect or change the active request timeout
 - `/run -- ...` to execute a shell command
 - `/ls [PATH]` to inspect the tree
 - `/find -- ...` to search text in the workspace
@@ -70,6 +71,7 @@ Remote mode requirements:
 - export `MISTRAL_API_KEY` in your shell
 - remote mode uses `mistral-small-latest`
 - backend switching resets the active conversation
+- the default request timeout is `300000 ms` (5 minutes)
 
 Typical environment setup:
 
@@ -101,6 +103,7 @@ Recommended runtime defaults used by the CLI:
 - `temperature=0.7`
 - `top_p=0.95`
 - `prompt_mode=reasoning`
+- `timeout_ms=300000`
 - streaming on by default
 - `max_tokens` unset unless you override it
 

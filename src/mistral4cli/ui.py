@@ -67,6 +67,7 @@ def render_runtime_summary(
     backend_kind: BackendKind,
     model_id: str,
     server_url: str | None,
+    timeout_ms: int,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
     reasoning_visible: bool,
@@ -85,6 +86,7 @@ def render_runtime_summary(
         f"Backend: {backend_kind.value}",
         f"Server: {server_url or REMOTE_SERVER_LABEL}",
         f"Model: {model_id}",
+        f"Timeout: {timeout_ms} ms",
         (
             "Sampling: "
             f"temperature={generation.temperature} "
@@ -145,6 +147,7 @@ def render_help_screen(
         "/image       Pick images and ask the model to analyze them.",
         "/doc         Pick documents and send page images for OCR analysis.",
         "/remote      Show, enable, or disable the Mistral cloud backend.",
+        "/timeout     Show or set the active request timeout.",
         "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
         "/reset       Clear the conversation but keep the system prompt.",
         "/system TXT  Replace the system prompt and reset the chat.",
@@ -178,6 +181,7 @@ def render_help_screen(
         '  - "/image --prompt Describe the selected image."',
         '  - "/doc --prompt Summarize the file contents."',
         '  - "/remote on"',
+        '  - "/timeout 300000"',
         '  - "/reasoning off"',
         '  - "/reasoning toggle"',
         '  - "Use shell to run `git status` and summarize the result."',

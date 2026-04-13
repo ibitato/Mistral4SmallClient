@@ -15,6 +15,8 @@ from mistral4cli.local_mistral import (
     DEFAULT_SERVER_URL,
     BackendKind,
     LocalGenerationConfig,
+    get_client_timeout_ms,
+    set_client_timeout_ms,
 )
 from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolResult
 from mistral4cli.tooling import ToolBridge
@@ -46,6 +48,7 @@ def render_defaults_summary(
     backend_kind: BackendKind,
     model_id: str,
     server_url: str | None,
+    timeout_ms: int,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
     reasoning_visible: bool,
@@ -57,6 +60,7 @@ def render_defaults_summary(
         backend_kind=backend_kind,
         model_id=model_id,
         server_url=server_url,
+        timeout_ms=timeout_ms,
         generation=generation,
         stream_enabled=stream_enabled,
         reasoning_visible=reasoning_visible,
@@ -317,6 +321,7 @@ class MistralCodingSession:
             backend_kind=self.backend_kind,
             model_id=self.model_id,
             server_url=self.server_url,
+            timeout_ms=self.timeout_ms,
             generation=self._display_generation(),
             stream_enabled=self.stream_enabled,
             reasoning_visible=self.show_reasoning,
@@ -338,6 +343,17 @@ class MistralCodingSession:
         self.model_id = model_id
         self.server_url = server_url
         self.reset()
+
+    @property
+    def timeout_ms(self) -> int:
+        """Return the active request timeout in milliseconds."""
+
+        return get_client_timeout_ms(self.client)
+
+    def set_timeout_ms(self, timeout_ms: int) -> None:
+        """Update the active request timeout in milliseconds."""
+
+        set_client_timeout_ms(self.client, timeout_ms)
 
     def visible_reasoning_supported(self) -> bool:
         """Return whether the active backend can render visible reasoning."""
@@ -503,7 +519,7 @@ class MistralCodingSession:
             headers={"Content-Type": "application/json"},
             method="POST",
         )
-        timeout_s = max(1.0, getattr(self.client, "timeout_ms", 120_000) / 1000)
+        timeout_s = max(1.0, self.timeout_ms / 1000)
         try:
             return urlopen(request, timeout=timeout_s)
         except HTTPError as exc:

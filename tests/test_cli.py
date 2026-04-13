@@ -13,6 +13,7 @@ from mistral4cli.cli import (
     main,
 )
 from mistral4cli.local_mistral import (
+    DEFAULT_TIMEOUT_MS,
     BackendKind,
     LocalGenerationConfig,
     LocalMistralConfig,
@@ -282,6 +283,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "Mistral Small 4 CLI" in rendered
     assert "Backend: local" in rendered
     assert "Local OS tools: ready" in rendered
+    assert f"Timeout: {DEFAULT_TIMEOUT_MS} ms" in rendered
     assert "temperature=0.7" in rendered
     assert "top_p=0.95" in rendered
     assert "prompt_mode=reasoning" in rendered
@@ -338,6 +340,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/image" in help_text
     assert "/doc" in help_text
     assert "/remote" in help_text
+    assert "/timeout" in help_text
     assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
     assert "Ctrl-C cancels the current response" in help_text
@@ -773,6 +776,7 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     )
     assert _parse_command("/doc --prompt resume") == ("doc", "--prompt resume")
     assert _parse_command("/remote on") == ("remote", "on")
+    assert _parse_command("/timeout 5m") == ("timeout", "5m")
     assert _parse_command("/reasoning off") == ("reasoning", "off")
     assert _parse_command("/run --cwd . -- git status") == (
         "run",
@@ -960,6 +964,43 @@ def test_remote_off_switches_back_to_local() -> None:
     assert session.model_id == local_config.model_id
     assert session.server_url == local_config.server_url
     assert "Local backend enabled. Conversation reset." in output.getvalue()
+
+
+def test_timeout_command_reports_current_timeout() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("timeout", "", session, output) is False
+    assert f"Timeout: {DEFAULT_TIMEOUT_MS} ms" in output.getvalue()
+
+
+def test_timeout_command_updates_timeout_in_minutes() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("timeout", "5m", session, output) is False
+    assert session.timeout_ms == 300_000
+    assert "Timeout set to 300000 ms." in output.getvalue()
+
+
+def test_timeout_command_rejects_too_small_value() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("timeout", "500", session, output) is False
+    assert "[timeout] Timeout must be at least 1000 ms." in output.getvalue()
 
 
 def test_shortcuts_call_local_tools(tmp_path: Path) -> None:

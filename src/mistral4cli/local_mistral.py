@@ -15,7 +15,7 @@ from mistralai.client import Mistral
 DEFAULT_API_KEY = "local-test"
 DEFAULT_MODEL_ID = "unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL"
 DEFAULT_SERVER_URL = "http://127.0.0.1:8080"
-DEFAULT_TIMEOUT_MS = 120_000
+DEFAULT_TIMEOUT_MS = 300_000
 DEFAULT_TEMPERATURE = 0.7
 DEFAULT_TOP_P = 0.95
 DEFAULT_PROMPT_MODE = "reasoning"
@@ -127,20 +127,46 @@ class LocalGenerationConfig:
 MistralConfig = LocalMistralConfig | RemoteMistralConfig
 
 
+def get_client_timeout_ms(client: Mistral, default: int = DEFAULT_TIMEOUT_MS) -> int:
+    """Return the effective timeout configured on a Mistral client."""
+
+    timeout_ms = getattr(client, "timeout_ms", None)
+    if isinstance(timeout_ms, int) and timeout_ms > 0:
+        return timeout_ms
+    sdk_configuration = getattr(client, "sdk_configuration", None)
+    sdk_timeout_ms = getattr(sdk_configuration, "timeout_ms", None)
+    if isinstance(sdk_timeout_ms, int) and sdk_timeout_ms > 0:
+        return sdk_timeout_ms
+    return default
+
+
+def set_client_timeout_ms(client: Mistral, timeout_ms: int) -> None:
+    """Update the effective timeout on a Mistral client in place."""
+
+    cast(Any, client).timeout_ms = timeout_ms
+    sdk_configuration = getattr(client, "sdk_configuration", None)
+    if sdk_configuration is not None:
+        sdk_configuration.timeout_ms = timeout_ms
+
+
 def build_client(config: MistralConfig | None = None) -> Mistral:
     """Construct an official `mistralai` client for the selected backend."""
 
     active_config = config or LocalMistralConfig.from_env()
     if isinstance(active_config, LocalMistralConfig):
-        return Mistral(
+        client = Mistral(
             api_key=active_config.api_key,
             server_url=active_config.server_url,
             timeout_ms=active_config.timeout_ms,
         )
-    return Mistral(
+        set_client_timeout_ms(client, active_config.timeout_ms)
+        return client
+    client = Mistral(
         api_key=active_config.api_key,
         timeout_ms=active_config.timeout_ms,
     )
+    set_client_timeout_ms(client, active_config.timeout_ms)
+    return client
 
 
 def remote_api_key_available() -> bool:
