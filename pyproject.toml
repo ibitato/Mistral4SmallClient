@@ -2,10 +2,13 @@
 name = "mistral4cli"
 version = "0.1.0"
 description = "Retro CLI for local Mistral Small 4 with MCP FireCrawl support"
+readme = "README.md"
+license = { file = "LICENSE" }
 authors = [
     { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
 ]
 requires-python = ">=3.10,<3.11"
+keywords = ["mistral", "llama.cpp", "cli", "mcp", "vision", "ocr"]
 dependencies = [
     "mcp>=1.23,<2.0",
     "mistralai>=1.12.4,<2.0",
@@ -16,6 +19,12 @@ dependencies = [
 
 [project.scripts]
 mistral4cli = "mistral4cli.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ibitato/Mistral4SmallClient"
+Source = "https://github.com/ibitato/Mistral4SmallClient"
+Issues = "https://github.com/ibitato/Mistral4SmallClient/issues"
+Documentation = "https://github.com/ibitato/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
 
 [dependency-groups]
 dev = [

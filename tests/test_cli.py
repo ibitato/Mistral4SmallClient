@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import io
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +11,8 @@ from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.session import MistralCodingSession
 from mistral4cli.ui import render_help_screen, render_welcome_banner
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "internet"
 
 
 class FakeStdin(io.StringIO):
@@ -439,15 +440,11 @@ def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
     assert "notes.txt" in output.getvalue()
 
 
-def test_image_shortcut_uses_picker_and_multimodal_payload(tmp_path: Path) -> None:
+def test_image_shortcut_uses_picker_and_multimodal_payload(
+    tmp_path: Path,
+) -> None:
     output = io.StringIO()
-    image = tmp_path / "image.png"
-    image.write_bytes(
-        base64.b64decode(
-            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/"
-            "x8AAwMCAO7+TxkAAAAASUVORK5CYII="
-        )
-    )
+    image = FIXTURE_DIR / "wikimedia-demo.png"
     fake_client = FakeClient(stream_chunks=["ok"])
     session = MistralCodingSession(
         client=fake_client,
@@ -478,10 +475,12 @@ def test_image_shortcut_uses_picker_and_multimodal_payload(tmp_path: Path) -> No
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
 
-def test_doc_shortcut_uses_picker_and_document_payload(tmp_path: Path) -> None:
+def test_doc_shortcut_uses_picker_and_document_payload(
+    tmp_path: Path,
+) -> None:
     output = io.StringIO()
-    text_file = tmp_path / "notes.txt"
-    text_file.write_text("contenido de prueba", encoding="utf-8")
+    docx_file = FIXTURE_DIR / "pywordform-sample_form.docx"
+    pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
     fake_client = FakeClient(stream_chunks=["ok"])
     session = MistralCodingSession(
         client=fake_client,
@@ -496,7 +495,7 @@ def test_doc_shortcut_uses_picker_and_document_payload(tmp_path: Path) -> None:
         session,
         output,
         input_func=lambda _prompt: "",
-        path_picker=lambda **_kwargs: [text_file],
+        path_picker=lambda **_kwargs: [docx_file, pdf_file],
     )
 
     assert should_exit is False
@@ -509,10 +508,11 @@ def test_doc_shortcut_uses_picker_and_document_payload(tmp_path: Path) -> None:
     assert content[0]["type"] == "text"
     assert "Resume el archivo." in content[0]["text"]
     assert any(
-        block["type"] == "text" and "notes.txt" in block["text"] for block in content
-    )
-    assert any(
-        block["type"] == "image_url"
-        and block["image_url"]["url"].startswith("data:image/png;base64,")
+        block["type"] == "text" and "pywordform-sample_form.docx" in block["text"]
         for block in content
     )
+    assert any(
+        block["type"] == "text" and "w3c-dummy.pdf" in block["text"]
+        for block in content
+    )
+    assert sum(1 for block in content if block["type"] == "image_url") >= 2
