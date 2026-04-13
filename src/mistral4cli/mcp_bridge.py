@@ -41,6 +41,8 @@ class MCPConfig:
 
     @property
     def configured(self) -> bool:
+        """Return whether at least one MCP server is configured."""
+
         return bool(self.servers)
 
     @classmethod
@@ -65,11 +67,15 @@ class MCPConfig:
             raw_type = raw_config.get("type")
             raw_url = raw_config.get("url")
             server_type = str(raw_type).strip().lower() if raw_type is not None else ""
-            url = str(raw_url).strip() if raw_url is not None else ""
+            url = _expand_env_variables(
+                str(raw_url).strip() if raw_url is not None else ""
+            )
             if not server_type:
                 raise ValueError(f"MCP server {server_name!r} is missing a type")
             if not url:
                 raise ValueError(f"MCP server {server_name!r} is missing a url")
+            if _has_unresolved_env_variables(url):
+                continue
             servers.append(
                 MCPServerConfig(
                     name=str(server_name),
@@ -103,6 +109,20 @@ class MCPToolResult:
 
 def _default_config_path() -> Path:
     return Path(__file__).resolve().parents[2] / "mcp.json"
+
+
+def _expand_env_variables(value: str) -> str:
+    """Expand local environment variables embedded in a config value."""
+
+    if not value:
+        return value
+    return os.path.expandvars(os.path.expanduser(value)).strip()
+
+
+def _has_unresolved_env_variables(value: str) -> bool:
+    """Return whether a config value still references an unresolved variable."""
+
+    return "${" in value or "$(" in value or value.startswith("$")
 
 
 def discover_mcp_config_path(explicit_path: str | Path | None = None) -> Path | None:
@@ -180,9 +200,13 @@ class MCPToolBridge:
 
     @property
     def configured(self) -> bool:
+        """Return whether the underlying MCP configuration is usable."""
+
         return self.config.configured
 
     def runtime_summary(self) -> str:
+        """Summarize the remote MCP tool backend."""
+
         if not self.configured:
             return "FireCrawl MCP: disabled"
         server_names = ", ".join(server.name for server in self.config.servers)
@@ -192,6 +216,8 @@ class MCPToolBridge:
         )
 
     def tools_summary(self) -> str:
+        """Summarize whether remote tools are available."""
+
         if self._tools_loaded and self._tool_specs:
             return f"{len(self._tool_specs)} tool(s) ready"
         if self._last_error is not None:

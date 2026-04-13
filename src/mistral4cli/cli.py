@@ -58,6 +58,8 @@ def _optional_prompt_mode(value: str | None) -> str | None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line parser for the CLI."""
+
     parser = argparse.ArgumentParser(
         prog="mistral4cli",
         description="Interactive coding CLI for the local Mistral Small 4 server.",

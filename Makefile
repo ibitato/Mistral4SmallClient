@@ -1,4 +1,4 @@
-.PHONY: help sync lock format format-check lint typecheck test check run cancel-probe clean
+.PHONY: help sync lock format format-check lint typecheck test docs docs-check check run cancel-probe clean
 
 UV ?= uv
 
@@ -12,8 +12,10 @@ help:
 		'  make lint       - lint Python code with ruff' \
 		'  make typecheck  - run mypy' \
 		'  make test       - run pytest' \
+		'  make docs       - generate docs/reference.md from docstrings' \
+		'  make docs-check - verify generated docs and language hygiene' \
 		'  make cancel-probe - probe stream cancellation and follow-up recovery' \
-		'  make check      - verify format, lint, and typecheck' \
+		'  make check      - verify format, lint, typecheck, and docs-check' \
 		'  make run        - run the CLI entrypoint' \
 		'  make clean      - remove local caches and the virtual environment'
 
@@ -38,10 +40,16 @@ typecheck:
 test:
 	$(UV) run pytest
 
+docs:
+	$(UV) run python scripts/check_docs.py --fix
+
+docs-check:
+	$(UV) run python scripts/check_docs.py
+
 cancel-probe:
 	$(UV) run python scripts/cancel_probe.py
 
-check: format-check lint typecheck
+check: format-check lint typecheck docs-check
 
 run:
 	$(UV) run mistral4cli

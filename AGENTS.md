@@ -1,62 +1,65 @@
 # AGENTS.md
 
-## Objetivo
-Este repositorio usa Python 3.10, `uv` como gestor de entorno y dependencias, y `Makefile` como interfaz única para tareas de desarrollo.
+## Goal
+This repository uses Python 3.10, `uv` for environment and dependency management, and `Makefile` as the single interface for development tasks.
 
-## Reglas operativas
-- Usa `make sync` para crear o actualizar `.venv`.
-- Usa `make lock` cuando cambien dependencias.
-- Usa `make format`, `make lint` y `make typecheck` antes de entregar cambios.
-- Usa `make check` para validar sin modificar archivos.
-- Usa `make test` para ejecutar la suite de `pytest`.
-- Valida contra el servidor local en `http://127.0.0.1:8080` con el modelo `unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL`.
-- Para smoke tests del CLI usa `uv run python -m mistral4cli --print-defaults` y `uv run python -m mistral4cli --once "..." --no-stream`.
-- Si trabajas con imágenes, usa siempre una imagen de al menos `2x2` píxeles.
-- Si trabajas con MCP, usa `mcp.json` en la raíz del repo o `MISTRAL_LOCAL_MCP_CONFIG` para apuntar a otra configuración.
-- El CLI debe exponer siempre herramientas locales para OS: `shell`, `read_file`, `write_file`, `list_dir` y `search_text`.
-- La REPL debe mantener ayuda clara y accionable: `/help`, `/defaults`, `/tools`, `/run`, `/ls`, `/find`, `/edit`, `/image`, `/doc`, `/reset`, `/system`, `/exit`.
-- `/image` y `/doc` deben usar selector de archivos cuando el entorno lo permita y caer a un prompt por terminal cuando no haya GUI.
-- `/doc` debe rasterizar documentos soportados a imágenes para que el modelo haga OCR/vision directamente.
-- Para salidas largas, `shell` y `search_text` deben soportar paginación o truncado con indicadores claros de continuación.
-- La UI del CLI debe conservar el estilo retro verde/naranja y un banner ASCII legible en terminales TTY.
-- No uses `pip`, `poetry`, `pipenv` ni instalaciones globales para el flujo normal del proyecto.
-- Ejecuta código siempre dentro del entorno de `uv` con `uv run ...` o mediante `make ...`.
-- Mantén el código compatible con Python 3.10.
+## Operating rules
+- Use `make sync` to create or update `.venv`.
+- Use `make lock` when dependencies change.
+- Use `make format`, `make lint`, and `make typecheck` before delivering changes.
+- Use `make check` to validate without modifying files.
+- Use `make test` to run the `pytest` suite.
+- Use `make docs` to regenerate the checked-in API reference from public docstrings.
+- Use `make docs-check` to verify that the generated documentation and language hygiene are up to date.
+- Validate against the local server at `http://127.0.0.1:8080` with the model `unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL`.
+- For CLI smoke tests, use `uv run python -m mistral4cli --print-defaults` and `uv run python -m mistral4cli --once "..." --no-stream`.
+- When working with images, always use an image of at least `2x2` pixels.
+- When working with MCP, use `mcp.json` at the repository root or `MISTRAL_LOCAL_MCP_CONFIG` to point to another configuration. Keep secrets out of the file and resolve them from environment variables such as `FIRECRAWL_API_KEY`.
+- The CLI must always expose local OS tools: `shell`, `read_file`, `write_file`, `list_dir`, and `search_text`.
+- The REPL must keep help clear and actionable: `/help`, `/defaults`, `/tools`, `/run`, `/ls`, `/find`, `/edit`, `/image`, `/doc`, `/reset`, `/system`, `/exit`.
+- `/image` and `/doc` must use a file picker when the environment allows it and fall back to a terminal prompt when no GUI is available.
+- `/doc` must rasterize supported documents into images so the model performs OCR/vision directly.
+- For long outputs, `shell` and `search_text` must support pagination or truncation with clear continuation indicators.
+- The CLI UI must preserve the retro green/orange style and an ASCII banner that remains readable in TTY terminals.
+- All repository text, comments, prompts, and documentation should remain in English.
+- Do not use `pip`, `poetry`, `pipenv`, or global installations for the normal project workflow.
+- Always execute code within the `uv` environment with `uv run ...` or via `make ...`.
+- Keep the code compatible with Python 3.10.
 
-## Estilo de desarrollo
-- Prefiere `src/` layout para el código de aplicación.
-- Mantén funciones pequeñas y con responsabilidad única.
-- Tipa las funciones públicas y los límites entre módulos.
-- Evita lógica compleja en `__init__.py`; usa módulos explícitos para la entrada CLI.
-- Usa `pathlib` para rutas, `dataclasses` para estructuras de datos simples y `logging` para salida operativa.
+## Development style
+- Prefer the `src/` layout for application code.
+- Keep functions small and with a single responsibility.
+- Type public functions and module boundaries.
+- Avoid complex logic in `__init__.py`; use explicit modules for the CLI entrypoint.
+- Use `pathlib` for paths, `dataclasses` for simple data structures, and `logging` for operational output.
 
-## Lint y formato
-- El formato canónico es `ruff format`.
-- La higiene de imports y lint se valida con `ruff check`.
-- Si un cambio requiere una excepción de lint, documenta por qué y limita el alcance.
-- No desactives reglas de forma global salvo que exista una razón clara y estable.
+## Lint and formatting
+- The canonical formatter is `ruff format`.
+- Import hygiene and lint are validated with `ruff check`.
+- If a change requires a lint exception, document why and keep the scope narrow.
+- Do not disable rules globally unless there is a clear and stable reason.
 
-## Tipado
-- `mypy` debe seguir pasando en `src/`.
-- Añade anotaciones en funciones nuevas o modificadas.
-- Prefiere tipos concretos sobre `Any`.
-- Si necesitas un `# type: ignore`, justifícalo y revisa si puede eliminarse después.
+## Typing
+- `mypy` must keep passing on `src/`.
+- Add annotations to new or modified functions.
+- Prefer concrete types over `Any`.
+- If you need a `# type: ignore`, justify it and revisit it later.
 
-## Dependencias
-- Añade dependencias solo en `pyproject.toml`.
-- Regenera `uv.lock` después de cambiar dependencias.
-- Mantén el árbol de dependencias pequeño y justificado.
+## Dependencies
+- Add dependencies only in `pyproject.toml`.
+- Regenerate `uv.lock` after changing dependencies.
+- Keep the dependency tree small and justified.
 
-## Flujo recomendado
+## Recommended workflow
 1. `make sync`
-2. Implementar el cambio
+2. Implement the change
 3. `make format`
 4. `make lint`
 5. `make typecheck`
 6. `make test`
-7. Si todo pasa, entregar el cambio
+7. If everything passes, deliver the change
 
-## Criterio de calidad
-- Acompaña cambios de comportamiento con pruebas cuando aplique.
-- Evita romper compatibilidad con Python 3.10.
-- Mantén mensajes y APIs simples si el proyecto sigue siendo pequeño.
+## Quality bar
+- Accompany behavior changes with tests when applicable.
+- Avoid breaking Python 3.10 compatibility.
+- Keep messages and APIs simple if the project is still small.

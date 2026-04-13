@@ -18,17 +18,16 @@ from mistral4cli.tooling import ToolBridge
 from mistral4cli.ui import render_runtime_summary
 
 DEFAULT_SYSTEM_PROMPT = (
-    "Eres un asistente de codigo local para Mistral Small 4. Responde de forma "
-    "directa, orientada a acciones y con comandos/ejemplos concretos cuando ayuden. "
-    "Tienes acceso permanente a estas herramientas locales: shell, read_file, "
-    "write_file, list_dir y search_text. Usa shell para comandos del sistema, "
-    "read_file y write_file para inspeccionar o editar ficheros, y list_dir o "
-    "search_text para explorar el arbol del proyecto. Tambien puedes usar MCP "
-    "cuando necesites informacion externa o FireCrawl. Antes de afirmar algo "
-    "sobre el repositorio, el filesystem o el sistema, verifica con herramientas "
-    "siempre que sea posible. Si falta contexto, pregunta lo minimo necesario "
-    "antes de inventar. Si la conversacion incluye imagenes o documentos "
-    "adjuntos, analizalos con cuidado antes de responder."
+    "You are a local coding assistant for Mistral Small 4. Respond directly, "
+    "focus on action, and include concrete commands or examples when they help. "
+    "You always have access to these local tools: shell, read_file, write_file, "
+    "list_dir, and search_text. Use shell for system commands, read_file and "
+    "write_file to inspect or edit files, and list_dir or search_text to explore "
+    "the project tree. You can also use MCP when you need external information "
+    "or FireCrawl. Before asserting anything about the repository, filesystem, "
+    "or system, verify it with tools whenever possible. If context is missing, "
+    "ask for the minimum needed before guessing. If the conversation includes "
+    "attached images or documents, analyze them carefully before replying."
 )
 
 
@@ -132,6 +131,8 @@ class MistralCodingSession:
     _mcp_warning_shown: bool = field(init=False, repr=False, default=False)
 
     def __post_init__(self) -> None:
+        """Normalize the session state after dataclass initialization."""
+
         if self.stdout is None:
             import sys
 
@@ -248,7 +249,7 @@ class MistralCodingSession:
             self._print("[error] tool loop limit reached\n")
             return TurnResult(content="", finish_reason="error", cancelled=False)
         except KeyboardInterrupt:
-            self._print("\n[interrumpido]\n")
+            self._print("\n[interrupted]\n")
             return TurnResult(content="", finish_reason="cancelled", cancelled=True)
 
     def send(self, user_text: str, *, stream: bool = True) -> TurnResult:
@@ -359,7 +360,7 @@ class MistralCodingSession:
                 **self._request_kwargs(stream=False, tools=tools)
             )
         except KeyboardInterrupt:
-            self._print("\n[interrumpido]\n")
+            self._print("\n[interrupted]\n")
             return _ModelTurn(content="", finish_reason="cancelled", cancelled=True)
         except Exception as exc:  # pragma: no cover - exercised by CLI smoke
             self._print(f"[error] {exc}\n")
@@ -383,7 +384,7 @@ class MistralCodingSession:
             if not content.endswith("\n"):
                 self._print("\n")
         elif finish_reason == "length":
-            self._print("[respuesta truncada sin texto]\n")
+            self._print("[truncated response without text]\n")
 
         return _ModelTurn(content=content, finish_reason=finish_reason)
 
@@ -415,7 +416,7 @@ class MistralCodingSession:
                         )
                         state.update(tool_call)
         except KeyboardInterrupt:
-            self._print("\n[interrumpido]\n")
+            self._print("\n[interrupted]\n")
             return _ModelTurn(
                 content="".join(chunks),
                 finish_reason="cancelled",
@@ -429,7 +430,7 @@ class MistralCodingSession:
         if content and not content.endswith("\n"):
             self._print("\n")
         if finish_reason == "length" and not content:
-            self._print("[respuesta truncada sin texto]\n")
+            self._print("[truncated response without text]\n")
 
         tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
         return _ModelTurn(

@@ -16,11 +16,11 @@ from typing import Any, Protocol, TextIO
 from PIL import Image, ImageDraw, ImageFont
 
 DEFAULT_IMAGE_PROMPT = (
-    "Analiza las imagenes adjuntas y responde de forma breve, util y concreta."
+    "Analyze the attached images and answer briefly, usefully, and concretely."
 )
 DEFAULT_DOCUMENT_PROMPT = (
-    "Analiza los documentos adjuntos como imagenes OCR y responde de forma "
-    "breve, util y concreta."
+    "Analyze the attached documents as OCR images and answer briefly, "
+    "usefully, and concretely."
 )
 
 IMAGE_FILETYPES: tuple[tuple[str, str], ...] = (
@@ -181,7 +181,7 @@ def build_image_message(
         raise ValueError("At least one image is required")
 
     message = (prompt or DEFAULT_IMAGE_PROMPT).strip() or DEFAULT_IMAGE_PROMPT
-    message_lines = [message, "", "Imagenes adjuntas:"]
+    message_lines = [message, "", "Attached images:"]
     message_lines.extend(f"- {path.name}" for path in image_paths)
     content: list[dict[str, Any]] = [{"type": "text", "text": "\n".join(message_lines)}]
 
@@ -210,8 +210,8 @@ def build_document_message(
             "type": "text",
             "text": (
                 f"{message}\n\n"
-                "Los documentos adjuntos se han convertido a imagenes para que "
-                "el modelo los lea visualmente y haga OCR directamente."
+                "The attached documents have been converted to images so the "
+                "model can read them visually and perform OCR directly."
             ),
         }
     ]
@@ -221,7 +221,7 @@ def build_document_message(
         content.append(
             {
                 "type": "text",
-                "text": f"[Documento {index}: {path.name}]",
+                "text": f"[Document {index}: {path.name}]",
             }
         )
         content.extend(rendered.content_blocks)
@@ -230,7 +230,7 @@ def build_document_message(
                 {
                     "type": "text",
                     "text": (
-                        f"[nota: {path.name} truncado a {MAX_DOCUMENT_PAGES} paginas]"
+                        f"[note: {path.name} truncated to {MAX_DOCUMENT_PAGES} pages]"
                     ),
                 }
             )
@@ -383,11 +383,11 @@ def _render_text_document(path: Path) -> RenderedDocument:
     lines = _wrap_text_for_document(loaded.text)
     pages = _split_lines_into_pages(lines, max_lines=42)
     if not pages:
-        pages = [["[Documento vacio]"]]
+        pages = [["[Empty document]"]]
 
     content_blocks: list[dict[str, Any]] = []
     for page_number, page_lines in enumerate(pages, start=1):
-        title = f"{path.name} - pagina {page_number}/{len(pages)}"
+        title = f"{path.name} - page {page_number}/{len(pages)}"
         png_bytes = _render_text_page(title=title, lines=page_lines)
         content_blocks.append(
             {

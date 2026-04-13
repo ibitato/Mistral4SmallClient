@@ -31,6 +31,54 @@ def test_load_mcp_config_parses_firecrawl_server(tmp_path: Path) -> None:
     assert config.servers[0].url == "https://example.test/mcp"
 
 
+def test_load_mcp_config_expands_firecrawl_api_key(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / "mcp.json"
+    monkeypatch.setenv("FIRECRAWL_API_KEY", "secret-token")
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "FireCrawl": {
+                        "type": "streamable-http",
+                        "url": "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = MCPConfig.load(config_path)
+
+    assert config.configured is True
+    assert config.servers[0].url == "https://mcp.firecrawl.dev/secret-token/v2/mcp"
+
+
+def test_load_mcp_config_skips_unresolved_env_placeholder(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
+    config_path = tmp_path / "mcp.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "mcpServers": {
+                    "FireCrawl": {
+                        "type": "streamable-http",
+                        "url": "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp",
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = MCPConfig.load(config_path)
+
+    assert config.configured is False
+    assert config.servers == ()
+
+
 def test_discover_mcp_config_path_prefers_env(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / "custom-mcp.json"
     config_path.write_text('{"mcpServers": {}}', encoding="utf-8")

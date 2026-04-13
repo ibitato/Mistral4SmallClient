@@ -1,6 +1,7 @@
 # Local Mistral Small 4 Harness
 
-This repository validates the official `mistralai` Python SDK against a local `llama.cpp` deployment of Mistral Small 4.
+This repository validates the official `mistralai` Python SDK against a local
+`llama.cpp` deployment of Mistral Small 4.
 
 ## Runtime under test
 
@@ -44,12 +45,12 @@ The repository now ships a dedicated `mistral4cli` REPL for this local model.
 It uses the official `mistralai` SDK directly and inherits the local runtime
 defaults from the same configuration layer used by the tests.
 
-The REPL now has a retro green/orange presentation, an ASCII welcome banner and
+The REPL has a retro green/orange presentation, an ASCII welcome banner, and
 an actionable help system:
 
-- `/help` shows commands, examples and MCP status
+- `/help` shows commands, examples, and MCP status
 - `/defaults` prints the active runtime defaults
-- `/tools` shows the loaded FireCrawl MCP catalogue
+- `/tools` shows the loaded FireCrawl MCP catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
 - `/find -- ...` searches text in the project tree
@@ -57,14 +58,16 @@ an actionable help system:
 - `/image --prompt ...` opens an image picker and sends the selected images as a multimodal turn
 - `/doc --prompt ...` opens a document picker and rasterizes each page so the model can OCR it directly
 - `/reset` clears the conversation but keeps the system prompt
-- `/system <texto>` replaces the system prompt and resets the chat
+- `/system <text>` replaces the system prompt and resets the chat
 - `/exit` or `/quit` leaves the REPL
 
 FireCrawl MCP is configured in [`mcp.json`](../mcp.json) and loaded
-automatically when present. The current setup uses the official MCP Python SDK
-against FireCrawl's Streamable HTTP endpoint, while local inference continues
-to go through the official `mistralai` client pointed at `llama.cpp`.
-Use `--mcp-config <path>` to point at a different config file or `--no-mcp` to
+automatically when present. The checked-in config expands
+`FIRECRAWL_API_KEY` at runtime, so the secret stays out of the repository. The
+current setup uses the official MCP Python SDK against FireCrawl's Streamable
+HTTP endpoint, while local inference continues to go through the official
+`mistralai` client pointed at `llama.cpp`.
+Use `--mcp-config <path>` to point to a different config file or `--no-mcp` to
 disable tool loading for a run.
 
 The CLI also exposes always-on local OS tools, so the model can inspect and edit
@@ -86,7 +89,7 @@ The attachment commands are designed for analysis turns:
   terminal path prompt.
 - `/doc` prefers a GUI picker and rasterizes supported documents into page
   images before sending them to the model. Supported document types are
-  `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `toml`, `csv`, `pdf` and `docx`.
+  `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `toml`, `csv`, `pdf`, and `docx`.
 - Both commands accept an optional `--prompt`/`-p` argument so you can steer
   the analysis without retyping the default instruction.
 - PDF documents are rendered with `pdftoppm`, and plain text / DOCX documents
@@ -111,7 +114,7 @@ Session commands:
 - `/help`
 - `/defaults`
 - `/reset`
-- `/system <texto>`
+- `/system <text>`
 - `/exit` or `/quit`
 
 Operational notes:
@@ -120,8 +123,9 @@ Operational notes:
 - `Ctrl-D` exits the CLI.
 - `uv run python -m mistral4cli --once "..." --no-stream` runs a one-shot smoke
   prompt against the local server.
-- The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set, otherwise it falls back
-  to `./mcp.json` if the file exists.
+- The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set; otherwise it falls back
+  to `./mcp.json` if the file exists. The FireCrawl URL in that file expands
+  `FIRECRAWL_API_KEY` from the environment.
 - `uv run python -m mistral4cli` plus `/image` or `/doc` can be used to inspect
   attached files without leaving the session.
 

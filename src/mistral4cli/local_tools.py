@@ -29,15 +29,21 @@ class LocalToolBridge:
     root: Path = field(default_factory=Path.cwd)
 
     def runtime_summary(self) -> str:
+        """Summarize the local OS tool backend."""
+
         return f"Local OS tools: ready ({self.root})"
 
     def describe_tools(self) -> str:
+        """Render the local tool catalog."""
+
         lines = ["Tools:"]
         for spec in self._tool_specs():
             lines.append(f"  - {spec.name}: {spec.description}")
         return "\n".join(lines)
 
     def to_mistral_tools(self) -> list[dict[str, Any]]:
+        """Return local tools in the Mistral SDK shape."""
+
         return [
             {
                 "type": "function",
@@ -51,6 +57,8 @@ class LocalToolBridge:
         ]
 
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
+        """Execute one local tool call by public name."""
+
         match public_name:
             case "shell":
                 return self._shell(arguments)

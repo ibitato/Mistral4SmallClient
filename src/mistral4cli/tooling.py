@@ -36,10 +36,14 @@ class CompositeToolBridge:
     _last_error: str | None = field(init=False, repr=False, default=None)
 
     def runtime_summary(self) -> str:
+        """Summarize the active tool backends."""
+
         summaries = [bridge.runtime_summary() for bridge in self.bridges]
         return " | ".join(summaries) if summaries else "Tools: disabled"
 
     def describe_tools(self) -> str:
+        """Render a combined tool catalog for all backends."""
+
         lines: list[str] = []
         for bridge in self.bridges:
             lines.append(bridge.runtime_summary())
@@ -47,6 +51,8 @@ class CompositeToolBridge:
         return "\n".join(lines).strip()
 
     def to_mistral_tools(self) -> list[dict[str, Any]]:
+        """Return all tools normalized for the official Mistral SDK."""
+
         tools: list[dict[str, Any]] = []
         self._tool_to_bridge.clear()
         seen: set[str] = set()
@@ -75,6 +81,8 @@ class CompositeToolBridge:
         return tools
 
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
+        """Dispatch a tool call to the bridge that owns it."""
+
         if not self._catalog_loaded:
             self.to_mistral_tools()
         bridge = self._tool_to_bridge.get(public_name)
@@ -84,6 +92,8 @@ class CompositeToolBridge:
 
     @property
     def last_error(self) -> str | None:
+        """Return the last load or dispatch error, if any."""
+
         return self._last_error
 
     def _bridge_label(self, bridge: ToolBridge) -> str:

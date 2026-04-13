@@ -295,7 +295,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/ls" in help_text
     assert "/image" in help_text
     assert "/doc" in help_text
-    assert "Busca documentación oficial" in help_text
+    assert "Search official documentation" in help_text
     assert "Ctrl-C cancels the current response" in help_text
 
 
@@ -317,7 +317,7 @@ def test_tool_command_and_session_tool_loop() -> None:
             FakeResponse(
                 choices=[
                     FakeChoice(
-                        message=FakeMessage(content="Encontré una fuente."),
+                        message=FakeMessage(content="Found a source."),
                         finish_reason="stop",
                     )
                 ]
@@ -336,12 +336,12 @@ def test_tool_command_and_session_tool_loop() -> None:
 
     assert result.cancelled is False
     assert result.finish_reason == "stop"
-    assert result.content == "Encontré una fuente."
+    assert result.content == "Found a source."
     assert bridge.calls == [("web_search", {"query": "mcp"})]
     assert session.messages[-2]["role"] == "tool"
     assert session.messages[-1] == {
         "role": "assistant",
-        "content": "Encontré una fuente.",
+        "content": "Found a source.",
     }
 
 
@@ -362,7 +362,7 @@ def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
         {"role": "system", "content": session.system_prompt},
         {"role": "user", "content": "Haz una respuesta larga."},
     ]
-    assert "[interrumpido]" in output.getvalue()
+    assert "[interrupted]" in output.getvalue()
 
 
 def test_non_stream_cancel_does_not_break_followup() -> None:
@@ -384,13 +384,13 @@ def test_non_stream_cancel_does_not_break_followup() -> None:
     assert session.messages[0] == {"role": "system", "content": session.system_prompt}
     assert session.messages[1]["role"] == "user"
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
-    assert "[interrumpido]" in output.getvalue()
+    assert "[interrupted]" in output.getvalue()
 
 
 def test_parse_command_supports_system_reset_and_tools() -> None:
-    assert _parse_command("/system cambia el tono") == (
+    assert _parse_command("/system change the tone") == (
         "system",
-        "cambia el tono",
+        "change the tone",
     )
     assert _parse_command(":reset") == ("reset", "")
     assert _parse_command("/tools") == ("tools", "")
@@ -418,8 +418,8 @@ def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
         stdout=output,
     )
 
-    assert _run_command("edit", "notes.txt -- hola mundo", session, output) is False
-    assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hola mundo"
+    assert _run_command("edit", "notes.txt -- hello world", session, output) is False
+    assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello world"
 
     assert (
         _run_command(
@@ -436,7 +436,7 @@ def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
     assert _run_command("ls", ".", session, output) is False
     assert "notes.txt" in output.getvalue()
 
-    assert _run_command("find", "--path . --limit 5 -- hola", session, output) is False
+    assert _run_command("find", "--path . --limit 5 -- hello", session, output) is False
     assert "notes.txt" in output.getvalue()
 
 
@@ -455,7 +455,7 @@ def test_image_shortcut_uses_picker_and_multimodal_payload(
 
     should_exit = _run_command(
         "image",
-        "--prompt Describe la imagen.",
+        "--prompt Describe the image.",
         session,
         output,
         input_func=lambda _prompt: "",
@@ -470,7 +470,7 @@ def test_image_shortcut_uses_picker_and_multimodal_payload(
     content = call["messages"][1]["content"]
     assert isinstance(content, list)
     assert content[0]["type"] == "text"
-    assert "Describe la imagen." in content[0]["text"]
+    assert "Describe the image." in content[0]["text"]
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
 
@@ -491,7 +491,7 @@ def test_doc_shortcut_uses_picker_and_document_payload(
 
     should_exit = _run_command(
         "doc",
-        "--prompt Resume el archivo.",
+        "--prompt Summarize the file.",
         session,
         output,
         input_func=lambda _prompt: "",
@@ -506,7 +506,7 @@ def test_doc_shortcut_uses_picker_and_document_payload(
     content = call["messages"][1]["content"]
     assert isinstance(content, list)
     assert content[0]["type"] == "text"
-    assert "Resume el archivo." in content[0]["text"]
+    assert "Summarize the file." in content[0]["text"]
     assert any(
         block["type"] == "text" and "pywordform-sample_form.docx" in block["text"]
         for block in content

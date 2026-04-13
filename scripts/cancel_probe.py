@@ -30,7 +30,7 @@ def build_client() -> Mistral:
 def ask_ok(client: Mistral) -> ProbeResult:
     response = client.chat.complete(
         model=os.environ.get("MISTRAL_LOCAL_MODEL_ID", DEFAULT_MODEL_ID),
-        messages=[{"role": "user", "content": "Devuelve solo la palabra ok."}],
+        messages=[{"role": "user", "content": "Return only the word ok."}],
         temperature=0,
         top_p=1.0,
         random_seed=11,
@@ -53,8 +53,8 @@ def graceful_cancel_probe(client: Mistral) -> ProbeResult:
             {
                 "role": "user",
                 "content": (
-                    "Escribe un texto largo de varias parrafos sobre por que los "
-                    "sistemas distribuidos son dificiles, con al menos 1000 palabras."
+                    "Write a long text of several paragraphs about why distributed "
+                    "systems are hard, with at least 1000 words."
                 ),
             }
         ],
@@ -93,8 +93,8 @@ def abrupt_cancel_probe() -> ProbeResult:
             messages=[{
                 'role': 'user',
                 'content': (
-                    'Escribe un texto largo de varias parrafos sobre por que los '
-                    'sistemas distribuidos son dificiles, con al menos 1000 palabras.'
+                    'Write a long text of several paragraphs about why distributed '
+                    'systems are hard, with at least 1000 words.'
                 ),
             }],
             temperature=0.7,

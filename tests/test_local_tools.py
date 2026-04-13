@@ -10,14 +10,14 @@ def test_local_tools_can_read_write_list_and_search(tmp_path: Path) -> None:
 
     write_result = bridge.call_tool(
         "write_file",
-        {"path": "notes/hello.txt", "content": "hola mundo\nsecond line"},
+        {"path": "notes/hello.txt", "content": "hello world\nsecond line"},
     )
     assert write_result.is_error is False
     assert "wrote" in write_result.text
 
     read_result = bridge.call_tool("read_file", {"path": "notes/hello.txt"})
     assert read_result.is_error is False
-    assert "hola mundo" in read_result.text
+    assert "hello world" in read_result.text
 
     list_result = bridge.call_tool("list_dir", {"path": "notes"})
     assert list_result.is_error is False
@@ -25,7 +25,7 @@ def test_local_tools_can_read_write_list_and_search(tmp_path: Path) -> None:
 
     search_result = bridge.call_tool(
         "search_text",
-        {"query": "hola", "path": ".", "max_results": 10},
+        {"query": "hello", "path": ".", "max_results": 10},
     )
     assert search_result.is_error is False
     assert "hello.txt" in search_result.text

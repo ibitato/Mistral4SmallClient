@@ -1,0 +1,323 @@
+# Mistral4Cli API Reference
+
+This file is generated from public docstrings.
+
+## `mistral4cli.attachments`
+
+Attachment helpers for image and document turns.
+
+### Class `LoadedDocument`
+
+One document loaded as text for rendering.
+
+### Class `PathPicker`
+
+Callable path picker used by the REPL.
+
+### Class `RenderedDocument`
+
+One document converted into model-ready image blocks.
+
+#### `build_document_message(paths: 'Sequence[Path]', prompt: 'str | None' = None) -> 'list[dict[str, Any]]'`
+
+Build a multimodal user message by rasterizing documents to images.
+
+#### `build_image_message(paths: 'Sequence[Path]', prompt: 'str | None' = None) -> 'list[dict[str, Any]]'`
+
+Build a multimodal user message for one or more images.
+
+#### `build_tk_path_picker() -> 'PathPicker | None'`
+
+Build a tkinter-based file picker when GUI support is available.
+
+#### `choose_paths(kind: 'str', input_func: 'Callable[[str], str]', stdout: 'TextIO', path_picker: 'PathPicker | None', filetypes: 'Sequence[tuple[str, str]]', multiple: 'bool' = True) -> 'list[Path]'`
+
+Choose one or more files, preferring a GUI picker when available.
+
+#### `format_selection_summary(paths: 'Sequence[Path]') -> 'str'`
+
+Return a compact human-readable summary for selected files.
+
+#### `load_document(path: 'Path') -> 'LoadedDocument'`
+
+Load a supported document from disk as text.
+
+#### `render_document(path: 'Path') -> 'RenderedDocument'`
+
+Render a supported document into image blocks for the model.
+
+## `mistral4cli.cli`
+
+Command-line entrypoint for the local Mistral Small 4 coding CLI.
+
+#### `build_parser() -> 'argparse.ArgumentParser'`
+
+Build the command-line parser for the CLI.
+
+#### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[LocalMistralConfig], Mistral]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
+
+Run the CLI.
+
+## `mistral4cli.local_mistral`
+
+Helpers for the local Mistral Small 4 deployment.
+
+### Class `LocalGenerationConfig`
+
+Sampling defaults for the local Mistral Small 4 deployment.
+
+#### Methods
+
+  #### `from_env(cls) -> 'LocalGenerationConfig'`
+
+  Build generation defaults from environment variables.
+
+### Class `LocalMistralConfig`
+
+Configuration for the local llama.cpp-backed Mistral endpoint.
+
+#### Methods
+
+  #### `from_env(cls) -> 'LocalMistralConfig'`
+
+  Build a config from environment variables with safe defaults.
+
+#### `build_client(config: 'LocalMistralConfig | None' = None) -> 'Mistral'`
+
+Construct an official `mistralai` client pointed at the local server.
+
+#### `get_health(server_url: 'str | None' = None) -> 'dict[str, Any]'`
+
+Return the `/health` payload from the local server.
+
+#### `get_json(url: 'str', timeout_s: 'float' = 2.0) -> 'dict[str, Any]'`
+
+Fetch and decode a JSON document from the local server.
+
+#### `list_models(server_url: 'str | None' = None) -> 'dict[str, Any]'`
+
+Return the `/v1/models` payload from the local server.
+
+## `mistral4cli.local_tools`
+
+Always-on local OS tools for the Mistral Small 4 CLI.
+
+### Class `LocalToolBridge`
+
+Local filesystem and shell tools that are always available.
+
+#### Methods
+
+  #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
+
+  Execute one local tool call by public name.
+
+  #### `describe_tools(self) -> 'str'`
+
+  Render the local tool catalog.
+
+  #### `runtime_summary(self) -> 'str'`
+
+  Summarize the local OS tool backend.
+
+  #### `to_mistral_tools(self) -> 'list[dict[str, Any]]'`
+
+  Return local tools in the Mistral SDK shape.
+
+### Class `LocalToolSpec`
+
+Shape of one local tool exposed to the model.
+
+## `mistral4cli.mcp_bridge`
+
+MCP bridge helpers for FireCrawl-style remote tools.
+
+### Class `MCPBridgeError`
+
+Raised when the MCP bridge cannot load or execute tools.
+
+### Class `MCPConfig`
+
+Parsed MCP configuration file.
+
+#### Methods
+
+  #### `configured(self) -> 'bool'`
+
+  Return whether at least one MCP server is configured.
+
+  #### `load(cls, path: 'Path') -> 'MCPConfig'`
+
+  Load an MCP config file from disk.
+
+### Class `MCPServerConfig`
+
+Definition of one MCP server entry.
+
+### Class `MCPToolBridge`
+
+Sync wrapper around one or more MCP SSE servers.
+
+#### Methods
+
+  #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
+
+  Execute one remote tool call.
+
+  #### `configured(self) -> 'bool'`
+
+  Return whether the underlying MCP configuration is usable.
+
+  #### `describe_tools(self) -> 'str'`
+
+  Render a detailed catalog of the available MCP tools.
+
+  #### `load_tools(self) -> 'list[MCPToolSpec]'`
+
+  Load and cache remote tool metadata.
+
+  #### `runtime_summary(self) -> 'str'`
+
+  Summarize the remote MCP tool backend.
+
+  #### `to_mistral_tools(self) -> 'list[dict[str, Any]]'`
+
+  Return MCP tools shaped for the official Mistral SDK.
+
+  #### `tools_summary(self) -> 'str'`
+
+  Summarize whether remote tools are available.
+
+### Class `MCPToolResult`
+
+Normalized result of one MCP tool invocation.
+
+### Class `MCPToolSpec`
+
+A tool exposed to the Mistral chat-completion API.
+
+#### `discover_mcp_config_path(explicit_path: 'str | Path | None' = None) -> 'Path | None'`
+
+Resolve the MCP config path from CLI, env or repo defaults.
+
+## `mistral4cli.session`
+
+Interactive session management for the local Mistral Small 4 CLI.
+
+### Class `MistralCodingSession`
+
+Stateful conversation helper for the local Mistral CLI.
+
+#### Methods
+
+  #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
+
+  Execute a tool through the active bridge.
+
+  #### `describe_defaults(self) -> 'str'`
+
+  Render the active runtime defaults as human-readable text.
+
+  #### `describe_tool_status(self) -> 'str'`
+
+  Return a compact tool status summary.
+
+  #### `describe_tools(self) -> 'str'`
+
+  Return a live tool catalog summary.
+
+  #### `reset(self) -> 'None'`
+
+  Reset the conversation to the system prompt.
+
+  #### `send(self, user_text: 'str', stream: 'bool' = True) -> 'TurnResult'`
+
+  Send one text user turn and update the conversation history.
+
+  #### `send_content(self, content: 'str | list[dict[str, Any]]', stream: 'bool' = True) -> 'TurnResult'`
+
+  Send a text or multimodal user turn and update the conversation.
+
+  #### `set_system_prompt(self, system_prompt: 'str') -> 'None'`
+
+  Replace the active system prompt and reset the conversation.
+
+### Class `TurnResult`
+
+Result of a single user turn.
+
+#### `render_defaults_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', tool_summary: 'str') -> 'str'`
+
+Render the active runtime defaults as human-readable text.
+
+## `mistral4cli.tooling`
+
+Tool bridge composition for the Mistral Small 4 CLI.
+
+### Class `CompositeToolBridge`
+
+Combine multiple tool bridges into one namespace.
+
+#### Methods
+
+  #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
+
+  Dispatch a tool call to the bridge that owns it.
+
+  #### `describe_tools(self) -> 'str'`
+
+  Render a combined tool catalog for all backends.
+
+  #### `last_error(self) -> 'str | None'`
+
+  Return the last load or dispatch error, if any.
+
+  #### `runtime_summary(self) -> 'str'`
+
+  Summarize the active tool backends.
+
+  #### `to_mistral_tools(self) -> 'list[dict[str, Any]]'`
+
+  Return all tools normalized for the official Mistral SDK.
+
+### Class `ToolBridge`
+
+Minimal interface shared by local and MCP tool bridges.
+
+#### Methods
+
+  #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
+
+  Execute a single tool call.
+
+  #### `describe_tools(self) -> 'str'`
+
+  Render a human-readable tool catalogue.
+
+  #### `runtime_summary(self) -> 'str'`
+
+  Summarize the active tool backend.
+
+  #### `to_mistral_tools(self) -> 'list[dict[str, Any]]'`
+
+  Return tools shaped for the official Mistral SDK.
+
+## `mistral4cli.ui`
+
+Terminal rendering helpers for the Mistral Small 4 CLI.
+
+#### `render_help_screen(summary: 'str', tools: 'Sequence[str] | None', stream: 'TextIO') -> 'str'`
+
+Render a concise but actionable help screen.
+
+#### `render_runtime_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', tool_summary: 'str') -> 'str'`
+
+Render a compact runtime summary.
+
+#### `render_tools_screen(tool_lines: 'Sequence[str]', stream: 'TextIO') -> 'str'`
+
+Render a detailed tool status screen.
+
+#### `render_welcome_banner(summary: 'str', stream: 'TextIO') -> 'str'`
+
+Render the startup banner with retro colors when supported.

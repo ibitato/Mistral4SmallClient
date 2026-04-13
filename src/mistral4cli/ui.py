@@ -147,18 +147,18 @@ def render_help_screen(
     ]
     examples_section = [
         _paint("Examples", ORANGE, stream, bold=True),
-        '  - "Explícame este error y propone un fix mínimo."',
+        '  - "Explain this error and propose the smallest possible fix."',
         '  - "/run --cwd . -- git status"',
         '  - "/run --lines 40 --offset 40 -- git log --oneline"',
         '  - "/ls src"',
         '  - "/find --path src --limit 10 -- shell"',
-        '  - "/edit notes.txt -- Reemplaza este texto."',
-        '  - "/image --prompt Describe la imagen seleccionada."',
-        '  - "/doc --prompt Resume el contenido del archivo."',
-        '  - "Usa shell para ejecutar `git status` y resume el resultado."',
-        '  - "Lee src/mistral4cli/cli.py y resume la estructura."',
-        '  - "Busca documentación oficial sobre X y resume la API."',
-        '  - "/system Eres un revisor estricto de Python 3.10."',
+        '  - "/edit notes.txt -- Replace this text."',
+        '  - "/image --prompt Describe the selected image."',
+        '  - "/doc --prompt Summarize the file contents."',
+        '  - "Use shell to run `git status` and summarize the result."',
+        '  - "Read src/mistral4cli/cli.py and summarize the structure."',
+        '  - "Search official documentation about X and summarize the API."',
+        '  - "/system You are a strict Python 3.10 reviewer."',
         '  - "/reset"',
     ]
     tools_section = [_paint("Available tools", ORANGE, stream, bold=True)]

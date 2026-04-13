@@ -21,10 +21,10 @@ FIXTURE_DIR = Path(__file__).parent / "fixtures" / "internet"
 def test_build_image_message_uses_prompt_and_data_url() -> None:
     image = FIXTURE_DIR / "wikimedia-demo.png"
 
-    message = build_image_message([image], prompt="Analiza la imagen.")
+    message = build_image_message([image], prompt="Analyze the image.")
 
     assert message[0]["type"] == "text"
-    assert "Analiza la imagen." in message[0]["text"]
+    assert "Analyze the image." in message[0]["text"]
     assert "wikimedia-demo.png" in message[0]["text"]
     assert message[1]["type"] == "image_url"
     assert message[1]["image_url"]["url"].startswith("data:image/png;base64,")
@@ -56,12 +56,12 @@ def test_choose_paths_falls_back_to_terminal_prompt(
 
 def test_load_document_supports_text_docx_and_pdf(tmp_path: Path) -> None:
     text_file = tmp_path / "notes.txt"
-    text_file.write_text("hola mundo", encoding="utf-8")
+    text_file.write_text("hello world", encoding="utf-8")
 
     docx_file = FIXTURE_DIR / "pywordform-sample_form.docx"
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
 
-    assert load_document(text_file).text == "hola mundo"
+    assert load_document(text_file).text == "hello world"
     assert "Sample MS Word form" in load_document(docx_file).text
     assert "Dummy PDF file" in load_document(pdf_file).text
 
@@ -70,26 +70,26 @@ def test_build_document_message_combines_prompt_and_docs(
     tmp_path: Path,
 ) -> None:
     text_file = tmp_path / "notes.txt"
-    text_file.write_text("contenido de prueba", encoding="utf-8")
+    text_file.write_text("test content", encoding="utf-8")
 
     docx_file = FIXTURE_DIR / "pywordform-sample_form.docx"
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
 
     message = build_document_message(
-        [text_file, docx_file, pdf_file], prompt="Resume los adjuntos."
+        [text_file, docx_file, pdf_file], prompt="Summarize the attachments."
     )
 
     image_blocks = [block for block in message if block["type"] == "image_url"]
 
     assert message[0]["type"] == "text"
-    assert "Resume los adjuntos." in message[0]["text"]
-    assert "[Documento 1: notes.txt]" in [
+    assert "Summarize the attachments." in message[0]["text"]
+    assert "[Document 1: notes.txt]" in [
         block["text"] for block in message if block["type"] == "text"
     ]
-    assert "[Documento 2: pywordform-sample_form.docx]" in [
+    assert "[Document 2: pywordform-sample_form.docx]" in [
         block["text"] for block in message if block["type"] == "text"
     ]
-    assert "[Documento 3: w3c-dummy.pdf]" in [
+    assert "[Document 3: w3c-dummy.pdf]" in [
         block["text"] for block in message if block["type"] == "text"
     ]
     assert image_blocks

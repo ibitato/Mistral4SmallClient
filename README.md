@@ -3,6 +3,7 @@
 [![CI](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml)
 [![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
 [![llama.cpp](https://img.shields.io/badge/runtime-llama.cpp-00a000)](https://github.com/ggerganov/llama.cpp)
+[![Docs](https://img.shields.io/badge/docs-generated-blue)](docs/reference.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
 
@@ -20,7 +21,8 @@ The repository is intentionally focused on one workflow:
 
 - a dedicated interactive CLI with retro green/orange presentation
 - always-on local tools: `shell`, `read_file`, `write_file`, `list_dir`, `search_text`
-- optional FireCrawl MCP tools loaded from `mcp.json`
+- optional FireCrawl MCP tools loaded from `mcp.json` using
+  `FIRECRAWL_API_KEY` from your environment
 - `/image` and `/doc` attachment commands
 - tests for completion, streaming, cancellation recovery and multimodal payloads
 
@@ -84,18 +86,22 @@ For the detailed local runbook, see
 ```bash
 make check
 make test
+make docs
 ```
 
 `make check` runs formatting, lint and type checks.
 `make test` runs the full `pytest` suite, including local integration tests
 that require the `llama.cpp` server.
+`make docs` regenerates the checked-in API reference from public docstrings.
 
 ## Repository layout
 
 - `src/mistral4cli/` - CLI, session, tools and attachment handling
 - `tests/` - unit and integration tests
 - `docs/local-mistral-small-4.md` - detailed local deployment notes
-- `mcp.json` - optional FireCrawl MCP config
+- `docs/reference.md` - generated API reference from public docstrings
+- `mcp.json` - optional FireCrawl MCP config that expands
+  `FIRECRAWL_API_KEY` at runtime
 
 ## License
 
