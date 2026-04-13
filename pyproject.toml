@@ -1,6 +1,6 @@
 [project]
 name = "mistral4cli"
-version = "0.10.1"
+version = "0.11.0"
 description = "Retro CLI for validating and using Mistral Small 4 locally and remotely"
 readme = "README.md"
 license = { file = "LICENSE" }

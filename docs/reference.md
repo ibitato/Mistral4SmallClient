@@ -96,13 +96,17 @@ Configuration for the remote Mistral cloud endpoint.
 
 #### Methods
 
-  #### `from_env(cls, timeout_ms: 'int' = 120000) -> 'RemoteMistralConfig'`
+  #### `from_env(cls, timeout_ms: 'int' = 300000) -> 'RemoteMistralConfig'`
 
   Build a remote config from environment variables.
 
 #### `build_client(config: 'MistralConfig | None' = None) -> 'Mistral'`
 
 Construct an official `mistralai` client for the selected backend.
+
+#### `get_client_timeout_ms(client: 'Mistral', default: 'int' = 300000) -> 'int'`
+
+Return the effective timeout configured on a Mistral client.
 
 #### `get_health(server_url: 'str | None' = None) -> 'dict[str, Any]'`
 
@@ -119,6 +123,10 @@ Return the `/v1/models` payload from the local server.
 #### `remote_api_key_available() -> 'bool'`
 
 Return whether the remote Mistral cloud API key is available.
+
+#### `set_client_timeout_ms(client: 'Mistral', timeout_ms: 'int') -> 'None'`
+
+Update the effective timeout on a Mistral client in place.
 
 ## `mistral4cli.local_tools`
 
@@ -272,9 +280,17 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Replace the active system prompt and reset the conversation.
 
+  #### `set_timeout_ms(self, timeout_ms: 'int') -> 'None'`
+
+  Update the active request timeout in milliseconds.
+
   #### `switch_backend(self, client: 'Mistral', backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None') -> 'None'`
 
   Swap the active model backend and reset the conversation.
+
+  #### `timeout_ms(self) -> 'int'`
+
+  Return the active request timeout in milliseconds.
 
   #### `toggle_reasoning_visibility(self) -> 'bool'`
 
@@ -288,7 +304,7 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
 Result of a single user turn.
 
-#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -356,7 +372,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
 
 Render a compact runtime summary.
 
