@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import base64
 import io
-import sys
-import types
 from pathlib import Path
 
 import pytest
 from docx import Document
+from pypdf import PdfWriter
 
 from mistral4cli.attachments import (
     DEFAULT_DOCUMENT_PROMPT,
@@ -62,9 +61,7 @@ def test_choose_paths_falls_back_to_terminal_prompt(
     assert output.getvalue() == ""
 
 
-def test_load_document_supports_text_docx_and_pdf(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_load_document_supports_text_docx_and_pdf(tmp_path: Path) -> None:
     text_file = tmp_path / "notes.txt"
     text_file.write_text("hola mundo", encoding="utf-8")
 
@@ -75,53 +72,56 @@ def test_load_document_supports_text_docx_and_pdf(
     document.save(str(docx_file))
 
     pdf_file = tmp_path / "slides.pdf"
-    pdf_file.write_bytes(b"%PDF-1.7 fake")
-
-    class FakePdfPage:
-        def extract_text(self) -> str:
-            return "texto pdf"
-
-    class FakePdfReader:
-        def __init__(self, _path: str) -> None:
-            self.pages = [FakePdfPage()]
-
-    fake_module = types.SimpleNamespace(PdfReader=FakePdfReader)
-    monkeypatch.setitem(sys.modules, "pypdf", fake_module)
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    with pdf_file.open("wb") as handle:
+        writer.write(handle)
 
     assert load_document(text_file).text == "hola mundo"
     assert "primer parrafo" in load_document(docx_file).text
-    assert "texto pdf" in load_document(pdf_file).text
+    assert load_document(pdf_file).text == ""
 
 
 def test_build_document_message_combines_prompt_and_docs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
 ) -> None:
     text_file = tmp_path / "notes.txt"
     text_file.write_text("contenido de prueba", encoding="utf-8")
 
+    docx_file = tmp_path / "report.docx"
+    document = Document()
+    document.add_paragraph("primera linea")
+    document.add_paragraph("segunda linea")
+    document.save(str(docx_file))
+
     pdf_file = tmp_path / "slides.pdf"
-    pdf_file.write_bytes(b"%PDF-1.7 fake")
-
-    class FakePdfPage:
-        def extract_text(self) -> str:
-            return "linea de pdf"
-
-    class FakePdfReader:
-        def __init__(self, _path: str) -> None:
-            self.pages = [FakePdfPage()]
-
-    fake_module = types.SimpleNamespace(PdfReader=FakePdfReader)
-    monkeypatch.setitem(sys.modules, "pypdf", fake_module)
+    writer = PdfWriter()
+    writer.add_blank_page(width=200, height=200)
+    with pdf_file.open("wb") as handle:
+        writer.write(handle)
 
     message = build_document_message(
-        [text_file, pdf_file], prompt="Resume los adjuntos."
+        [text_file, docx_file, pdf_file], prompt="Resume los adjuntos."
     )
 
-    assert "Resume los adjuntos." in message
-    assert "[Documento 1: notes.txt]" in message
-    assert "contenido de prueba" in message
-    assert "[Documento 2: slides.pdf]" in message
-    assert "linea de pdf" in message
+    image_blocks = [block for block in message if block["type"] == "image_url"]
+
+    assert message[0]["type"] == "text"
+    assert "Resume los adjuntos." in message[0]["text"]
+    assert "[Documento 1: notes.txt]" in [
+        block["text"] for block in message if block["type"] == "text"
+    ]
+    assert "[Documento 2: report.docx]" in [
+        block["text"] for block in message if block["type"] == "text"
+    ]
+    assert "[Documento 3: slides.pdf]" in [
+        block["text"] for block in message if block["type"] == "text"
+    ]
+    assert image_blocks
+    assert all(
+        block["image_url"]["url"].startswith("data:image/png;base64,")
+        for block in image_blocks
+    )
 
 
 def test_document_defaults_are_available() -> None:

@@ -125,7 +125,7 @@ def render_help_screen(
         "/find        Search text in the project tree.",
         "/edit        Write text to a file.",
         "/image       Pick images and ask the model to analyze them.",
-        "/doc         Pick documents and ask the model to analyze them.",
+        "/doc         Pick documents and send page images for OCR analysis.",
         "/reset       Clear the conversation but keep the system prompt.",
         "/system TXT  Replace the system prompt and reset the chat.",
         "/exit        Leave the REPL.",

@@ -5,16 +5,22 @@ from __future__ import annotations
 import base64
 import mimetypes
 import shlex
+import subprocess
+import tempfile
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Protocol, TextIO
+
+from PIL import Image, ImageDraw, ImageFont
 
 DEFAULT_IMAGE_PROMPT = (
     "Analiza las imagenes adjuntas y responde de forma breve, util y concreta."
 )
 DEFAULT_DOCUMENT_PROMPT = (
-    "Analiza los documentos adjuntos y resume lo importante de forma concreta."
+    "Analiza los documentos adjuntos como imagenes OCR y responde de forma "
+    "breve, util y concreta."
 )
 
 IMAGE_FILETYPES: tuple[tuple[str, str], ...] = (
@@ -39,7 +45,14 @@ TEXT_DOCUMENT_SUFFIXES = {
 PDF_SUFFIX = ".pdf"
 DOCX_SUFFIX = ".docx"
 
-MAX_DOCUMENT_CHARS = 120_000
+MAX_DOCUMENT_PAGES = 12
+PDF_RENDER_DPI = 150
+DOCUMENT_PAGE_WIDTH = 1240
+DOCUMENT_PAGE_HEIGHT = 1754
+DOCUMENT_MARGIN = 72
+DOCUMENT_TITLE_FONT_SIZE = 34
+DOCUMENT_BODY_FONT_SIZE = 28
+DOCUMENT_LINE_GAP = 10
 
 
 class PathPicker(Protocol):
@@ -57,10 +70,19 @@ class PathPicker(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class LoadedDocument:
-    """One document loaded from disk for analysis."""
+    """One document loaded as text for rendering."""
 
     path: Path
     text: str
+    truncated: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class RenderedDocument:
+    """One document converted into model-ready image blocks."""
+
+    path: Path
+    content_blocks: list[dict[str, Any]]
     truncated: bool = False
 
 
@@ -173,30 +195,50 @@ def build_image_message(
     return content
 
 
-def build_document_message(paths: Sequence[Path], *, prompt: str | None = None) -> str:
-    """Build a plain-text user message from one or more documents."""
+def build_document_message(
+    paths: Sequence[Path], *, prompt: str | None = None
+) -> list[dict[str, Any]]:
+    """Build a multimodal user message by rasterizing documents to images."""
 
     document_paths = [path.expanduser() for path in paths]
     if not document_paths:
         raise ValueError("At least one document is required")
 
     message = (prompt or DEFAULT_DOCUMENT_PROMPT).strip() or DEFAULT_DOCUMENT_PROMPT
-    sections = [message, ""]
+    content: list[dict[str, Any]] = [
+        {
+            "type": "text",
+            "text": (
+                f"{message}\n\n"
+                "Los documentos adjuntos se han convertido a imagenes para que "
+                "el modelo los lea visualmente y haga OCR directamente."
+            ),
+        }
+    ]
+
     for index, path in enumerate(document_paths, start=1):
-        loaded = load_document(path)
-        header = f"[Documento {index}: {path.name}]"
-        sections.append(header)
-        sections.append(loaded.text.strip() or "[Documento vacio]")
-        if loaded.truncated:
-            sections.append(
-                f"[nota: contenido truncado a {MAX_DOCUMENT_CHARS} caracteres]"
+        rendered = render_document(path)
+        content.append(
+            {
+                "type": "text",
+                "text": f"[Documento {index}: {path.name}]",
+            }
+        )
+        content.extend(rendered.content_blocks)
+        if rendered.truncated:
+            content.append(
+                {
+                    "type": "text",
+                    "text": (
+                        f"[nota: {path.name} truncado a {MAX_DOCUMENT_PAGES} paginas]"
+                    ),
+                }
             )
-        sections.append("")
-    return "\n".join(sections).strip()
+    return content
 
 
 def load_document(path: Path) -> LoadedDocument:
-    """Load a supported document from disk."""
+    """Load a supported document from disk as text."""
 
     normalized = path.expanduser()
     if not normalized.exists():
@@ -216,9 +258,28 @@ def load_document(path: Path) -> LoadedDocument:
     )
 
 
+def render_document(path: Path) -> RenderedDocument:
+    """Render a supported document into image blocks for the model."""
+
+    normalized = path.expanduser()
+    if not normalized.exists():
+        raise FileNotFoundError(f"Document not found: {normalized}")
+    if not normalized.is_file():
+        raise IsADirectoryError(f"Document path is not a file: {normalized}")
+
+    suffix = normalized.suffix.lower()
+    if suffix == PDF_SUFFIX:
+        return _render_pdf_document(normalized)
+    if suffix in TEXT_DOCUMENT_SUFFIXES or suffix == DOCX_SUFFIX:
+        return _render_text_document(normalized)
+    raise ValueError(
+        f"Unsupported document type: {normalized.suffix or normalized.name}"
+    )
+
+
 def _load_text_document(path: Path) -> LoadedDocument:
     text = path.read_text(encoding="utf-8", errors="replace")
-    return _maybe_truncate(LoadedDocument(path=path, text=text, truncated=False))
+    return _maybe_truncate_text(LoadedDocument(path=path, text=text, truncated=False))
 
 
 def _load_pdf_document(path: Path) -> LoadedDocument:
@@ -236,7 +297,7 @@ def _load_pdf_document(path: Path) -> LoadedDocument:
         text = extracted.strip()
         if text:
             parts.append(f"[page {page_number}]\n{text}")
-    return _maybe_truncate(
+    return _maybe_truncate_text(
         LoadedDocument(path=path, text="\n\n".join(parts).strip(), truncated=False)
     )
 
@@ -260,19 +321,205 @@ def _load_docx_document(path: Path) -> LoadedDocument:
             cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
             if cells:
                 parts.append(" | ".join(cells))
-    return _maybe_truncate(
+    return _maybe_truncate_text(
         LoadedDocument(path=path, text="\n".join(parts).strip(), truncated=False)
     )
 
 
-def _maybe_truncate(document: LoadedDocument) -> LoadedDocument:
-    if len(document.text) <= MAX_DOCUMENT_CHARS:
+def _render_pdf_document(path: Path) -> RenderedDocument:
+    total_pages = _pdf_page_count(path)
+    pages_to_render = min(total_pages, MAX_DOCUMENT_PAGES)
+    if pages_to_render <= 0:
+        return RenderedDocument(path=path, content_blocks=[], truncated=False)
+
+    if not _command_available("pdftoppm"):
+        raise RuntimeError(
+            "PDF rendering requires pdftoppm. Install poppler-utils first."
+        )
+
+    content_blocks: list[dict[str, Any]] = []
+    with tempfile.TemporaryDirectory(prefix="mistral4cli-doc-") as tmpdir:
+        output_prefix = Path(tmpdir) / "page"
+        command = [
+            "pdftoppm",
+            "-png",
+            "-r",
+            str(PDF_RENDER_DPI),
+            "-f",
+            "1",
+            "-l",
+            str(pages_to_render),
+            str(path),
+            str(output_prefix),
+        ]
+        try:
+            subprocess.run(command, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as exc:  # pragma: no cover - defensive
+            raise RuntimeError(
+                f"PDF rendering failed for {path}: {exc.stderr}"
+            ) from exc
+
+        page_images = sorted(
+            Path(tmpdir).glob("page-*.png"),
+            key=lambda item: int(item.stem.split("-")[-1]),
+        )
+        for image_path in page_images[:pages_to_render]:
+            content_blocks.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": _image_data_url(image_path)},
+                }
+            )
+
+    return RenderedDocument(
+        path=path,
+        content_blocks=content_blocks,
+        truncated=total_pages > MAX_DOCUMENT_PAGES,
+    )
+
+
+def _render_text_document(path: Path) -> RenderedDocument:
+    loaded = load_document(path)
+    lines = _wrap_text_for_document(loaded.text)
+    pages = _split_lines_into_pages(lines, max_lines=42)
+    if not pages:
+        pages = [["[Documento vacio]"]]
+
+    content_blocks: list[dict[str, Any]] = []
+    for page_number, page_lines in enumerate(pages, start=1):
+        title = f"{path.name} - pagina {page_number}/{len(pages)}"
+        png_bytes = _render_text_page(title=title, lines=page_lines)
+        content_blocks.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": _image_data_url_from_bytes(png_bytes)},
+            }
+        )
+    return RenderedDocument(
+        path=path,
+        content_blocks=content_blocks,
+        truncated=loaded.truncated or len(pages) >= MAX_DOCUMENT_PAGES,
+    )
+
+
+def _maybe_truncate_text(document: LoadedDocument) -> LoadedDocument:
+    if len(document.text) <= 120_000:
         return document
     return LoadedDocument(
         path=document.path,
-        text=document.text[:MAX_DOCUMENT_CHARS],
+        text=document.text[:120_000],
         truncated=True,
     )
+
+
+def _pdf_page_count(path: Path) -> int:
+    try:
+        from pypdf import PdfReader
+    except ImportError as exc:  # pragma: no cover - dependency error is explicit
+        raise RuntimeError(
+            "PDF support requires the pypdf package. Run `uv sync` first."
+        ) from exc
+
+    reader = PdfReader(str(path))
+    return len(reader.pages)
+
+
+def _split_lines_into_pages(lines: Sequence[str], *, max_lines: int) -> list[list[str]]:
+    pages: list[list[str]] = []
+    current: list[str] = []
+    for line in lines:
+        current.append(line)
+        if len(current) >= max_lines:
+            pages.append(current)
+            current = []
+    if current:
+        pages.append(current)
+    return pages[:MAX_DOCUMENT_PAGES]
+
+
+def _wrap_text_for_document(text: str) -> list[str]:
+    font = _load_document_font(DOCUMENT_BODY_FONT_SIZE)
+    draw = ImageDraw.Draw(Image.new("RGB", (DOCUMENT_PAGE_WIDTH, DOCUMENT_PAGE_HEIGHT)))
+    usable_width = DOCUMENT_PAGE_WIDTH - 2 * DOCUMENT_MARGIN
+    char_width = max(1, int(draw.textlength("M", font=font)))
+    max_chars = max(20, usable_width // char_width)
+
+    lines: list[str] = []
+    for raw_line in text.splitlines():
+        stripped = raw_line.rstrip()
+        if not stripped:
+            lines.append("")
+            continue
+        wrapped = _wrap_paragraph(stripped, max_chars=max_chars)
+        lines.extend(wrapped or [""])
+    return lines
+
+
+def _wrap_paragraph(text: str, *, max_chars: int) -> list[str]:
+    import textwrap
+
+    wrapped = textwrap.wrap(
+        text,
+        width=max_chars,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    if not wrapped:
+        return [""]
+    return wrapped
+
+
+def _render_text_page(*, title: str, lines: Sequence[str]) -> bytes:
+    image = Image.new("RGB", (DOCUMENT_PAGE_WIDTH, DOCUMENT_PAGE_HEIGHT), "white")
+    draw = ImageDraw.Draw(image)
+    title_font = _load_document_font(DOCUMENT_TITLE_FONT_SIZE)
+    body_font = _load_document_font(DOCUMENT_BODY_FONT_SIZE)
+
+    x = DOCUMENT_MARGIN
+    y = DOCUMENT_MARGIN
+    draw.text((x, y), title, fill="black", font=title_font)
+    title_bbox = draw.textbbox((x, y), title, font=title_font)
+    y = int(title_bbox[3] + DOCUMENT_LINE_GAP * 2)
+
+    body_line_height = _line_height(draw, body_font) + DOCUMENT_LINE_GAP
+    for line in lines:
+        if y + body_line_height > DOCUMENT_PAGE_HEIGHT - DOCUMENT_MARGIN:
+            break
+        draw.text((x, y), line, fill="black", font=body_font)
+        y += body_line_height
+
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _line_height(
+    draw: ImageDraw.ImageDraw, font: ImageFont.FreeTypeFont | ImageFont.ImageFont
+) -> int:
+    bbox = draw.textbbox((0, 0), "Ag", font=font)
+    return int(max(1, bbox[3] - bbox[1]))
+
+
+def _load_document_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    candidates = [
+        "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
+        "/usr/share/fonts/liberation-mono-fonts/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/google-noto-vf/NotoSansMono[wght].ttf",
+    ]
+    for candidate in candidates:
+        candidate_path = Path(candidate)
+        if candidate_path.exists():
+            try:
+                return ImageFont.truetype(str(candidate_path), size=size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
+def _command_available(command: str) -> bool:
+    from shutil import which
+
+    return which(command) is not None
 
 
 def _image_data_url(path: Path) -> str:
@@ -281,3 +528,8 @@ def _image_data_url(path: Path) -> str:
         raise ValueError(f"Unsupported image type: {path.suffix or path.name}")
     data = base64.b64encode(path.read_bytes()).decode("ascii")
     return f"data:{mime_type};base64,{data}"
+
+
+def _image_data_url_from_bytes(data: bytes, *, mime_type: str = "image/png") -> str:
+    encoded = base64.b64encode(data).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"

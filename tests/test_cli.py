@@ -505,7 +505,14 @@ def test_doc_shortcut_uses_picker_and_document_payload(tmp_path: Path) -> None:
     assert len(fake_client.chat.stream_calls) == 1
     call = fake_client.chat.stream_calls[0]
     content = call["messages"][1]["content"]
-    assert isinstance(content, str)
-    assert "Resume el archivo." in content
-    assert "contenido de prueba" in content
-    assert "[Documento 1: notes.txt]" in content
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert "Resume el archivo." in content[0]["text"]
+    assert any(
+        block["type"] == "text" and "notes.txt" in block["text"] for block in content
+    )
+    assert any(
+        block["type"] == "image_url"
+        and block["image_url"]["url"].startswith("data:image/png;base64,")
+        for block in content
+    )

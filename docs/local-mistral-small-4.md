@@ -55,7 +55,7 @@ an actionable help system:
 - `/find -- ...` searches text in the project tree
 - `/edit PATH -- ...` writes text to a file
 - `/image --prompt ...` opens an image picker and sends the selected images as a multimodal turn
-- `/doc --prompt ...` opens a document picker and sends extracted document text as a turn
+- `/doc --prompt ...` opens a document picker and rasterizes each page so the model can OCR it directly
 - `/reset` clears the conversation but keeps the system prompt
 - `/system <texto>` replaces the system prompt and resets the chat
 - `/exit` or `/quit` leaves the REPL
@@ -84,11 +84,14 @@ The attachment commands are designed for analysis turns:
 - `/image` prefers a GUI picker and builds a multimodal message with one or
   more selected images. If no GUI picker is available, it falls back to a
   terminal path prompt.
-- `/doc` prefers a GUI picker and extracts text locally from supported
-  documents before sending a normal text turn. Supported document types are
+- `/doc` prefers a GUI picker and rasterizes supported documents into page
+  images before sending them to the model. Supported document types are
   `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `toml`, `csv`, `pdf` and `docx`.
 - Both commands accept an optional `--prompt`/`-p` argument so you can steer
   the analysis without retyping the default instruction.
+- PDF documents are rendered with `pdftoppm`, and plain text / DOCX documents
+  are wrapped into page images locally so the model performs the OCR/reading
+  step itself.
 
 For long outputs the local shell and search tools are paginated, so you can use
 `offset`/`lines` style arguments to continue from a later page instead of

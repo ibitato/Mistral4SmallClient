@@ -16,6 +16,7 @@ Este repositorio usa Python 3.10, `uv` como gestor de entorno y dependencias, y 
 - El CLI debe exponer siempre herramientas locales para OS: `shell`, `read_file`, `write_file`, `list_dir` y `search_text`.
 - La REPL debe mantener ayuda clara y accionable: `/help`, `/defaults`, `/tools`, `/run`, `/ls`, `/find`, `/edit`, `/image`, `/doc`, `/reset`, `/system`, `/exit`.
 - `/image` y `/doc` deben usar selector de archivos cuando el entorno lo permita y caer a un prompt por terminal cuando no haya GUI.
+- `/doc` debe rasterizar documentos soportados a imágenes para que el modelo haga OCR/vision directamente.
 - Para salidas largas, `shell` y `search_text` deben soportar paginación o truncado con indicadores claros de continuación.
 - La UI del CLI debe conservar el estilo retro verde/naranja y un banner ASCII legible en terminales TTY.
 - No uses `pip`, `poetry`, `pipenv` ni instalaciones globales para el flujo normal del proyecto.
