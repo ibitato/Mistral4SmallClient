@@ -27,7 +27,11 @@ llama-server \
   --threads "$(nproc)"
 ```
 
-The chat template in use sets `reasoning_effort=high` by default.
+The chat template in use sets `reasoning_effort=high` by default. The exact
+template is versioned in this repository at
+[`mistral-small-4-reasoning.jinja`](../mistral-small-4-reasoning.jinja).
+For this local stack it is the practical switch that makes reasoning active by
+default in llama.cpp.
 
 ## Known local constraint
 
@@ -145,6 +149,20 @@ Operational notes:
 - Seeded calls should remain reproducible when the same prompt and sampling
   settings are reused.
 - Server health and model listing
+
+## Reasoning visibility
+
+In this deployment, visible reasoning does not reliably arrive inside the
+official `mistralai` SDK models. Direct calls to the llama.cpp-compatible
+`/v1/chat/completions` endpoint show that the server emits reasoning in the
+separate `reasoning_content` field.
+
+Implications:
+
+- the versioned template is needed so the server enables reasoning by default
+- the CLI uses the raw local chat endpoint when visible reasoning is enabled
+- `/reasoning on|off|toggle` only controls whether the CLI renders that stream;
+  it does not force the model to emit reasoning if the server does not send it
 
 ## Cancellation behavior
 

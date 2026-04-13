@@ -36,7 +36,7 @@ uv run python -m mistral4cli
 Useful one-shot smoke test:
 
 ```bash
-uv run python -m mistral4cli --once "Devuelve solo la palabra ok." --no-stream
+uv run python -m mistral4cli --once "Return only the word ok." --no-stream
 ```
 
 Inside the REPL:
@@ -78,6 +78,12 @@ Recommended runtime defaults used by the CLI:
 - streaming on by default
 - `max_tokens` unset unless you override it
 
+The repository now includes the exact reasoning template at
+[`mistral-small-4-reasoning.jinja`](mistral-small-4-reasoning.jinja). In this
+local setup it is effectively required if you want reasoning enabled by
+default, because it sets `reasoning_effort=high` in the llama.cpp chat
+template.
+
 For the detailed local runbook, see
 [docs/local-mistral-small-4.md](docs/local-mistral-small-4.md).
 
@@ -100,6 +106,7 @@ that require the `llama.cpp` server.
 - `tests/` - unit and integration tests
 - `docs/local-mistral-small-4.md` - detailed local deployment notes
 - `docs/reference.md` - generated API reference from public docstrings
+- `mistral-small-4-reasoning.jinja` - versioned llama.cpp reasoning template
 - `mcp.json` - optional FireCrawl MCP config that expands
   `FIRECRAWL_API_KEY` at runtime
 

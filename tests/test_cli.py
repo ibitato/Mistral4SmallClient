@@ -165,6 +165,34 @@ class FakeClient:
         )
 
 
+class FakeRawHTTPResponse:
+    def __init__(self, body: str) -> None:
+        self.body = body.encode("utf-8")
+
+    def __enter__(self) -> FakeRawHTTPResponse:
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self.body
+
+
+class FakeRawStreamResponse:
+    def __init__(self, lines: list[str]) -> None:
+        self.lines = [(line + "\n").encode("utf-8") for line in lines]
+
+    def __enter__(self) -> FakeRawStreamResponse:
+        return self
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        return None
+
+    def __iter__(self):
+        return iter(self.lines)
+
+
 class FakeToolBridge:
     def __init__(self) -> None:
         self.calls: list[tuple[str, dict[str, Any]]] = []
@@ -254,7 +282,7 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     fake_client = FakeClient(complete_text="ok")
 
     exit_code = main(
-        ["--once", "Devuelve solo la palabra ok.", "--no-stream", "--no-mcp"],
+        ["--once", "Return only the word ok.", "--no-stream", "--no-mcp"],
         stdin=FakeStdin(""),
         stdout=output,
         client_factory=lambda _config: fake_client,
@@ -349,7 +377,7 @@ def test_tool_command_and_session_tool_loop() -> None:
 
 def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
     output = io.StringIO()
-    fake_client = FakeClient(stream_chunks=["hola", " mundo"], interrupt_after=1)
+    fake_client = FakeClient(stream_chunks=["hello", " world"], interrupt_after=1)
     session = MistralCodingSession(
         client=fake_client, generation=LocalGenerationConfig(), stdout=output
     )
@@ -357,7 +385,7 @@ def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
     result = session.send("Haz una respuesta larga.", stream=True)
 
     assert result.cancelled is True
-    assert result.content == "hola"
+    assert result.content == "hello"
     assert fake_client.chat.last_stream is not None
     assert fake_client.chat.last_stream.closed is True
     assert session.messages == [
@@ -375,7 +403,7 @@ def test_non_stream_cancel_does_not_break_followup() -> None:
     )
 
     first = session.send("Haz una respuesta larga.", stream=False)
-    second = session.send("Devuelve solo ok.", stream=False)
+    second = session.send("Return only ok.", stream=False)
 
     assert first.cancelled is True
     assert first.finish_reason == "cancelled"
@@ -521,6 +549,93 @@ def test_visible_reasoning_is_rendered_but_not_committed() -> None:
     assert result.reasoning == "check file"
     assert result.content == "ok"
     assert "check file" in output.getvalue()
+    assert output.getvalue().endswith("ok\n")
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_uppercase_think_reasoning_is_rendered_but_not_committed() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(complete_text="[THINK]plan[/THINK]ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return ok.", stream=False)
+
+    assert result.reasoning == "plan"
+    assert result.content == "ok"
+    assert "plan" in output.getvalue()
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_raw_reasoning_content_is_rendered_and_committed_cleanly(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    monkeypatch.setattr(MistralCodingSession, "_should_use_raw_chat", lambda self: True)
+    monkeypatch.setattr(
+        MistralCodingSession,
+        "_open_raw_request",
+        lambda self, payload: FakeRawHTTPResponse(
+            '{"choices":[{"finish_reason":"stop","message":{"role":"assistant",'
+            '"content":"ok","reasoning_content":"plan first"}}]}'
+        ),
+    )
+
+    result = session.send("Return ok.", stream=False)
+
+    assert result.reasoning == "plan first"
+    assert result.content == "ok"
+    assert "plan first" in output.getvalue()
+    assert output.getvalue().endswith("ok\n")
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_raw_stream_reasoning_content_is_rendered_and_committed_cleanly(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    monkeypatch.setattr(MistralCodingSession, "_should_use_raw_chat", lambda self: True)
+    monkeypatch.setattr(
+        MistralCodingSession,
+        "_open_raw_request",
+        lambda self, payload: FakeRawStreamResponse(
+            [
+                (
+                    'data: {"choices":[{"finish_reason":null,"delta":'
+                    '{"role":"assistant","content":null}}]}'
+                ),
+                (
+                    'data: {"choices":[{"finish_reason":null,"delta":'
+                    '{"reasoning_content":"plan "}}]}'
+                ),
+                (
+                    'data: {"choices":[{"finish_reason":null,"delta":'
+                    '{"reasoning_content":"first"}}]}'
+                ),
+                'data: {"choices":[{"finish_reason":"stop","delta":{"content":"ok"}}]}',
+                "data: [DONE]",
+            ]
+        ),
+    )
+
+    result = session.send("Return ok.", stream=True)
+
+    assert result.reasoning == "plan first"
+    assert result.content == "ok"
+    assert "plan first" in output.getvalue()
     assert output.getvalue().endswith("ok\n")
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 

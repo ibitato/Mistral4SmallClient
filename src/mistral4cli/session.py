@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Any, TextIO, cast
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 from mistralai import Mistral
 
@@ -30,8 +32,11 @@ DEFAULT_SYSTEM_PROMPT = (
     "attached images or documents, analyze them carefully before replying."
 )
 
-THINK_OPEN = "<think>"
-THINK_CLOSE = "</think>"
+REASONING_TAG_PAIRS = (
+    ("<think>", "</think>"),
+    ("[THINK]", "[/THINK]"),
+    ("[think]", "[/think]"),
+)
 
 
 def render_defaults_summary(
@@ -98,35 +103,39 @@ class _ReasoningParser:
         self.pending += text
         while self.pending:
             if self.in_reasoning:
-                close_index = self.pending.find(THINK_CLOSE)
-                if close_index == -1:
-                    emit, keep = _split_possible_tag_suffix(self.pending, [THINK_CLOSE])
+                close_match = _find_first_tag(self.pending, _close_tags())
+                if close_match is None:
+                    emit, keep = _split_possible_tag_suffix(self.pending, _close_tags())
                     if emit:
                         self.reasoning_parts.append(emit)
                         segments.append(_RenderedSegment(kind="reasoning", text=emit))
                     self.pending = keep
                     break
 
+                close_index, close_tag = close_match
                 if close_index > 0:
                     emit = self.pending[:close_index]
                     self.reasoning_parts.append(emit)
                     segments.append(_RenderedSegment(kind="reasoning", text=emit))
-                self.pending = self.pending[close_index + len(THINK_CLOSE) :]
+                self.pending = self.pending[close_index + len(close_tag) :]
                 self.in_reasoning = False
                 continue
 
-            open_index = self.pending.find(THINK_OPEN)
-            close_index = self.pending.find(THINK_CLOSE)
-            if close_index != -1 and (open_index == -1 or close_index < open_index):
+            open_match = _find_first_tag(self.pending, _open_tags())
+            close_match = _find_first_tag(self.pending, _close_tags())
+            if close_match is not None and (
+                open_match is None or close_match[0] < open_match[0]
+            ):
+                close_index, close_tag = close_match
                 if close_index > 0:
                     emit = self.pending[:close_index]
                     self.answer_parts.append(emit)
                     segments.append(_RenderedSegment(kind="answer", text=emit))
-                self.pending = self.pending[close_index + len(THINK_CLOSE) :]
+                self.pending = self.pending[close_index + len(close_tag) :]
                 continue
-            if open_index == -1:
+            if open_match is None:
                 emit, keep = _split_possible_tag_suffix(
-                    self.pending, [THINK_OPEN, THINK_CLOSE]
+                    self.pending, [*_open_tags(), *_close_tags()]
                 )
                 if emit:
                     self.answer_parts.append(emit)
@@ -134,11 +143,12 @@ class _ReasoningParser:
                 self.pending = keep
                 break
 
+            open_index, open_tag = open_match
             if open_index > 0:
                 emit = self.pending[:open_index]
                 self.answer_parts.append(emit)
                 segments.append(_RenderedSegment(kind="answer", text=emit))
-            self.pending = self.pending[open_index + len(THINK_OPEN) :]
+            self.pending = self.pending[open_index + len(open_tag) :]
             self.in_reasoning = True
 
         return segments
@@ -176,19 +186,19 @@ class _ToolCallState:
     arguments_parts: list[str] = field(default_factory=list)
 
     def update(self, tool_call: Any) -> None:
-        call_id = getattr(tool_call, "id", None)
+        call_id = _field(tool_call, "id")
         if call_id and call_id != "null":
             self.call_id = str(call_id)
 
-        function = getattr(tool_call, "function", None)
+        function = _field(tool_call, "function")
         if function is None:
             return
 
-        name = getattr(function, "name", None)
+        name = _field(function, "name")
         if name:
             self.name = str(name)
 
-        arguments = getattr(function, "arguments", None)
+        arguments = _field(function, "arguments")
         if arguments is None:
             return
         if isinstance(arguments, str):
@@ -397,6 +407,35 @@ class MistralCodingSession:
             kwargs["tools"] = tools
         return kwargs
 
+    def _should_use_raw_chat(self) -> bool:
+        """Return whether the local raw chat endpoint should be used."""
+
+        return self.show_reasoning and isinstance(self.client, Mistral)
+
+    def _chat_endpoint(self) -> str:
+        return f"{self.server_url.rstrip('/')}/v1/chat/completions"
+
+    def _open_raw_request(self, payload: dict[str, Any]) -> Any:
+        """Open a raw HTTP request against the local OpenAI-compatible chat API."""
+
+        data = json.dumps(payload).encode("utf-8")
+        request = Request(
+            self._chat_endpoint(),
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        timeout_s = max(1.0, getattr(self.client, "timeout_ms", 120_000) / 1000)
+        try:
+            return urlopen(request, timeout=timeout_s)
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace").strip()
+            raise RuntimeError(
+                f"raw chat request failed with HTTP {exc.code}: {detail or exc.reason}"
+            ) from exc
+        except URLError as exc:
+            raise RuntimeError(f"raw chat request failed: {exc.reason}") from exc
+
     def _print(self, text: str) -> None:
         assert self.stdout is not None
         self.stdout.write(text)
@@ -478,9 +517,143 @@ class MistralCodingSession:
         stream: bool,
         tools: list[dict[str, Any]] | None,
     ) -> _ModelTurn:
+        if self._should_use_raw_chat():
+            if stream:
+                return self._send_streaming_raw(tools=tools)
+            return self._send_non_streaming_raw(tools=tools)
         if stream:
             return self._send_streaming(tools=tools)
         return self._send_non_streaming(tools=tools)
+
+    def _send_non_streaming_raw(
+        self, *, tools: list[dict[str, Any]] | None
+    ) -> _ModelTurn:
+        payload = self._request_kwargs(stream=False, tools=tools)
+        printed_anything = False
+        try:
+            with self._open_raw_request(payload) as response:
+                raw = json.loads(response.read().decode("utf-8"))
+        except KeyboardInterrupt:
+            self._print("\n[interrupted]\n")
+            return _ModelTurn(content="", finish_reason="cancelled", cancelled=True)
+        except Exception as exc:  # pragma: no cover - exercised by CLI smoke
+            self._print(f"[error] {exc}\n")
+            return _ModelTurn(content="", finish_reason="error", error=True)
+
+        choice = raw["choices"][0]
+        message = choice.get("message", {})
+        raw_content = message.get("content") or ""
+        raw_reasoning = message.get("reasoning_content") or ""
+        finish_reason = choice.get("finish_reason") or "stop"
+        tool_calls = _normalize_tool_calls(message.get("tool_calls"))
+        parsed = _parse_reasoning_text(raw_content)
+        content = parsed.answer
+        reasoning = str(raw_reasoning).strip() or parsed.reasoning
+
+        if tool_calls:
+            return _ModelTurn(
+                content=content,
+                finish_reason=finish_reason,
+                reasoning=reasoning,
+                tool_calls=tool_calls,
+            )
+
+        if reasoning:
+            self._print_reasoning(reasoning)
+            printed_anything = True
+            if not reasoning.endswith("\n") and content:
+                self._print("\n")
+        for segment in parsed.segments:
+            if segment.kind == "answer":
+                self._print(segment.text)
+                printed_anything = True
+        if printed_anything and not content.endswith("\n"):
+            self._print("\n")
+        elif finish_reason == "length":
+            self._print("[truncated response without text]\n")
+
+        return _ModelTurn(
+            content=content,
+            finish_reason=finish_reason,
+            reasoning=reasoning,
+        )
+
+    def _send_streaming_raw(self, *, tools: list[dict[str, Any]] | None) -> _ModelTurn:
+        payload = self._request_kwargs(stream=True, tools=tools)
+        finish_reason = ""
+        tool_states: dict[int, _ToolCallState] = {}
+        parser = _ReasoningParser()
+        reasoning_parts: list[str] = []
+        printed_anything = False
+
+        try:
+            with self._open_raw_request(payload) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_line = line[6:]
+                    if data_line == "[DONE]":
+                        break
+                    event = json.loads(data_line)
+                    choices = event.get("choices") or []
+                    if not choices:
+                        continue
+                    choice = choices[0]
+                    finish_reason = choice.get("finish_reason") or finish_reason
+                    delta = choice.get("delta") or {}
+                    reasoning_delta = delta.get("reasoning_content")
+                    if isinstance(reasoning_delta, str) and reasoning_delta:
+                        reasoning_parts.append(reasoning_delta)
+                        self._print_reasoning(reasoning_delta)
+                        printed_anything = True
+                    content = delta.get("content")
+                    if isinstance(content, str) and content:
+                        for segment in parser.feed(content):
+                            if segment.kind == "reasoning":
+                                self._print_reasoning(segment.text)
+                            else:
+                                self._print(segment.text)
+                            printed_anything = True
+                    for tool_call in delta.get("tool_calls") or []:
+                        index = int(_field(tool_call, "index", 0) or 0)
+                        state = tool_states.setdefault(
+                            index, _ToolCallState(index=index)
+                        )
+                        state.update(tool_call)
+        except KeyboardInterrupt:
+            self._print("\n[interrupted]\n")
+            return _ModelTurn(
+                content=parser.answer,
+                reasoning="".join(reasoning_parts).strip() or parser.reasoning,
+                finish_reason="cancelled",
+                cancelled=True,
+            )
+        except Exception as exc:  # pragma: no cover - exercised by CLI smoke
+            self._print(f"\n[error] {exc}\n")
+            return _ModelTurn(content="", finish_reason="error", error=True)
+
+        for segment in parser.finish():
+            if segment.kind == "reasoning":
+                self._print_reasoning(segment.text)
+            else:
+                self._print(segment.text)
+            printed_anything = True
+
+        content = parser.answer
+        reasoning = "".join(reasoning_parts).strip() or parser.reasoning
+        if printed_anything and not content.endswith("\n"):
+            self._print("\n")
+        if finish_reason == "length" and not content:
+            self._print("[truncated response without text]\n")
+
+        tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
+        return _ModelTurn(
+            content=content,
+            finish_reason=finish_reason or "stop",
+            reasoning=reasoning,
+            tool_calls=tool_calls,
+        )
 
     def _send_non_streaming(self, *, tools: list[dict[str, Any]] | None) -> _ModelTurn:
         try:
@@ -610,23 +783,29 @@ def _normalize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
         return []
     normalized: list[dict[str, Any]] = []
     for index, tool_call in enumerate(tool_calls):
-        function = getattr(tool_call, "function", None)
+        function = _field(tool_call, "function")
         if function is None:
             continue
-        arguments = getattr(function, "arguments", None)
+        arguments = _field(function, "arguments")
         if not isinstance(arguments, str):
             arguments = json.dumps(arguments, ensure_ascii=False)
         normalized.append(
             {
-                "id": getattr(tool_call, "id", f"tool_call_{index}"),
-                "type": getattr(tool_call, "type", "function"),
+                "id": _field(tool_call, "id", f"tool_call_{index}"),
+                "type": _field(tool_call, "type", "function"),
                 "function": {
-                    "name": getattr(function, "name", f"tool_{index}"),
+                    "name": _field(function, "name", f"tool_{index}"),
                     "arguments": arguments or "{}",
                 },
             }
         )
     return normalized
+
+
+def _field(value: Any, name: str, default: Any = None) -> Any:
+    if isinstance(value, dict):
+        return value.get(name, default)
+    return getattr(value, name, default)
 
 
 def _split_possible_tag_suffix(text: str, tags: list[str]) -> tuple[str, str]:
@@ -640,6 +819,22 @@ def _split_possible_tag_suffix(text: str, tags: list[str]) -> tuple[str, str]:
     if keep == 0:
         return text, ""
     return text[:-keep], text[-keep:]
+
+
+def _find_first_tag(text: str, tags: list[str]) -> tuple[int, str] | None:
+    matches = [(text.find(tag), tag) for tag in tags]
+    present = [(index, tag) for index, tag in matches if index != -1]
+    if not present:
+        return None
+    return min(present, key=lambda item: item[0])
+
+
+def _open_tags() -> list[str]:
+    return [open_tag for open_tag, _close_tag in REASONING_TAG_PAIRS]
+
+
+def _close_tags() -> list[str]:
+    return [close_tag for _open_tag, close_tag in REASONING_TAG_PAIRS]
 
 
 @dataclass(frozen=True, slots=True)
