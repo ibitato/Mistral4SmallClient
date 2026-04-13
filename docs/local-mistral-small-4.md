@@ -54,6 +54,8 @@ an actionable help system:
 - `/ls [PATH]` lists files and directories
 - `/find -- ...` searches text in the project tree
 - `/edit PATH -- ...` writes text to a file
+- `/image --prompt ...` opens an image picker and sends the selected images as a multimodal turn
+- `/doc --prompt ...` opens a document picker and sends extracted document text as a turn
 - `/reset` clears the conversation but keeps the system prompt
 - `/system <texto>` replaces the system prompt and resets the chat
 - `/exit` or `/quit` leaves the REPL
@@ -76,6 +78,17 @@ the workspace without asking for extra setup:
 
 When FireCrawl is available, those remote tools are added on top of the local
 OS tool set.
+
+The attachment commands are designed for analysis turns:
+
+- `/image` prefers a GUI picker and builds a multimodal message with one or
+  more selected images. If no GUI picker is available, it falls back to a
+  terminal path prompt.
+- `/doc` prefers a GUI picker and extracts text locally from supported
+  documents before sending a normal text turn. Supported document types are
+  `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `toml`, `csv`, `pdf` and `docx`.
+- Both commands accept an optional `--prompt`/`-p` argument so you can steer
+  the analysis without retyping the default instruction.
 
 For long outputs the local shell and search tools are paginated, so you can use
 `offset`/`lines` style arguments to continue from a later page instead of
@@ -106,6 +119,8 @@ Operational notes:
   prompt against the local server.
 - The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set, otherwise it falls back
   to `./mcp.json` if the file exists.
+- `uv run python -m mistral4cli` plus `/image` or `/doc` can be used to inspect
+  attached files without leaving the session.
 
 ## Validation targets
 

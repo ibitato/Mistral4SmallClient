@@ -12,6 +12,15 @@ from typing import TextIO
 
 from mistralai import Mistral
 
+from mistral4cli.attachments import (
+    DOCUMENT_FILETYPES,
+    IMAGE_FILETYPES,
+    PathPicker,
+    build_document_message,
+    build_image_message,
+    choose_paths,
+    format_selection_summary,
+)
 from mistral4cli.local_mistral import (
     DEFAULT_API_KEY,
     DEFAULT_MODEL_ID,
@@ -362,6 +371,90 @@ def _run_edit_shortcut(
     return False
 
 
+def _run_image_shortcut(
+    argument: str,
+    session: MistralCodingSession,
+    stdout: TextIO,
+    *,
+    input_func: Callable[[str], str],
+    path_picker: PathPicker | None,
+) -> bool:
+    prompt = _normalize_inline_prompt(argument)
+
+    paths = choose_paths(
+        kind="image",
+        input_func=input_func,
+        stdout=stdout,
+        path_picker=path_picker,
+        filetypes=IMAGE_FILETYPES,
+        multiple=True,
+    )
+    if not paths:
+        stdout.write("[image] selection canceled.\n")
+        stdout.flush()
+        return False
+
+    summary = format_selection_summary(paths)
+    stdout.write(f"[image] selected: {summary}\n")
+    stdout.flush()
+    session.send_content(
+        build_image_message(paths, prompt=prompt),
+        stream=session.stream_enabled,
+    )
+    return False
+
+
+def _run_doc_shortcut(
+    argument: str,
+    session: MistralCodingSession,
+    stdout: TextIO,
+    *,
+    input_func: Callable[[str], str],
+    path_picker: PathPicker | None,
+) -> bool:
+    prompt = _normalize_inline_prompt(argument)
+
+    paths = choose_paths(
+        kind="document",
+        input_func=input_func,
+        stdout=stdout,
+        path_picker=path_picker,
+        filetypes=DOCUMENT_FILETYPES,
+        multiple=True,
+    )
+    if not paths:
+        stdout.write("[doc] selection canceled.\n")
+        stdout.flush()
+        return False
+
+    summary = format_selection_summary(paths)
+    stdout.write(f"[doc] selected: {summary}\n")
+    stdout.flush()
+    session.send_content(
+        build_document_message(paths, prompt=prompt),
+        stream=session.stream_enabled,
+    )
+    return False
+
+
+def _normalize_inline_prompt(argument: str) -> str | None:
+    prompt = argument.strip()
+    if not prompt:
+        return None
+
+    for prefix in ("--prompt", "-p"):
+        if prompt.startswith(prefix):
+            prompt = prompt[len(prefix) :].lstrip(" =")
+            break
+
+    prompt = prompt.strip()
+    if not prompt:
+        return None
+    if len(prompt) >= 2 and prompt[0] == prompt[-1] and prompt[0] in {'"', "'"}:
+        prompt = prompt[1:-1].strip()
+    return prompt or None
+
+
 def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
     stdout.write(
         render_welcome_banner(session.describe_defaults(), stream=stdout) + "\n"
@@ -374,6 +467,9 @@ def _run_command(
     argument: str,
     session: MistralCodingSession,
     stdout: TextIO,
+    *,
+    input_func: Callable[[str], str] = input,
+    path_picker: PathPicker | None = None,
 ) -> bool:
     if command in {"help", "h", "?"}:
         stdout.write(
@@ -398,6 +494,30 @@ def _run_command(
         return _run_find_shortcut(argument, session, stdout)
     if command == "edit":
         return _run_edit_shortcut(argument, session, stdout)
+    if command == "image":
+        return _run_image_shortcut(
+            argument,
+            session,
+            stdout,
+            input_func=input_func,
+            path_picker=path_picker,
+        )
+    if command == "doc":
+        return _run_doc_shortcut(
+            argument,
+            session,
+            stdout,
+            input_func=input_func,
+            path_picker=path_picker,
+        )
+    if command == "docs":
+        return _run_doc_shortcut(
+            argument,
+            session,
+            stdout,
+            input_func=input_func,
+            path_picker=path_picker,
+        )
     if command in {"exit", "quit", "q"}:
         return True
     if command in {"reset", "new"}:
@@ -443,6 +563,7 @@ def _run_repl(
     input_func: Callable[[str], str],
     stdout: TextIO,
     stream: bool,
+    path_picker: PathPicker | None,
 ) -> int:
     _print_banner(stdout, session)
     while True:
@@ -463,7 +584,14 @@ def _run_repl(
 
         command = _parse_command(stripped)
         if command is not None:
-            should_exit = _run_command(command[0], command[1], session, stdout)
+            should_exit = _run_command(
+                command[0],
+                command[1],
+                session,
+                stdout,
+                input_func=input_func,
+                path_picker=path_picker,
+            )
             if should_exit:
                 return 0
             continue
@@ -505,6 +633,7 @@ def main(
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
     client_factory: Callable[[LocalMistralConfig], Mistral] = build_client,
+    path_picker: PathPicker | None = None,
 ) -> int:
     """Run the CLI."""
 
@@ -567,7 +696,13 @@ def main(
         stdout=stdout,
         stream=stream,
     )
-    return _run_repl(session, input_func=input_func, stdout=stdout, stream=stream)
+    return _run_repl(
+        session,
+        input_func=input_func,
+        stdout=stdout,
+        stream=stream,
+        path_picker=path_picker,
+    )
 
 
 if __name__ == "__main__":

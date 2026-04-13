@@ -92,7 +92,7 @@ def _complete_text(client: Mistral, case: CompletionCase) -> Any:
             temperature=0.2,
             top_p=0.9,
             random_seed=7,
-            max_tokens=64,
+            max_tokens=128,
             expected_text="ok",
         ),
         CompletionCase(

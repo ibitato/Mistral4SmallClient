@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import io
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -291,6 +292,8 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/edit" in help_text
     assert "/find" in help_text
     assert "/ls" in help_text
+    assert "/image" in help_text
+    assert "/doc" in help_text
     assert "Busca documentación oficial" in help_text
     assert "Ctrl-C cancels the current response" in help_text
 
@@ -390,6 +393,11 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     )
     assert _parse_command(":reset") == ("reset", "")
     assert _parse_command("/tools") == ("tools", "")
+    assert _parse_command("/image --prompt describe") == (
+        "image",
+        "--prompt describe",
+    )
+    assert _parse_command("/doc --prompt resume") == ("doc", "--prompt resume")
     assert _parse_command("/run --cwd . -- git status") == (
         "run",
         "--cwd . -- git status",
@@ -429,3 +437,75 @@ def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
 
     assert _run_command("find", "--path . --limit 5 -- hola", session, output) is False
     assert "notes.txt" in output.getvalue()
+
+
+def test_image_shortcut_uses_picker_and_multimodal_payload(tmp_path: Path) -> None:
+    output = io.StringIO()
+    image = tmp_path / "image.png"
+    image.write_bytes(
+        base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/"
+            "x8AAwMCAO7+TxkAAAAASUVORK5CYII="
+        )
+    )
+    fake_client = FakeClient(stream_chunks=["ok"])
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    should_exit = _run_command(
+        "image",
+        "--prompt Describe la imagen.",
+        session,
+        output,
+        input_func=lambda _prompt: "",
+        path_picker=lambda **_kwargs: [image],
+    )
+
+    assert should_exit is False
+    assert "selected" in output.getvalue()
+    assert "ok" in output.getvalue()
+    assert len(fake_client.chat.stream_calls) == 1
+    call = fake_client.chat.stream_calls[0]
+    content = call["messages"][1]["content"]
+    assert isinstance(content, list)
+    assert content[0]["type"] == "text"
+    assert "Describe la imagen." in content[0]["text"]
+    assert content[1]["type"] == "image_url"
+    assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_doc_shortcut_uses_picker_and_document_payload(tmp_path: Path) -> None:
+    output = io.StringIO()
+    text_file = tmp_path / "notes.txt"
+    text_file.write_text("contenido de prueba", encoding="utf-8")
+    fake_client = FakeClient(stream_chunks=["ok"])
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    should_exit = _run_command(
+        "doc",
+        "--prompt Resume el archivo.",
+        session,
+        output,
+        input_func=lambda _prompt: "",
+        path_picker=lambda **_kwargs: [text_file],
+    )
+
+    assert should_exit is False
+    assert "selected" in output.getvalue()
+    assert "ok" in output.getvalue()
+    assert len(fake_client.chat.stream_calls) == 1
+    call = fake_client.chat.stream_calls[0]
+    content = call["messages"][1]["content"]
+    assert isinstance(content, str)
+    assert "Resume el archivo." in content
+    assert "contenido de prueba" in content
+    assert "[Documento 1: notes.txt]" in content

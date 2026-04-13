@@ -27,7 +27,8 @@ DEFAULT_SYSTEM_PROMPT = (
     "cuando necesites informacion externa o FireCrawl. Antes de afirmar algo "
     "sobre el repositorio, el filesystem o el sistema, verifica con herramientas "
     "siempre que sea posible. Si falta contexto, pregunta lo minimo necesario "
-    "antes de inventar."
+    "antes de inventar. Si la conversacion incluye imagenes o documentos "
+    "adjuntos, analizalos con cuidado antes de responder."
 )
 
 
@@ -179,6 +180,82 @@ class MistralCodingSession:
 
         return self._call_tool_bridge(public_name, arguments)
 
+    def send_content(
+        self,
+        content: str | list[dict[str, Any]],
+        *,
+        stream: bool = True,
+    ) -> TurnResult:
+        """Send a text or multimodal user turn and update the conversation."""
+
+        normalized = self._normalize_user_content(content)
+        if normalized is None:
+            return TurnResult(content="", finish_reason="empty", cancelled=False)
+
+        self.messages.append({"role": "user", "content": normalized})
+        try:
+            tools = self._resolve_tools()
+            if not tools:
+                turn = self._send_single_turn(stream=stream, tools=None)
+                if not turn.cancelled and not turn.error:
+                    self._commit_assistant_message(turn)
+                return TurnResult(
+                    content=turn.content,
+                    finish_reason=turn.finish_reason,
+                    cancelled=turn.cancelled,
+                )
+
+            for _ in range(self.max_tool_rounds):
+                turn = self._send_single_turn(stream=stream, tools=tools)
+                if turn.cancelled or turn.error:
+                    return TurnResult(
+                        content=turn.content,
+                        finish_reason=turn.finish_reason,
+                        cancelled=turn.cancelled,
+                    )
+
+                if turn.finish_reason != "tool_calls" or not turn.tool_calls:
+                    self._commit_assistant_message(turn)
+                    return TurnResult(
+                        content=turn.content,
+                        finish_reason=turn.finish_reason,
+                        cancelled=False,
+                    )
+
+                self._commit_assistant_message(turn)
+                for call in turn.tool_calls:
+                    function = call["function"]
+                    name = str(function["name"])
+                    try:
+                        arguments = self._parse_tool_arguments(
+                            function.get("arguments")
+                        )
+                    except json.JSONDecodeError as exc:
+                        result = MCPToolResult(
+                            text=(
+                                f"[tool-error] invalid JSON arguments for {name}: {exc}"
+                            ),
+                            is_error=True,
+                        )
+                    except Exception as exc:  # pragma: no cover - defensive
+                        result = MCPToolResult(
+                            text=f"[tool-error] {exc}", is_error=True
+                        )
+                    else:
+                        result = self._call_tool_bridge(name, arguments)
+                    self.messages.append(self._tool_message(call=call, result=result))
+
+            self._print("[error] tool loop limit reached\n")
+            return TurnResult(content="", finish_reason="error", cancelled=False)
+        except KeyboardInterrupt:
+            self._print("\n[interrumpido]\n")
+            return TurnResult(content="", finish_reason="cancelled", cancelled=True)
+
+    def send(self, user_text: str, *, stream: bool = True) -> TurnResult:
+        """Send one text user turn and update the conversation history."""
+
+        return self.send_content(user_text, stream=stream)
+
     def _request_kwargs(
         self,
         *,
@@ -265,72 +342,6 @@ class MistralCodingSession:
                 self._print(f"[mcp] {exc}\n")
                 self._mcp_warning_shown = True
             return []
-
-    def send(self, user_text: str, *, stream: bool = True) -> TurnResult:
-        """Send one user turn and update the conversation history."""
-
-        clean_text = user_text.strip()
-        if not clean_text:
-            return TurnResult(content="", finish_reason="empty", cancelled=False)
-
-        self.messages.append({"role": "user", "content": clean_text})
-        try:
-            tools = self._resolve_tools()
-            if not tools:
-                turn = self._send_single_turn(stream=stream, tools=None)
-                if not turn.cancelled and not turn.error:
-                    self._commit_assistant_message(turn)
-                return TurnResult(
-                    content=turn.content,
-                    finish_reason=turn.finish_reason,
-                    cancelled=turn.cancelled,
-                )
-
-            for _ in range(self.max_tool_rounds):
-                turn = self._send_single_turn(stream=stream, tools=tools)
-                if turn.cancelled or turn.error:
-                    return TurnResult(
-                        content=turn.content,
-                        finish_reason=turn.finish_reason,
-                        cancelled=turn.cancelled,
-                    )
-
-                if turn.finish_reason != "tool_calls" or not turn.tool_calls:
-                    self._commit_assistant_message(turn)
-                    return TurnResult(
-                        content=turn.content,
-                        finish_reason=turn.finish_reason,
-                        cancelled=False,
-                    )
-
-                self._commit_assistant_message(turn)
-                for call in turn.tool_calls:
-                    function = call["function"]
-                    name = str(function["name"])
-                    try:
-                        arguments = self._parse_tool_arguments(
-                            function.get("arguments")
-                        )
-                    except json.JSONDecodeError as exc:
-                        result = MCPToolResult(
-                            text=(
-                                f"[tool-error] invalid JSON arguments for {name}: {exc}"
-                            ),
-                            is_error=True,
-                        )
-                    except Exception as exc:  # pragma: no cover - defensive
-                        result = MCPToolResult(
-                            text=f"[tool-error] {exc}", is_error=True
-                        )
-                    else:
-                        result = self._call_tool_bridge(name, arguments)
-                    self.messages.append(self._tool_message(call=call, result=result))
-
-            self._print("[error] tool loop limit reached\n")
-            return TurnResult(content="", finish_reason="error", cancelled=False)
-        except KeyboardInterrupt:
-            self._print("\n[interrumpido]\n")
-            return TurnResult(content="", finish_reason="cancelled", cancelled=True)
 
     def _send_single_turn(
         self,
@@ -426,6 +437,18 @@ class MistralCodingSession:
             finish_reason=finish_reason or "stop",
             tool_calls=tool_calls,
         )
+
+    def _normalize_user_content(
+        self, content: str | list[dict[str, Any]]
+    ) -> str | list[dict[str, Any]] | None:
+        if isinstance(content, str):
+            clean_text = content.strip()
+            if not clean_text:
+                return None
+            return clean_text
+        if not content:
+            return None
+        return content
 
 
 def _normalize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
