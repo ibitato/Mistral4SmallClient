@@ -6,7 +6,9 @@ authors = [
     { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
 ]
 requires-python = ">=3.10,<3.11"
-dependencies = []
+dependencies = [
+    "mistralai>=1.12.4,<2.0",
+]
 
 [project.scripts]
 mistral4cli = "mistral4cli.cli:main"
@@ -48,3 +50,10 @@ warn_redundant_casts = true
 warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require the local llama.cpp server",
+]
