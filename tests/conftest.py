@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 from mistral4cli.local_mistral import (
     DEFAULT_MODEL_ID,

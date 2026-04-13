@@ -10,7 +10,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from typing import TextIO
 
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 from mistral4cli.attachments import (
     DOCUMENT_FILETYPES,
@@ -29,9 +29,14 @@ from mistral4cli.local_mistral import (
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_MS,
     DEFAULT_TOP_P,
+    BackendKind,
     LocalGenerationConfig,
     LocalMistralConfig,
+    MistralConfig,
+    RemoteAPIKeyError,
+    RemoteMistralConfig,
     build_client,
+    remote_api_key_available,
 )
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import (
@@ -112,7 +117,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser = argparse.ArgumentParser(
         prog="mistral4cli",
-        description="Interactive coding CLI for the local Mistral Small 4 server.",
+        description=(
+            "Interactive coding CLI for Mistral Small 4 local and remote backends."
+        ),
     )
     parser.add_argument(
         "--server-url",
@@ -617,6 +624,8 @@ def _run_command(
     session: MistralCodingSession,
     stdout: TextIO,
     *,
+    local_config: LocalMistralConfig | None = None,
+    client_factory: Callable[[MistralConfig], Mistral] = build_client,
     input_func: Callable[[str], str] = input,
     path_picker: PathPicker | None = None,
 ) -> bool:
@@ -635,11 +644,18 @@ def _run_command(
         stdout.write(session.describe_tools() + "\n")
         stdout.flush()
         return False
+    if command == "remote":
+        return _run_remote_command(
+            argument,
+            session,
+            stdout,
+            local_config=local_config,
+            client_factory=client_factory,
+        )
     if command == "reasoning":
         normalized = argument.strip().lower()
         if not normalized:
-            state = "on" if session.show_reasoning else "off"
-            stdout.write(f"Visible reasoning: {state}\n")
+            stdout.write(session.reasoning_status_text() + "\n")
         elif normalized in {"on", "true", "1"}:
             session.set_reasoning_visibility(True)
             stdout.write("Visible reasoning enabled.\n")
@@ -647,8 +663,8 @@ def _run_command(
             session.set_reasoning_visibility(False)
             stdout.write("Visible reasoning disabled.\n")
         elif normalized == "toggle":
-            state = "on" if session.toggle_reasoning_visibility() else "off"
-            stdout.write(f"Visible reasoning: {state}\n")
+            session.toggle_reasoning_visibility()
+            stdout.write(session.reasoning_status_text() + "\n")
         else:
             stdout.write("Usage: /reasoning [on|off|toggle]\n")
         stdout.flush()
@@ -724,9 +740,69 @@ def _parse_command(line: str) -> tuple[str, str] | None:
     return command.lower(), argument.strip()
 
 
+def _run_remote_command(
+    argument: str,
+    session: MistralCodingSession,
+    stdout: TextIO,
+    *,
+    local_config: LocalMistralConfig | None,
+    client_factory: Callable[[MistralConfig], Mistral],
+) -> bool:
+    normalized = argument.strip().lower()
+    if not normalized:
+        availability = (
+            "available" if remote_api_key_available() else "missing MISTRAL_API_KEY"
+        )
+        stdout.write(f"Backend: {session.backend_kind.value}\n")
+        stdout.write(f"Remote mode: {availability}\n")
+        stdout.flush()
+        return False
+
+    if normalized == "on":
+        try:
+            remote_config = RemoteMistralConfig.from_env(
+                timeout_ms=getattr(session.client, "timeout_ms", DEFAULT_TIMEOUT_MS)
+            )
+        except RemoteAPIKeyError as exc:
+            stdout.write(f"[remote] {exc}\n")
+            stdout.flush()
+            return False
+
+        session.switch_backend(
+            client=client_factory(remote_config),
+            backend_kind=BackendKind.REMOTE,
+            model_id=remote_config.model_id,
+            server_url=None,
+        )
+        stdout.write("Remote backend enabled. Conversation reset.\n")
+        stdout.flush()
+        return False
+
+    if normalized == "off":
+        if local_config is None:
+            stdout.write("[remote] Local configuration is unavailable.\n")
+            stdout.flush()
+            return False
+        session.switch_backend(
+            client=client_factory(local_config),
+            backend_kind=BackendKind.LOCAL,
+            model_id=local_config.model_id,
+            server_url=local_config.server_url,
+        )
+        stdout.write("Local backend enabled. Conversation reset.\n")
+        stdout.flush()
+        return False
+
+    stdout.write("Usage: /remote [on|off]\n")
+    stdout.flush()
+    return False
+
+
 def _run_repl(
     session: MistralCodingSession,
     *,
+    local_config: LocalMistralConfig,
+    client_factory: Callable[[MistralConfig], Mistral],
     input_func: Callable[[str], str],
     stdin: TextIO,
     stdout: TextIO,
@@ -765,6 +841,8 @@ def _run_repl(
                 command[1],
                 session,
                 stdout,
+                local_config=local_config,
+                client_factory=client_factory,
                 input_func=input_func,
                 path_picker=path_picker,
             )
@@ -781,7 +859,7 @@ def _run_repl(
 
 def _build_session(
     *,
-    client_factory: Callable[[LocalMistralConfig], Mistral],
+    client_factory: Callable[[MistralConfig], Mistral],
     config: LocalMistralConfig,
     generation: LocalGenerationConfig,
     system_prompt: str,
@@ -791,6 +869,7 @@ def _build_session(
 ) -> MistralCodingSession:
     return MistralCodingSession(
         client=client_factory(config),
+        backend_kind=BackendKind.LOCAL,
         model_id=config.model_id,
         server_url=config.server_url,
         generation=generation,
@@ -808,7 +887,7 @@ def main(
     stdin: TextIO = sys.stdin,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
-    client_factory: Callable[[LocalMistralConfig], Mistral] = build_client,
+    client_factory: Callable[[MistralConfig], Mistral] = build_client,
     path_picker: PathPicker | None = None,
 ) -> int:
     """Run the CLI."""
@@ -821,6 +900,7 @@ def main(
     if args.print_defaults:
         stdout.write(
             render_defaults_summary(
+                backend_kind=BackendKind.LOCAL,
                 model_id=config.model_id,
                 server_url=config.server_url,
                 generation=generation,
@@ -875,6 +955,8 @@ def main(
     )
     return _run_repl(
         session,
+        local_config=config,
+        client_factory=client_factory,
         input_func=input_func,
         stdin=stdin,
         stdout=stdout,

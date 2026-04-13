@@ -8,7 +8,8 @@
 [![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
 
 Retro terminal CLI for testing and using **Mistral Small 4** locally against
-`llama.cpp`, with the official `mistralai` Python SDK.
+`llama.cpp`, and remotely against Mistral cloud, with the official `mistralai`
+Python SDK.
 
 The repository is intentionally focused on one workflow:
 
@@ -24,6 +25,7 @@ The repository is intentionally focused on one workflow:
 - optional FireCrawl MCP tools loaded from `mcp.json` using
   `FIRECRAWL_API_KEY` from your environment
 - `/image` and `/doc` attachment commands
+- `/remote on|off` to switch between local `llama.cpp` and Mistral cloud
 - tests for completion, streaming, cancellation recovery and multimodal payloads
 
 ## Quick start
@@ -50,7 +52,14 @@ Inside the REPL:
 - `/edit PATH -- ...` to write text files
 - `/image` to pick and analyze images
 - `/doc` to pick and analyze documents
+- `/remote on|off` to switch cloud mode
 - `/reset`, `/system ...`, `/exit`
+
+Remote mode requirements:
+
+- export `MISTRAL_API_KEY` in your shell
+- remote mode uses `mistral-small-latest`
+- backend switching resets the active conversation
 
 ## Local Mistral Small 4 setup
 
@@ -78,6 +87,12 @@ Recommended runtime defaults used by the CLI:
 - streaming on by default
 - `max_tokens` unset unless you override it
 
+Remote mode keeps the same sampling defaults, but it does not send
+`prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for
+`mistral-small-latest`, so the CLI uses the official SDK with
+`reasoning_effort=high` when visible reasoning is enabled, and
+`reasoning_effort=none` when it is disabled.
+
 The repository now includes the exact reasoning template at
 [`mistral-small-4-reasoning.jinja`](mistral-small-4-reasoning.jinja). In this
 local setup it is effectively required if you want reasoning enabled by
@@ -98,6 +113,8 @@ make docs
 `make check` runs formatting, lint and type checks.
 `make test` runs the full `pytest` suite, including local integration tests
 that require the `llama.cpp` server.
+Remote cloud integration is available as an opt-in smoke test with
+`MISTRAL_RUN_REMOTE_TESTS=1 MISTRAL_API_KEY=...`.
 `make docs` regenerates the checked-in API reference from public docstrings.
 
 ## Repository layout

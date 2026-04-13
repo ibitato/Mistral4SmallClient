@@ -12,7 +12,12 @@ from mistral4cli.cli import (
     _write_tty_newline,
     main,
 )
-from mistral4cli.local_mistral import LocalGenerationConfig
+from mistral4cli.local_mistral import (
+    BackendKind,
+    LocalGenerationConfig,
+    LocalMistralConfig,
+    RemoteMistralConfig,
+)
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.session import MistralCodingSession
@@ -48,13 +53,13 @@ class FakeToolCall:
 
 @dataclass(slots=True)
 class FakeMessage:
-    content: str | None = None
+    content: str | list[dict[str, Any]] | None = None
     tool_calls: list[FakeToolCall] | None = None
 
 
 @dataclass(slots=True)
 class FakeDelta:
-    content: str | None = None
+    content: str | list[dict[str, Any]] | None = None
     tool_calls: list[FakeToolCall] | None = None
 
 
@@ -274,7 +279,8 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert exit_code == 0
     assert client_factory_called is False
     rendered = output.getvalue()
-    assert "Mistral Small 4 local CLI" in rendered
+    assert "Mistral Small 4 CLI" in rendered
+    assert "Backend: local" in rendered
     assert "Local OS tools: ready" in rendered
     assert "temperature=0.7" in rendered
     assert "top_p=0.95" in rendered
@@ -322,6 +328,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
 
     assert "Mistral4Small retro console" in banner
     assert "Type /help for actionable commands" in banner
+    assert "Mistral cloud" in banner
     assert "/tools" in help_text
     assert "FireCrawl MCP" in help_text
     assert "/run" in help_text
@@ -330,6 +337,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/ls" in help_text
     assert "/image" in help_text
     assert "/doc" in help_text
+    assert "/remote" in help_text
     assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
     assert "Ctrl-C cancels the current response" in help_text
@@ -463,6 +471,7 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
         "--prompt describe",
     )
     assert _parse_command("/doc --prompt resume") == ("doc", "--prompt resume")
+    assert _parse_command("/remote on") == ("remote", "on")
     assert _parse_command("/reasoning off") == ("reasoning", "off")
     assert _parse_command("/run --cwd . -- git status") == (
         "run",
@@ -515,6 +524,141 @@ def test_write_tty_newline_emits_crlf() -> None:
     _write_tty_newline(output)
 
     assert output.getvalue() == "\r\n"
+
+
+def test_remote_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return only ok.", stream=False)
+
+    assert result.content == "ok"
+    assert "prompt_mode" not in fake_client.chat.complete_calls[0]
+    assert fake_client.chat.complete_calls[0]["reasoning_effort"] == "high"
+
+
+def test_remote_request_disables_reasoning_effort_when_hidden() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        show_reasoning=False,
+    )
+
+    result = session.send("Return only ok.", stream=False)
+
+    assert result.content == "ok"
+    assert "prompt_mode" not in fake_client.chat.complete_calls[0]
+    assert fake_client.chat.complete_calls[0]["reasoning_effort"] == "none"
+
+
+def test_remote_command_requires_api_key(monkeypatch: Any) -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+
+    should_exit = _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert should_exit is False
+    assert session.backend_kind is BackendKind.LOCAL
+    assert "[remote] Set MISTRAL_API_KEY" in output.getvalue()
+
+
+def test_remote_command_switches_backend_and_resets_conversation(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    captured: list[object] = []
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.messages.append({"role": "user", "content": "stale"})
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    def client_factory(config: object) -> FakeClient:
+        captured.append(config)
+        return FakeClient()
+
+    should_exit = _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=client_factory,
+    )
+
+    assert should_exit is False
+    assert len(captured) == 1
+    assert isinstance(captured[0], RemoteMistralConfig)
+    assert session.backend_kind is BackendKind.REMOTE
+    assert session.model_id == "mistral-small-latest"
+    assert session.server_url is None
+    assert session.messages == [
+        {"role": "system", "content": session.system_prompt},
+    ]
+    assert "Remote backend enabled. Conversation reset." in output.getvalue()
+
+
+def test_remote_off_switches_back_to_local() -> None:
+    output = io.StringIO()
+    captured: list[object] = []
+    local_config = LocalMistralConfig()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    def client_factory(config: object) -> FakeClient:
+        captured.append(config)
+        return FakeClient()
+
+    should_exit = _run_command(
+        "remote",
+        "off",
+        session,
+        output,
+        local_config=local_config,
+        client_factory=client_factory,
+    )
+
+    assert should_exit is False
+    assert len(captured) == 1
+    assert captured[0] == local_config
+    assert session.backend_kind is BackendKind.LOCAL
+    assert session.model_id == local_config.model_id
+    assert session.server_url == local_config.server_url
+    assert "Local backend enabled. Conversation reset." in output.getvalue()
 
 
 def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
@@ -760,7 +904,7 @@ def test_reasoning_command_updates_session_state() -> None:
     )
 
     assert _run_command("reasoning", "", session, output) is False
-    assert "Visible reasoning: on" in output.getvalue()
+    assert "Visible reasoning: on (local raw endpoint)" in output.getvalue()
 
     output.truncate(0)
     output.seek(0)
@@ -772,7 +916,146 @@ def test_reasoning_command_updates_session_state() -> None:
     output.seek(0)
     assert _run_command("reasoning", "toggle", session, output) is False
     assert session.show_reasoning is True
-    assert "Visible reasoning: on" in output.getvalue()
+    assert "Visible reasoning: on (local raw endpoint)" in output.getvalue()
+
+
+def test_remote_reasoning_command_reports_remote_backend() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("reasoning", "", session, output) is False
+    assert "Visible reasoning: on (remote SDK)" in output.getvalue()
+
+
+def test_remote_structured_reasoning_is_rendered_and_committed_cleanly() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            content=[
+                                {
+                                    "type": "thinking",
+                                    "thinking": [
+                                        {"type": "text", "text": "plan first"}
+                                    ],
+                                },
+                                {"type": "text", "text": "ok"},
+                            ]
+                        ),
+                        finish_reason="stop",
+                    )
+                ]
+            )
+        ]
+    )
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return ok.", stream=False)
+
+    assert result.reasoning == "plan first"
+    assert result.content == "ok"
+    assert output.getvalue() == "plan first\n\nok\n"
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_remote_stream_reasoning_is_rendered_and_committed_cleanly() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[],
+        stream_chunks=[],
+    )
+    fake_client.chat.stream_chunks = []
+    fake_client.chat.last_stream = FakeStream(
+        [
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(content=""),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+            ),
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(
+                                content=[
+                                    {
+                                        "type": "thinking",
+                                        "thinking": [{"type": "text", "text": "plan "}],
+                                    }
+                                ]
+                            ),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+            ),
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(
+                                content=[
+                                    {
+                                        "type": "thinking",
+                                        "thinking": [{"type": "text", "text": "first"}],
+                                    }
+                                ]
+                            ),
+                            finish_reason=None,
+                        )
+                    ]
+                )
+            ),
+            FakeEvent(
+                data=FakeResponse(
+                    choices=[
+                        FakeChoice(
+                            delta=FakeDelta(content=[{"type": "text", "text": "ok"}]),
+                            finish_reason="stop",
+                        )
+                    ]
+                )
+            ),
+        ]
+    )
+    fake_client.chat.stream = lambda **kwargs: fake_client.chat.last_stream  # type: ignore[method-assign]
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return ok.", stream=True)
+
+    assert result.reasoning == "plan first"
+    assert result.content == "ok"
+    assert output.getvalue() == "plan first\n\nok\n"
+    assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 
 
 def test_image_shortcut_reports_invalid_selection_without_crashing(

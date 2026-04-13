@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import pytest
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 from mistral4cli.local_mistral import DEFAULT_MODEL_ID
 

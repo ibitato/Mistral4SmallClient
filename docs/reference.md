@@ -54,13 +54,17 @@ Command-line entrypoint for the local Mistral Small 4 coding CLI.
 
 Build the command-line parser for the CLI.
 
-#### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[LocalMistralConfig], Mistral]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
+#### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[MistralConfig], Mistral]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
 
 Run the CLI.
 
 ## `mistral4cli.local_mistral`
 
-Helpers for the local Mistral Small 4 deployment.
+Configuration and client helpers for local and remote Mistral backends.
+
+### Class `BackendKind`
+
+Runtime backend modes supported by the CLI.
 
 ### Class `LocalGenerationConfig`
 
@@ -82,9 +86,23 @@ Configuration for the local llama.cpp-backed Mistral endpoint.
 
   Build a config from environment variables with safe defaults.
 
-#### `build_client(config: 'LocalMistralConfig | None' = None) -> 'Mistral'`
+### Class `RemoteAPIKeyError`
 
-Construct an official `mistralai` client pointed at the local server.
+Raised when remote Mistral cloud mode is requested without an API key.
+
+### Class `RemoteMistralConfig`
+
+Configuration for the remote Mistral cloud endpoint.
+
+#### Methods
+
+  #### `from_env(cls, timeout_ms: 'int' = 120000) -> 'RemoteMistralConfig'`
+
+  Build a remote config from environment variables.
+
+#### `build_client(config: 'MistralConfig | None' = None) -> 'Mistral'`
+
+Construct an official `mistralai` client for the selected backend.
 
 #### `get_health(server_url: 'str | None' = None) -> 'dict[str, Any]'`
 
@@ -97,6 +115,10 @@ Fetch and decode a JSON document from the local server.
 #### `list_models(server_url: 'str | None' = None) -> 'dict[str, Any]'`
 
 Return the `/v1/models` payload from the local server.
+
+#### `remote_api_key_available() -> 'bool'`
+
+Return whether the remote Mistral cloud API key is available.
 
 ## `mistral4cli.local_tools`
 
@@ -226,6 +248,10 @@ Stateful conversation helper for the local Mistral CLI.
 
   Return a live tool catalog summary.
 
+  #### `reasoning_status_text(self) -> 'str'`
+
+  Return a user-facing visible-reasoning status string.
+
   #### `reset(self) -> 'None'`
 
   Reset the conversation to the system prompt.
@@ -246,15 +272,23 @@ Stateful conversation helper for the local Mistral CLI.
 
   Replace the active system prompt and reset the conversation.
 
+  #### `switch_backend(self, client: 'Mistral', backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None') -> 'None'`
+
+  Swap the active model backend and reset the conversation.
+
   #### `toggle_reasoning_visibility(self) -> 'bool'`
 
   Toggle visible reasoning output and return the new state.
+
+  #### `visible_reasoning_supported(self) -> 'bool'`
+
+  Return whether the active backend can render visible reasoning.
 
 ### Class `TurnResult`
 
 Result of a single user turn.
 
-#### `render_defaults_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -322,7 +356,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(model_id: 'str', server_url: 'str', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
 
 Render a compact runtime summary.
 

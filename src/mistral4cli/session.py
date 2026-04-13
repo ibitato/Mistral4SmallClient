@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, TextIO, cast
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from mistralai import Mistral
+from mistralai.client import Mistral
 
 from mistral4cli.local_mistral import (
     DEFAULT_MODEL_ID,
     DEFAULT_SERVER_URL,
+    BackendKind,
     LocalGenerationConfig,
 )
 from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolResult
@@ -41,8 +42,9 @@ REASONING_TAG_PAIRS = (
 
 def render_defaults_summary(
     *,
+    backend_kind: BackendKind,
     model_id: str,
-    server_url: str,
+    server_url: str | None,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
     reasoning_visible: bool,
@@ -51,6 +53,7 @@ def render_defaults_summary(
     """Render the active runtime defaults as human-readable text."""
 
     return render_runtime_summary(
+        backend_kind=backend_kind,
         model_id=model_id,
         server_url=server_url,
         generation=generation,
@@ -225,8 +228,9 @@ class MistralCodingSession:
     """Stateful conversation helper for the local Mistral CLI."""
 
     client: Mistral
+    backend_kind: BackendKind = BackendKind.LOCAL
     model_id: str = DEFAULT_MODEL_ID
-    server_url: str = DEFAULT_SERVER_URL
+    server_url: str | None = DEFAULT_SERVER_URL
     generation: LocalGenerationConfig = field(default_factory=LocalGenerationConfig)
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     tool_bridge: ToolBridge | None = None
@@ -276,13 +280,43 @@ class MistralCodingSession:
         """Render the active runtime defaults as human-readable text."""
 
         return render_defaults_summary(
+            backend_kind=self.backend_kind,
             model_id=self.model_id,
             server_url=self.server_url,
-            generation=self.generation,
+            generation=self._display_generation(),
             stream_enabled=self.stream_enabled,
             reasoning_visible=self.show_reasoning,
             tool_summary=self.describe_tool_status(),
         )
+
+    def switch_backend(
+        self,
+        *,
+        client: Mistral,
+        backend_kind: BackendKind,
+        model_id: str,
+        server_url: str | None,
+    ) -> None:
+        """Swap the active model backend and reset the conversation."""
+
+        self.client = client
+        self.backend_kind = backend_kind
+        self.model_id = model_id
+        self.server_url = server_url
+        self.reset()
+
+    def visible_reasoning_supported(self) -> bool:
+        """Return whether the active backend can render visible reasoning."""
+
+        return True
+
+    def reasoning_status_text(self) -> str:
+        """Return a user-facing visible-reasoning status string."""
+
+        state = "on" if self.show_reasoning else "off"
+        if self.backend_kind is BackendKind.REMOTE:
+            return f"Visible reasoning: {state} (remote SDK)"
+        return f"Visible reasoning: {state} (local raw endpoint)"
 
     def set_reasoning_visibility(self, visible: bool) -> None:
         """Enable or disable visible reasoning output."""
@@ -401,8 +435,12 @@ class MistralCodingSession:
         }
         if self.generation.max_tokens is not None:
             kwargs["max_tokens"] = self.generation.max_tokens
-        if self.generation.prompt_mode is not None:
-            kwargs["prompt_mode"] = self.generation.prompt_mode
+        if self.backend_kind is BackendKind.REMOTE:
+            kwargs["reasoning_effort"] = "high" if self.show_reasoning else "none"
+        else:
+            prompt_mode = self._effective_prompt_mode()
+            if prompt_mode is not None:
+                kwargs["prompt_mode"] = prompt_mode
         if tools:
             kwargs["tools"] = tools
         return kwargs
@@ -410,9 +448,15 @@ class MistralCodingSession:
     def _should_use_raw_chat(self) -> bool:
         """Return whether the local raw chat endpoint should be used."""
 
-        return self.show_reasoning and isinstance(self.client, Mistral)
+        return (
+            self.backend_kind is BackendKind.LOCAL
+            and self.show_reasoning
+            and isinstance(self.client, Mistral)
+        )
 
     def _chat_endpoint(self) -> str:
+        if not self.server_url:
+            raise RuntimeError("The raw chat endpoint is only available in local mode.")
         return f"{self.server_url.rstrip('/')}/v1/chat/completions"
 
     def _open_raw_request(self, payload: dict[str, Any]) -> Any:
@@ -698,13 +742,16 @@ class MistralCodingSession:
             return _ModelTurn(content="", finish_reason="error", error=True)
 
         choice = response.choices[0]
-        content_value = choice.message.content
-        raw_content = content_value if isinstance(content_value, str) else ""
+        message = choice.message
+        if message is None:
+            self._print("[error] empty response message\n")
+            return _ModelTurn(content="", finish_reason="error", error=True)
+        content_value = message.content
         finish_reason = choice.finish_reason or "stop"
-        tool_calls = _normalize_tool_calls(getattr(choice.message, "tool_calls", None))
-        parsed = _parse_reasoning_text(raw_content)
-        content = parsed.answer
-        reasoning = parsed.reasoning
+        tool_calls = _normalize_tool_calls(getattr(message, "tool_calls", None))
+        segments = _content_segments_from_value(content_value)
+        content = _join_segments(segments, kind="answer")
+        reasoning = _join_segments(segments, kind="reasoning")
         reasoning_printed = False
         answer_started = False
 
@@ -716,7 +763,7 @@ class MistralCodingSession:
                 tool_calls=tool_calls,
             )
 
-        for segment in parsed.segments:
+        for segment in segments:
             if segment.kind == "reasoning":
                 self._print_reasoning(segment.text)
                 reasoning_printed = True
@@ -726,7 +773,7 @@ class MistralCodingSession:
                     answer_started=answer_started,
                 )
                 self._print(segment.text)
-        if parsed.segments and not raw_content.endswith("\n"):
+        if segments and not content.endswith("\n"):
             self._print("\n")
         elif finish_reason == "length":
             self._print("[truncated response without text]\n")
@@ -744,6 +791,8 @@ class MistralCodingSession:
         printed_anything = False
         reasoning_printed = False
         answer_started = False
+        answer_parts: list[str] = []
+        reasoning_parts: list[str] = []
 
         try:
             stream = self.client.chat.stream(
@@ -763,12 +812,28 @@ class MistralCodingSession:
                             if segment.kind == "reasoning":
                                 self._print_reasoning(segment.text)
                                 reasoning_printed = True
+                                reasoning_parts.append(segment.text)
                             else:
                                 answer_started = self._print_answer_separator(
                                     reasoning_printed=reasoning_printed,
                                     answer_started=answer_started,
                                 )
                                 self._print(segment.text)
+                                answer_parts.append(segment.text)
+                            printed_anything = True
+                    elif isinstance(content, list):
+                        for segment in _content_segments_from_value(content):
+                            if segment.kind == "reasoning":
+                                self._print_reasoning(segment.text)
+                                reasoning_printed = True
+                                reasoning_parts.append(segment.text)
+                            else:
+                                answer_started = self._print_answer_separator(
+                                    reasoning_printed=reasoning_printed,
+                                    answer_started=answer_started,
+                                )
+                                self._print(segment.text)
+                                answer_parts.append(segment.text)
                             printed_anything = True
                     for tool_call in getattr(delta, "tool_calls", None) or []:
                         index = int(getattr(tool_call, "index", 0) or 0)
@@ -779,8 +844,8 @@ class MistralCodingSession:
         except KeyboardInterrupt:
             self._print("\n[interrupted]\n")
             return _ModelTurn(
-                content=parser.answer,
-                reasoning=parser.reasoning,
+                content=("".join(answer_parts).strip() or parser.answer),
+                reasoning=("".join(reasoning_parts).strip() or parser.reasoning),
                 finish_reason="cancelled",
                 cancelled=True,
             )
@@ -792,15 +857,17 @@ class MistralCodingSession:
             if segment.kind == "reasoning":
                 self._print_reasoning(segment.text)
                 reasoning_printed = True
+                reasoning_parts.append(segment.text)
             else:
                 answer_started = self._print_answer_separator(
                     reasoning_printed=reasoning_printed,
                     answer_started=answer_started,
                 )
                 self._print(segment.text)
+                answer_parts.append(segment.text)
             printed_anything = True
 
-        content = parser.answer
+        content = "".join(answer_parts).strip()
         if printed_anything and not content.endswith("\n"):
             self._print("\n")
         if finish_reason == "length" and not content:
@@ -810,7 +877,7 @@ class MistralCodingSession:
         return _ModelTurn(
             content=content,
             finish_reason=finish_reason or "stop",
-            reasoning=parser.reasoning,
+            reasoning="".join(reasoning_parts).strip(),
             tool_calls=tool_calls,
         )
 
@@ -825,6 +892,14 @@ class MistralCodingSession:
         if not content:
             return None
         return content
+
+    def _effective_prompt_mode(self) -> str | None:
+        if self.backend_kind is BackendKind.REMOTE:
+            return None
+        return self.generation.prompt_mode
+
+    def _display_generation(self) -> LocalGenerationConfig:
+        return replace(self.generation, prompt_mode=self._effective_prompt_mode())
 
 
 def _normalize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
@@ -902,3 +977,28 @@ def _parse_reasoning_text(text: str) -> _ParsedReasoningText:
         answer=parser.answer,
         reasoning=parser.reasoning,
     )
+
+
+def _content_segments_from_value(content: Any) -> list[_RenderedSegment]:
+    if isinstance(content, str):
+        return _parse_reasoning_text(content).segments
+    if not isinstance(content, list):
+        return []
+
+    segments: list[_RenderedSegment] = []
+    for block in content:
+        block_type = _field(block, "type")
+        if block_type == "text":
+            text = _field(block, "text")
+            if isinstance(text, str) and text:
+                segments.append(_RenderedSegment(kind="answer", text=text))
+        elif block_type == "thinking":
+            for item in _field(block, "thinking", []) or []:
+                text = _field(item, "text")
+                if isinstance(text, str) and text:
+                    segments.append(_RenderedSegment(kind="reasoning", text=text))
+    return segments
+
+
+def _join_segments(segments: list[_RenderedSegment], *, kind: str) -> str:
+    return "".join(segment.text for segment in segments if segment.kind == kind).strip()

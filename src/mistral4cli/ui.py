@@ -6,7 +6,11 @@ import os
 from collections.abc import Sequence
 from typing import TextIO
 
-from mistral4cli.local_mistral import LocalGenerationConfig
+from mistral4cli.local_mistral import (
+    REMOTE_SERVER_LABEL,
+    BackendKind,
+    LocalGenerationConfig,
+)
 
 GREEN = "\x1b[38;5;82m"
 ORANGE = "\x1b[38;5;208m"
@@ -62,8 +66,9 @@ def _paint_multiline(
 
 def render_runtime_summary(
     *,
+    backend_kind: BackendKind,
     model_id: str,
-    server_url: str,
+    server_url: str | None,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
     reasoning_visible: bool,
@@ -78,8 +83,9 @@ def render_runtime_summary(
     stream_mode = "on" if stream_enabled else "off"
     reasoning_mode = "on" if reasoning_visible else "off"
     lines = [
-        "Mistral Small 4 local CLI",
-        f"Server: {server_url}",
+        "Mistral Small 4 CLI",
+        f"Backend: {backend_kind.value}",
+        f"Server: {server_url or REMOTE_SERVER_LABEL}",
         f"Model: {model_id}",
         (
             "Sampling: "
@@ -101,7 +107,11 @@ def render_welcome_banner(summary: str, *, stream: TextIO) -> str:
     lines = [
         _paint_multiline(ASCII_BANNER, GREEN, stream, bold=True),
         _paint("Mistral4Small retro console", ORANGE, stream, bold=True),
-        _paint("Local model, official SDK, optional MCP tools.", GREEN, stream),
+        _paint(
+            "Official SDK, local llama.cpp, optional Mistral cloud and MCP tools.",
+            GREEN,
+            stream,
+        ),
         _paint(summary, GREEN, stream),
         _paint(
             "Type /help for actionable commands. Ctrl-C cancels the current answer.",
@@ -136,6 +146,7 @@ def render_help_screen(
         "/edit        Write text to a file.",
         "/image       Pick images and ask the model to analyze them.",
         "/doc         Pick documents and send page images for OCR analysis.",
+        "/remote      Show, enable, or disable the Mistral cloud backend.",
         "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
         "/reset       Clear the conversation but keep the system prompt.",
         "/system TXT  Replace the system prompt and reset the chat.",
@@ -156,7 +167,7 @@ def render_help_screen(
         "Up/Down arrows browse previous prompts.",
         "Ctrl-C cancels the current response without dropping the session.",
         "Ctrl-D exits the REPL.",
-        "Visible reasoning is rendered in dim italic text when the model emits it.",
+        "Visible reasoning is rendered in dim italic text when the backend emits it.",
     ]
     examples_section = [
         _paint("Examples", ORANGE, stream, bold=True),
@@ -168,6 +179,7 @@ def render_help_screen(
         '  - "/edit notes.txt -- Replace this text."',
         '  - "/image --prompt Describe the selected image."',
         '  - "/doc --prompt Summarize the file contents."',
+        '  - "/remote on"',
         '  - "/reasoning off"',
         '  - "/reasoning toggle"',
         '  - "Use shell to run `git status` and summarize the result."',

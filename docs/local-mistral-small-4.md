@@ -54,6 +54,7 @@ an actionable help system:
 
 - `/help` shows commands, examples, and MCP status
 - `/defaults` prints the active runtime defaults
+- `/remote on|off` switches between local `llama.cpp` and Mistral cloud
 - `/tools` shows the loaded FireCrawl MCP catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
@@ -113,10 +114,20 @@ Runtime defaults:
 - streaming: on
 - MCP: FireCrawl auto-tools on when `mcp.json` is present
 
+Remote mode:
+
+- reads `MISTRAL_API_KEY` from the environment
+- uses `mistral-small-latest`
+- resets the conversation when switching backend
+- stays on the official Python SDK path
+- uses `reasoning_effort=high` when visible reasoning is enabled
+- uses `reasoning_effort=none` when visible reasoning is disabled
+
 Session commands:
 
 - `/help`
 - `/defaults`
+- `/remote [on|off]`
 - `/reset`
 - `/system <text>`
 - `/exit` or `/quit`
@@ -152,7 +163,7 @@ Operational notes:
 
 ## Reasoning visibility
 
-In this deployment, visible reasoning does not reliably arrive inside the
+In the local deployment, visible reasoning does not reliably arrive inside the
 official `mistralai` SDK models. Direct calls to the llama.cpp-compatible
 `/v1/chat/completions` endpoint show that the server emits reasoning in the
 separate `reasoning_content` field.
@@ -163,6 +174,23 @@ Implications:
 - the CLI uses the raw local chat endpoint when visible reasoning is enabled
 - `/reasoning on|off|toggle` only controls whether the CLI renders that stream;
   it does not force the model to emit reasoning if the server does not send it
+- the remote cloud backend does not use this raw fallback; it relies on the
+  official SDK structured `thinking` content instead
+
+## Remote Mistral cloud notes
+
+The CLI can switch to the remote Mistral cloud backend with `/remote on`.
+
+Current constraints from the official SDK and live API:
+
+- `mistral-small-latest` works through normal chat completions
+- `prompt_mode="reasoning"` is rejected by the live API for that model
+- `reasoning_effort` works through the current official Python SDK and returns
+  structured `thinking` content
+
+Because of that, remote mode is implemented through the official SDK with
+`reasoning_effort`, while the local backend still needs the raw fallback for
+llama.cpp reasoning visibility.
 
 ## Cancellation behavior
 
