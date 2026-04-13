@@ -448,6 +448,16 @@ class MistralCodingSession:
         self.stdout.write(render_reasoning_chunk(text, stream=self.stdout))
         self.stdout.flush()
 
+    def _print_answer_separator(
+        self, *, reasoning_printed: bool, answer_started: bool
+    ) -> bool:
+        """Separate visible reasoning from the final answer once per turn."""
+
+        if reasoning_printed and not answer_started:
+            self._print("\n\n")
+            return True
+        return answer_started
+
     def _rollback_to(self, message_count: int) -> None:
         self.messages = self.messages[:message_count]
 
@@ -530,6 +540,8 @@ class MistralCodingSession:
     ) -> _ModelTurn:
         payload = self._request_kwargs(stream=False, tools=tools)
         printed_anything = False
+        reasoning_printed = False
+        answer_started = False
         try:
             with self._open_raw_request(payload) as response:
                 raw = json.loads(response.read().decode("utf-8"))
@@ -561,12 +573,17 @@ class MistralCodingSession:
         if reasoning:
             self._print_reasoning(reasoning)
             printed_anything = True
-            if not reasoning.endswith("\n") and content:
-                self._print("\n")
+            reasoning_printed = True
         for segment in parsed.segments:
             if segment.kind == "answer":
+                answer_started = self._print_answer_separator(
+                    reasoning_printed=reasoning_printed,
+                    answer_started=answer_started,
+                )
                 self._print(segment.text)
                 printed_anything = True
+            elif segment.kind == "reasoning":
+                reasoning_printed = True
         if printed_anything and not content.endswith("\n"):
             self._print("\n")
         elif finish_reason == "length":
@@ -585,6 +602,8 @@ class MistralCodingSession:
         parser = _ReasoningParser()
         reasoning_parts: list[str] = []
         printed_anything = False
+        reasoning_printed = False
+        answer_started = False
 
         try:
             with self._open_raw_request(payload) as response:
@@ -607,12 +626,18 @@ class MistralCodingSession:
                         reasoning_parts.append(reasoning_delta)
                         self._print_reasoning(reasoning_delta)
                         printed_anything = True
+                        reasoning_printed = True
                     content = delta.get("content")
                     if isinstance(content, str) and content:
                         for segment in parser.feed(content):
                             if segment.kind == "reasoning":
                                 self._print_reasoning(segment.text)
+                                reasoning_printed = True
                             else:
+                                answer_started = self._print_answer_separator(
+                                    reasoning_printed=reasoning_printed,
+                                    answer_started=answer_started,
+                                )
                                 self._print(segment.text)
                             printed_anything = True
                     for tool_call in delta.get("tool_calls") or []:
@@ -636,7 +661,12 @@ class MistralCodingSession:
         for segment in parser.finish():
             if segment.kind == "reasoning":
                 self._print_reasoning(segment.text)
+                reasoning_printed = True
             else:
+                answer_started = self._print_answer_separator(
+                    reasoning_printed=reasoning_printed,
+                    answer_started=answer_started,
+                )
                 self._print(segment.text)
             printed_anything = True
 
@@ -675,6 +705,8 @@ class MistralCodingSession:
         parsed = _parse_reasoning_text(raw_content)
         content = parsed.answer
         reasoning = parsed.reasoning
+        reasoning_printed = False
+        answer_started = False
 
         if tool_calls:
             return _ModelTurn(
@@ -687,7 +719,12 @@ class MistralCodingSession:
         for segment in parsed.segments:
             if segment.kind == "reasoning":
                 self._print_reasoning(segment.text)
+                reasoning_printed = True
             else:
+                answer_started = self._print_answer_separator(
+                    reasoning_printed=reasoning_printed,
+                    answer_started=answer_started,
+                )
                 self._print(segment.text)
         if parsed.segments and not raw_content.endswith("\n"):
             self._print("\n")
@@ -705,6 +742,8 @@ class MistralCodingSession:
         tool_states: dict[int, _ToolCallState] = {}
         parser = _ReasoningParser()
         printed_anything = False
+        reasoning_printed = False
+        answer_started = False
 
         try:
             stream = self.client.chat.stream(
@@ -723,7 +762,12 @@ class MistralCodingSession:
                         for segment in parser.feed(content):
                             if segment.kind == "reasoning":
                                 self._print_reasoning(segment.text)
+                                reasoning_printed = True
                             else:
+                                answer_started = self._print_answer_separator(
+                                    reasoning_printed=reasoning_printed,
+                                    answer_started=answer_started,
+                                )
                                 self._print(segment.text)
                             printed_anything = True
                     for tool_call in getattr(delta, "tool_calls", None) or []:
@@ -747,7 +791,12 @@ class MistralCodingSession:
         for segment in parser.finish():
             if segment.kind == "reasoning":
                 self._print_reasoning(segment.text)
+                reasoning_printed = True
             else:
+                answer_started = self._print_answer_separator(
+                    reasoning_printed=reasoning_printed,
+                    answer_started=answer_started,
+                )
                 self._print(segment.text)
             printed_anything = True
 
