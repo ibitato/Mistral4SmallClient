@@ -129,6 +129,7 @@ def render_runtime_summary(
     stream_enabled: bool,
     reasoning_visible: bool,
     tool_summary: str,
+    logging_summary: str,
     stream: TextIO,
 ) -> str:
     """Render a formatted runtime summary."""
@@ -156,6 +157,7 @@ def render_runtime_summary(
             ),
         ),
         ("Tools", tool_summary),
+        ("Logging", logging_summary),
     ]
     return _render_table("Mistral Small 4 CLI", rows, stream=stream)
 
@@ -204,13 +206,16 @@ def render_help_screen(
         "/find        Search text in the project tree.",
         "/edit        Write text to a file.",
         (
-            "/image       Pick one image in the terminal; with no --prompt, "
-            "stage it for the next message."
+            "/image       Pick one image in the terminal; it stays active until "
+            "you drop it."
         ),
         (
-            "/doc         Pick one document in the terminal; with no --prompt, "
-            "stage it for the next message."
+            "/doc         Pick one document in the terminal; it stays active "
+            "until you drop it."
         ),
+        "/drop        Clear all active and staged attachments.",
+        "/dropimage   Clear active and staged image attachments.",
+        "/dropdoc     Clear active and staged document attachments.",
         "/remote      Show, enable, or disable the Mistral cloud backend.",
         "/timeout     Show or set the active request timeout.",
         "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
@@ -251,6 +256,7 @@ def render_help_screen(
         '  - "/doc" then type "Analyze this document."',
         '  - "/image --prompt Describe the selected image."',
         '  - "/doc --prompt Summarize the selected document."',
+        '  - "/drop"',
         '  - "/remote on"',
         '  - "/timeout 300000"',
         '  - "/reasoning off"',

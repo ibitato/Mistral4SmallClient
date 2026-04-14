@@ -11,12 +11,15 @@ from mistral4cli.attachments import (
     build_remote_image_message,
 )
 from mistral4cli.cli import (
+    _build_active_attachment_message,
     _clear_screen_if_supported,
     _InputHistory,
     _parse_command,
+    _PendingAttachment,
     _refresh_repl_screen,
     _ReplState,
     _run_command,
+    _run_repl,
     _write_tty_newline,
     main,
 )
@@ -28,6 +31,7 @@ from mistral4cli.local_mistral import (
     RemoteMistralConfig,
 )
 from mistral4cli.local_tools import LocalToolBridge
+from mistral4cli.logging_config import DEFAULT_LOG_RETENTION_DAYS
 from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.session import MistralCodingSession
 from mistral4cli.ui import (
@@ -309,6 +313,9 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "prompt_mode=reasoning" in rendered
     assert "reasoning=on" in rendered
     assert "stream=on" in rendered
+    assert "| Logging" in rendered
+    assert "debug=on" in rendered
+    assert f"retention={DEFAULT_LOG_RETENTION_DAYS}d" in rendered
 
 
 def test_once_uses_effective_defaults_and_prints_answer() -> None:
@@ -330,6 +337,25 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     assert call["top_p"] == 0.95
     assert call["prompt_mode"] == "reasoning"
     assert "max_tokens" not in call
+
+
+def test_main_creates_debug_log_file_by_default(tmp_path: Path) -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        ["--no-mcp", "--log-dir", str(tmp_path)],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert exit_code == 0
+    log_file = tmp_path / "mistral4cli.log"
+    assert log_file.exists()
+    rendered = log_file.read_text(encoding="utf-8")
+    assert "INFO mistral4cli Logging configured" in rendered
+    assert "INFO mistral4cli.cli CLI start" in rendered
+    assert "DEBUG mistral4cli.cli Built tool bridge count=1" in rendered
 
 
 def test_help_and_banner_are_actionable_and_retro() -> None:
@@ -362,6 +388,9 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/ls" in help_text
     assert "/image" in help_text
     assert "/doc" in help_text
+    assert "/drop" in help_text
+    assert "/dropdoc" in help_text
+    assert "/dropimage" in help_text
     assert "/remote" in help_text
     assert "/timeout" in help_text
     assert "/reasoning" in help_text
@@ -458,6 +487,7 @@ def test_tool_command_and_session_tool_loop() -> None:
     assert result.content == "Found a source."
     assert bridge.calls == [("web_search", {"query": "mcp"})]
     assert session.messages[-2]["role"] == "tool"
+    assert '{"results":' in session.messages[-2]["content"]
     assert session.messages[-1] == {
         "role": "assistant",
         "content": "Found a source.",
@@ -563,6 +593,7 @@ def test_textual_json_tool_call_fallback_executes_shell_tool(tmp_path: Path) -> 
     assert result.finish_reason == "stop"
     assert result.content == "shell tool executed"
     assert session.messages[-2]["role"] == "tool"
+    assert '"tool": "shell"' in session.messages[-2]["content"]
     assert "exit_code=0" in session.messages[-2]["content"]
     assert "ok" in session.messages[-2]["content"]
     assert session.messages[-1] == {
@@ -619,6 +650,7 @@ def test_textual_json_tool_call_fallback_executes_read_file_tool(
     assert result.finish_reason == "stop"
     assert result.content == "read tool executed"
     assert session.messages[-2]["role"] == "tool"
+    assert '"tool": "read_file"' in session.messages[-2]["content"]
     assert "hello from file" in session.messages[-2]["content"]
     assert session.messages[-1] == {
         "role": "assistant",
@@ -683,6 +715,154 @@ def test_textual_json_tool_call_fallback_executes_search_text_tool(
     assert session.messages[-1] == {
         "role": "assistant",
         "content": "search tool executed",
+    }
+
+
+def test_repeated_identical_tool_call_is_blocked(tmp_path: Path) -> None:
+    output = io.StringIO()
+    tool_call = FakeToolCall(
+        function=FakeToolFunction(
+            name="write_file",
+            arguments='{"path":"notes.txt","content":"hello"}',
+        )
+    )
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(tool_calls=[tool_call]),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(tool_calls=[tool_call]),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+        ]
+    )
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send("Write a file.", stream=False)
+
+    assert result.finish_reason == "error"
+    assert result.cancelled is False
+    assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello"
+    assert "repeated identical tool call blocked" in output.getvalue()
+    assert '"code": "repeated_identical_tool_call"' in session.messages[-1]["content"]
+
+
+def test_tool_loop_limit_forces_final_answer_after_last_tool(tmp_path: Path) -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            tool_calls=[
+                                FakeToolCall(
+                                    function=FakeToolFunction(
+                                        name="list_dir",
+                                        arguments='{"path":"/tmp","max_entries":50}',
+                                    )
+                                )
+                            ]
+                        ),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            tool_calls=[
+                                FakeToolCall(
+                                    function=FakeToolFunction(
+                                        name="list_dir",
+                                        arguments='{"path":"/tmp","max_entries":100}',
+                                    )
+                                )
+                            ]
+                        ),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            tool_calls=[
+                                FakeToolCall(
+                                    function=FakeToolFunction(
+                                        name="shell",
+                                        arguments=(
+                                            '{"command":"ls -lt /tmp/*.txt '
+                                            '2>/dev/null | head -20"}'
+                                        ),
+                                    )
+                                )
+                            ]
+                        ),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(
+                            tool_calls=[
+                                FakeToolCall(
+                                    function=FakeToolFunction(
+                                        name="read_file",
+                                        arguments='{"path":"/tmp/escritura.txt"}',
+                                    )
+                                )
+                            ]
+                        ),
+                        finish_reason="tool_calls",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="Aqui tienes el texto final."),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send("Lee el txt de hoy en /tmp.", stream=False)
+
+    assert result.finish_reason == "stop"
+    assert result.content == "Aqui tienes el texto final."
+    assert "[error] tool loop limit reached" not in output.getvalue()
+    assert len(fake_client.chat.complete_calls) == 5
+    assert session.messages[-1] == {
+        "role": "assistant",
+        "content": "Aqui tienes el texto final.",
     }
 
 
@@ -847,6 +1027,9 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
         "--prompt describe",
     )
     assert _parse_command("/doc --prompt resume") == ("doc", "--prompt resume")
+    assert _parse_command("/drop") == ("drop", "")
+    assert _parse_command("/dropdoc") == ("dropdoc", "")
+    assert _parse_command("/dropimage") == ("dropimage", "")
     assert _parse_command("/remote on") == ("remote", "on")
     assert _parse_command("/timeout 5m") == ("timeout", "5m")
     assert _parse_command("/reasoning off") == ("reasoning", "off")
@@ -1085,6 +1268,31 @@ def test_reset_command_reprints_runtime_summary() -> None:
     assert "| Timeout" in rendered
 
 
+def test_reset_command_clears_active_attachments() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    repl_state = _ReplState(
+        pending_attachment=_PendingAttachment(
+            kind="document",
+            summary="w3c-dummy.pdf",
+            paths=[FIXTURE_DIR / "w3c-dummy.pdf"],
+        ),
+        active_images=[FIXTURE_DIR / "wikimedia-demo.png"],
+        active_documents=[FIXTURE_DIR / "w3c-dummy.pdf"],
+    )
+
+    should_exit = _run_command("reset", "", session, output, repl_state=repl_state)
+
+    assert should_exit is False
+    assert repl_state.pending_attachment is None
+    assert repl_state.active_images == []
+    assert repl_state.active_documents == []
+
+
 def test_reset_command_clears_screen_in_tty(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
     session = MistralCodingSession(
@@ -1116,6 +1324,41 @@ def test_system_command_clears_screen_when_it_resets(monkeypatch: Any) -> None:
     assert should_exit is False
     assert output.getvalue().startswith(CLEAR_SCREEN)
     assert session.system_prompt == "You are terse."
+
+
+def test_drop_commands_clear_attachment_state() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    repl_state = _ReplState(
+        pending_attachment=_PendingAttachment(
+            kind="image",
+            summary="wikimedia-demo.png",
+            paths=[FIXTURE_DIR / "wikimedia-demo.png"],
+        ),
+        active_images=[FIXTURE_DIR / "wikimedia-demo.png"],
+        active_documents=[FIXTURE_DIR / "w3c-dummy.pdf"],
+    )
+
+    assert (
+        _run_command("dropimage", "", session, output, repl_state=repl_state) is False
+    )
+    assert repl_state.pending_attachment is None
+    assert repl_state.active_images == []
+    assert repl_state.active_documents == [FIXTURE_DIR / "w3c-dummy.pdf"]
+
+    assert _run_command("dropdoc", "", session, output, repl_state=repl_state) is False
+    assert repl_state.active_documents == []
+
+    repl_state.active_images = [FIXTURE_DIR / "wikimedia-demo.png"]
+    repl_state.active_documents = [FIXTURE_DIR / "w3c-dummy.pdf"]
+    assert _run_command("drop", "", session, output, repl_state=repl_state) is False
+    assert repl_state.active_images == []
+    assert repl_state.active_documents == []
+    assert "Active attachments cleared." in output.getvalue()
 
 
 def test_timeout_command_reports_current_timeout() -> None:
@@ -1250,6 +1493,140 @@ def test_doc_shortcut_without_prompt_stages_attachment_for_next_turn(
     assert repl_state.pending_attachment.kind == "document"
     assert fake_client.chat.stream_calls == []
     assert "attachment staged" in output.getvalue()
+
+
+def test_active_attachment_message_can_combine_image_and_document(
+    tmp_path: Path,
+) -> None:
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=io.StringIO(),
+    )
+
+    content = _build_active_attachment_message(
+        session,
+        prompt="Compare both attachments.",
+        image_paths=[FIXTURE_DIR / "wikimedia-demo.png"],
+        document_paths=[FIXTURE_DIR / "w3c-dummy.pdf"],
+    )
+
+    assert content[0]["type"] == "text"
+    assert "Active images:" in content[0]["text"]
+    assert "Active documents:" in content[0]["text"]
+    assert any(block.get("type") == "image_url" for block in content[1:])
+    assert any(
+        block.get("type") == "text"
+        and "Document 1: w3c-dummy.pdf" in str(block.get("text"))
+        for block in content[1:]
+    )
+
+
+def test_local_active_document_is_reinjected_on_followup_turn(tmp_path: Path) -> None:
+    output = io.StringIO()
+    pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+    prompts = iter(["/doc", "Describe the document.", "What text does it contain?"])
+
+    def input_func(_prompt: str) -> str:
+        try:
+            return next(prompts)
+        except StopIteration as exc:
+            raise EOFError from exc
+
+    exit_code = _run_repl(
+        session,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeClient(),
+        input_func=input_func,
+        stdin=FakeStdin(""),
+        stdout=output,
+        stream=False,
+        path_picker=lambda **_kwargs: [pdf_file],
+    )
+
+    assert exit_code == 0
+    assert len(fake_client.chat.complete_calls) == 2
+    first_call = fake_client.chat.complete_calls[0]
+    second_call = fake_client.chat.complete_calls[1]
+    first_user_messages = [
+        message["content"]
+        for message in first_call["messages"]
+        if message["role"] == "user"
+    ]
+    second_user_messages = [
+        message["content"]
+        for message in second_call["messages"]
+        if message["role"] == "user"
+    ]
+    first_content = first_user_messages[0]
+    second_content = second_user_messages[-1]
+    assert isinstance(first_content, list)
+    assert isinstance(second_content, list)
+    assert "tools" not in first_call
+    assert "tools" not in second_call
+    assert any(block.get("type") == "image_url" for block in first_content[1:])
+    assert any(block.get("type") == "image_url" for block in second_content[1:])
+
+
+def test_remote_active_document_is_reinjected_on_followup_turn(tmp_path: Path) -> None:
+    output = io.StringIO()
+    pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+    prompts = iter(["/doc", "Describe the document.", "What text does it contain?"])
+
+    def input_func(_prompt: str) -> str:
+        try:
+            return next(prompts)
+        except StopIteration as exc:
+            raise EOFError from exc
+
+    exit_code = _run_repl(
+        session,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeClient(),
+        input_func=input_func,
+        stdin=FakeStdin(""),
+        stdout=output,
+        stream=False,
+        path_picker=lambda **_kwargs: [pdf_file],
+    )
+
+    assert exit_code == 0
+    assert len(fake_client.chat.complete_calls) == 2
+    first_user_messages = [
+        message["content"]
+        for message in fake_client.chat.complete_calls[0]["messages"]
+        if message["role"] == "user"
+    ]
+    second_user_messages = [
+        message["content"]
+        for message in fake_client.chat.complete_calls[1]["messages"]
+        if message["role"] == "user"
+    ]
+    first_content = first_user_messages[0]
+    second_content = second_user_messages[-1]
+    assert isinstance(first_content, list)
+    assert isinstance(second_content, list)
+    assert "tools" not in fake_client.chat.complete_calls[0]
+    assert "tools" not in fake_client.chat.complete_calls[1]
+    assert any(block.get("type") == "document_url" for block in first_content[1:])
+    assert any(block.get("type") == "document_url" for block in second_content[1:])
 
 
 def test_attachment_turns_do_not_offer_tools(tmp_path: Path) -> None:

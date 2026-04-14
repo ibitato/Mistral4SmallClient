@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -11,6 +12,8 @@ from mistral4cli.mcp_bridge import MCPToolResult
 
 DEFAULT_SHELL_MAX_LINES = 120
 DEFAULT_SEARCH_MAX_RESULTS = 25
+
+logger = logging.getLogger("mistral4cli.local_tools")
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +62,11 @@ class LocalToolBridge:
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
         """Execute one local tool call by public name."""
 
+        logger.debug(
+            "Dispatching local tool name=%s argument_keys=%s",
+            public_name,
+            sorted(arguments),
+        )
         match public_name:
             case "shell":
                 return self._shell(arguments)
@@ -166,13 +174,16 @@ class LocalToolBridge:
         max_lines = max(1, int(arguments.get("max_lines", DEFAULT_SHELL_MAX_LINES)))
 
         if not command:
-            return MCPToolResult(text="[tool-error] command is required", is_error=True)
+            return self._tool_error("shell", "command is required")
         if not cwd.exists():
-            return MCPToolResult(
-                text=f"[tool-error] cwd not found: {cwd}",
-                is_error=True,
-            )
+            return self._tool_error("shell", f"cwd not found: {cwd}", cwd=str(cwd))
 
+        logger.info(
+            "Running shell command cwd=%s timeout_seconds=%s command=%s",
+            cwd,
+            timeout_seconds,
+            command,
+        )
         try:
             completed = subprocess.run(
                 ["/bin/bash", "-lc", command],
@@ -182,18 +193,14 @@ class LocalToolBridge:
                 timeout=timeout_seconds,
             )
         except subprocess.TimeoutExpired as exc:
-            return MCPToolResult(
-                text=(
-                    "[tool-error] shell command timed out after "
-                    f"{timeout_seconds}s: {exc}"
-                ),
-                is_error=True,
+            return self._tool_error(
+                "shell",
+                f"shell command timed out after {timeout_seconds}s: {exc}",
+                cwd=str(cwd),
+                timeout_seconds=timeout_seconds,
             )
         except Exception as exc:  # pragma: no cover - defensive
-            return MCPToolResult(
-                text=f"[tool-error] shell failed: {exc}",
-                is_error=True,
-            )
+            return self._tool_error("shell", f"shell failed: {exc}", cwd=str(cwd))
 
         output = "\n".join(
             [
@@ -211,77 +218,134 @@ class LocalToolBridge:
             offset=offset_lines,
             max_lines=max_lines,
         )
-        return MCPToolResult(text=paginated, is_error=completed.returncode != 0)
+        logger.debug(
+            "Shell command finished exit_code=%s stdout_len=%s stderr_len=%s",
+            completed.returncode,
+            len(completed.stdout),
+            len(completed.stderr),
+        )
+        return MCPToolResult(
+            text=paginated,
+            is_error=completed.returncode != 0,
+            structured_content={
+                "status": "error" if completed.returncode != 0 else "ok",
+                "tool": "shell",
+                "command": command,
+                "cwd": str(cwd),
+                "exit_code": completed.returncode,
+                "offset_lines": offset_lines,
+                "max_lines": max_lines,
+            },
+        )
 
     def _read_file(self, arguments: dict[str, Any]) -> MCPToolResult:
         path = self._resolve_path(str(arguments.get("path", "")))
         max_bytes = int(arguments.get("max_bytes", 1024 * 1024))
+        logger.debug("Reading file path=%s max_bytes=%s", path, max_bytes)
         try:
             if not path.exists():
-                return MCPToolResult(
-                    text=f"[tool-error] file not found: {path}", is_error=True
+                return self._tool_error(
+                    "read_file", f"file not found: {path}", path=str(path)
                 )
             if not path.is_file():
-                return MCPToolResult(
-                    text=f"[tool-error] not a file: {path}", is_error=True
+                return self._tool_error(
+                    "read_file", f"not a file: {path}", path=str(path)
                 )
             data = path.read_bytes()[:max_bytes]
             text = data.decode("utf-8", errors="replace")
-            return MCPToolResult(text=text, is_error=False)
+            return MCPToolResult(
+                text=text,
+                is_error=False,
+                structured_content={
+                    "status": "ok",
+                    "tool": "read_file",
+                    "path": str(path),
+                    "bytes_read": len(data),
+                    "max_bytes": max_bytes,
+                    "truncated": path.stat().st_size > len(data),
+                },
+            )
         except Exception as exc:  # pragma: no cover - defensive
-            return MCPToolResult(text=f"[tool-error] read failed: {exc}", is_error=True)
+            return self._tool_error("read_file", f"read failed: {exc}", path=str(path))
 
     def _write_file(self, arguments: dict[str, Any]) -> MCPToolResult:
         path = self._resolve_path(str(arguments.get("path", "")))
         content = str(arguments.get("content", ""))
+        logger.info("Writing file path=%s content_len=%s", path, len(content))
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
+            bytes_written = len(content.encode("utf-8"))
             return MCPToolResult(
-                text=f"wrote {len(content.encode('utf-8'))} bytes to {path}",
+                text=f"wrote {bytes_written} bytes to {path}",
                 is_error=False,
+                structured_content={
+                    "status": "ok",
+                    "tool": "write_file",
+                    "path": str(path),
+                    "bytes_written": bytes_written,
+                },
             )
         except Exception as exc:  # pragma: no cover - defensive
-            return MCPToolResult(
-                text=f"[tool-error] write failed: {exc}",
-                is_error=True,
+            return self._tool_error(
+                "write_file", f"write failed: {exc}", path=str(path)
             )
 
     def _list_dir(self, arguments: dict[str, Any]) -> MCPToolResult:
         path = self._resolve_path(str(arguments.get("path", ".")))
         max_entries = int(arguments.get("max_entries", 200))
+        logger.debug("Listing directory path=%s max_entries=%s", path, max_entries)
         try:
             if not path.exists():
-                return MCPToolResult(
-                    text=f"[tool-error] path not found: {path}", is_error=True
+                return self._tool_error(
+                    "list_dir", f"path not found: {path}", path=str(path)
                 )
             entries: list[str] = []
-            for child in sorted(path.iterdir(), key=lambda item: item.name.lower())[
-                :max_entries
-            ]:
+            all_children = sorted(path.iterdir(), key=lambda item: item.name.lower())
+            for child in all_children[:max_entries]:
                 suffix = "/" if child.is_dir() else ""
                 entries.append(child.name + suffix)
-            return MCPToolResult(text="\n".join(entries), is_error=False)
-        except Exception as exc:  # pragma: no cover - defensive
             return MCPToolResult(
-                text=f"[tool-error] list_dir failed: {exc}",
-                is_error=True,
+                text="\n".join(entries),
+                is_error=False,
+                structured_content={
+                    "status": "ok",
+                    "tool": "list_dir",
+                    "path": str(path),
+                    "count": len(entries),
+                    "max_entries": max_entries,
+                    "truncated": len(all_children) > len(entries),
+                },
+            )
+        except Exception as exc:  # pragma: no cover - defensive
+            return self._tool_error(
+                "list_dir", f"list_dir failed: {exc}", path=str(path)
             )
 
     def _search_text(self, arguments: dict[str, Any]) -> MCPToolResult:
         query = str(arguments.get("query", "")).strip()
         if not query:
-            return MCPToolResult(text="[tool-error] query is required", is_error=True)
+            return self._tool_error("search_text", "query is required")
 
         root = self._resolve_path(str(arguments.get("path", ".")))
         max_results = max(
             1, int(arguments.get("max_results", DEFAULT_SEARCH_MAX_RESULTS))
         )
         offset = max(0, int(arguments.get("offset", 0)))
+        logger.debug(
+            "Searching text root=%s query=%s max_results=%s offset=%s",
+            root,
+            query,
+            max_results,
+            offset,
+        )
         try:
             if not root.exists():
-                return MCPToolResult(
-                    text=f"[tool-error] path not found: {root}", is_error=True
+                return self._tool_error(
+                    "search_text",
+                    f"path not found: {root}",
+                    path=str(root),
+                    query=query,
                 )
 
             query_lower = query.lower()
@@ -302,7 +366,19 @@ class LocalToolBridge:
                         results.append(f"{path}:{line_number}: {excerpt}")
                         break
             if not results:
-                return MCPToolResult(text="No matches found.", is_error=False)
+                return MCPToolResult(
+                    text="No matches found.",
+                    is_error=False,
+                    structured_content={
+                        "status": "ok",
+                        "tool": "search_text",
+                        "query": query,
+                        "path": str(root),
+                        "total_matches": 0,
+                        "offset": offset,
+                        "max_results": max_results,
+                    },
+                )
 
             total_results = len(results)
             page = results[offset : offset + max_results]
@@ -313,6 +389,16 @@ class LocalToolBridge:
                         f"offset={offset} max_results={max_results}"
                     ),
                     is_error=False,
+                    structured_content={
+                        "status": "ok",
+                        "tool": "search_text",
+                        "query": query,
+                        "path": str(root),
+                        "total_matches": total_results,
+                        "offset": offset,
+                        "max_results": max_results,
+                        "returned": 0,
+                    },
                 )
 
             footer: list[str] = []
@@ -331,12 +417,41 @@ class LocalToolBridge:
             text = "\n".join(page)
             if footer:
                 text = "\n".join([text, *footer])
-            return MCPToolResult(text=text, is_error=False)
-        except Exception as exc:  # pragma: no cover - defensive
             return MCPToolResult(
-                text=f"[tool-error] search_text failed: {exc}",
-                is_error=True,
+                text=text,
+                is_error=False,
+                structured_content={
+                    "status": "ok",
+                    "tool": "search_text",
+                    "query": query,
+                    "path": str(root),
+                    "total_matches": total_results,
+                    "offset": offset,
+                    "max_results": max_results,
+                    "returned": len(page),
+                    "next_offset": end if end < total_results else None,
+                },
             )
+        except Exception as exc:  # pragma: no cover - defensive
+            return self._tool_error(
+                "search_text",
+                f"search_text failed: {exc}",
+                path=str(root),
+                query=query,
+            )
+
+    def _tool_error(self, tool: str, message: str, **structured: Any) -> MCPToolResult:
+        logger.warning("Local tool error tool=%s message=%s", tool, message)
+        return MCPToolResult(
+            text=f"[tool-error] {message}",
+            is_error=True,
+            structured_content={
+                "status": "error",
+                "tool": tool,
+                "message": message,
+                **structured,
+            },
+        )
 
     def _looks_textual(self, path: Path) -> bool:
         return path.suffix not in {

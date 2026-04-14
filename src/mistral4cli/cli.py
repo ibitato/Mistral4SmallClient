@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import shlex
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 from mistralai.client import Mistral
 
@@ -45,6 +46,11 @@ from mistral4cli.local_mistral import (
     remote_api_key_available,
 )
 from mistral4cli.local_tools import LocalToolBridge
+from mistral4cli.logging_config import (
+    LoggingConfig,
+    configure_logging,
+    render_logging_summary,
+)
 from mistral4cli.mcp_bridge import (
     MCPConfig,
     MCPToolBridge,
@@ -63,6 +69,8 @@ from mistral4cli.ui import (
     supports_full_terminal_ui,
     terminal_recommendation,
 )
+
+logger = logging.getLogger("mistral4cli.cli")
 
 
 @dataclass(slots=True)
@@ -129,6 +137,92 @@ class _ReplState:
     """Mutable REPL state that survives between commands."""
 
     pending_attachment: _PendingAttachment | None = None
+    active_images: list[Path] = field(default_factory=list)
+    active_documents: list[Path] = field(default_factory=list)
+
+
+def _set_active_attachment(
+    repl_state: _ReplState, *, kind: str, paths: Sequence[Path]
+) -> None:
+    active_paths = [path.expanduser() for path in paths]
+    if kind == "image":
+        repl_state.active_images = active_paths
+        return
+    repl_state.active_documents = active_paths
+
+
+def _clear_attachments(
+    repl_state: _ReplState,
+    *,
+    clear_images: bool,
+    clear_documents: bool,
+    clear_pending: bool = True,
+) -> None:
+    if clear_pending and repl_state.pending_attachment is not None:
+        pending_kind = repl_state.pending_attachment.kind
+        if (pending_kind == "image" and clear_images) or (
+            pending_kind == "document" and clear_documents
+        ):
+            repl_state.pending_attachment = None
+    if clear_images:
+        repl_state.active_images = []
+    if clear_documents:
+        repl_state.active_documents = []
+
+
+def _repl_prompt(repl_state: _ReplState) -> str:
+    tokens: list[str] = []
+    if repl_state.pending_attachment is not None:
+        tokens.append(f"stage:{repl_state.pending_attachment.kind}")
+    if repl_state.active_images:
+        tokens.append(f"img:{len(repl_state.active_images)}")
+    if repl_state.active_documents:
+        tokens.append(f"doc:{len(repl_state.active_documents)}")
+    if not tokens:
+        return "mistral4small> "
+    return f"mistral4small[{','.join(tokens)}]> "
+
+
+def _build_active_attachment_message(
+    session: MistralCodingSession,
+    *,
+    prompt: str,
+    image_paths: Sequence[Path],
+    document_paths: Sequence[Path],
+) -> list[dict[str, Any]]:
+    if not image_paths and not document_paths:
+        raise ValueError("At least one active attachment is required")
+
+    text_lines = [prompt.strip()]
+    if image_paths:
+        text_lines.extend(["", "Active images:"])
+        text_lines.extend(f"- {path.name}" for path in image_paths)
+    if document_paths:
+        text_lines.extend(["", "Active documents:"])
+        text_lines.extend(f"- {path.name}" for path in document_paths)
+        if session.backend_kind is BackendKind.REMOTE:
+            text_lines.append("")
+            text_lines.append("The active documents are attached natively.")
+        else:
+            text_lines.append("")
+            text_lines.append("The active documents are attached as OCR images.")
+
+    content: list[dict[str, Any]] = [{"type": "text", "text": "\n".join(text_lines)}]
+    if image_paths:
+        image_message = (
+            build_remote_image_message(image_paths, prompt=prompt)
+            if session.backend_kind is BackendKind.REMOTE
+            else build_image_message(image_paths, prompt=prompt)
+        )
+        content.extend(image_message[1:])
+    if document_paths:
+        document_message = (
+            build_remote_document_message(document_paths, prompt=prompt)
+            if session.backend_kind is BackendKind.REMOTE
+            else build_document_message(document_paths, prompt=prompt)
+        )
+        content.extend(document_message[1:])
+    return content
 
 
 def _optional_prompt_mode(value: str | None) -> str | None:
@@ -230,6 +324,30 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the effective defaults and exit.",
     )
+    parser.add_argument(
+        "--log-dir",
+        default=None,
+        help="Directory for rotated log files.",
+    )
+    parser.add_argument(
+        "--log-retention-days",
+        type=int,
+        default=None,
+        help="Keep rotated log files for this many days (default: 2).",
+    )
+    parser.add_argument(
+        "--debug",
+        dest="debug",
+        action="store_true",
+        default=None,
+        help="Enable debug logging (default: on).",
+    )
+    parser.add_argument(
+        "--no-debug",
+        dest="debug",
+        action="store_false",
+        help="Reduce logging verbosity to info.",
+    )
     return parser
 
 
@@ -271,27 +389,33 @@ def _resolve_remote_mcp_bridge(
     args: argparse.Namespace, stderr: TextIO
 ) -> MCPToolBridge | None:
     if args.no_mcp:
+        logger.info("MCP disabled via --no-mcp")
         return None
 
     config_path = discover_mcp_config_path(args.mcp_config)
     if config_path is None:
+        logger.debug("No MCP configuration discovered")
         return None
 
     try:
         config = MCPConfig.load(config_path)
     except FileNotFoundError:
+        logger.warning("MCP configuration not found path=%s", config_path)
         if args.mcp_config is not None or os.environ.get("MISTRAL_LOCAL_MCP_CONFIG"):
             stderr.write(f"[mcp] config not found: {config_path}\n")
             stderr.flush()
         return None
     except Exception as exc:
+        logger.exception("Could not load MCP configuration path=%s", config_path)
         stderr.write(f"[mcp] could not load {config_path}: {exc}\n")
         stderr.flush()
         return None
 
     if not config.configured:
+        logger.info("MCP configuration loaded but no servers are configured")
         return None
 
+    logger.info("MCP bridge enabled path=%s", config_path)
     return MCPToolBridge(config)
 
 
@@ -300,7 +424,29 @@ def _build_tool_bridge(args: argparse.Namespace, stderr: TextIO) -> CompositeToo
     remote_bridge = _resolve_remote_mcp_bridge(args, stderr)
     if remote_bridge is not None:
         bridges.append(remote_bridge)
+    logger.debug("Built tool bridge count=%s", len(bridges))
     return CompositeToolBridge(bridges=bridges)
+
+
+def _resolve_logging_config(args: argparse.Namespace) -> LoggingConfig:
+    base_config = LoggingConfig.from_env()
+    retention_days = (
+        args.log_retention_days
+        if args.log_retention_days is not None
+        else base_config.retention_days
+    )
+    return replace(
+        base_config,
+        directory=(
+            Path(args.log_dir).expanduser()
+            if args.log_dir is not None
+            else base_config.directory
+        ),
+        debug_enabled=(
+            args.debug if args.debug is not None else base_config.debug_enabled
+        ),
+        retention_days=max(1, retention_days),
+    )
 
 
 def _split_shortcut_argument(argument: str) -> tuple[str, str | None]:
@@ -515,6 +661,9 @@ def _run_image_shortcut(
         return False
 
     repl_state.pending_attachment = None
+    _set_active_attachment(repl_state, kind="image", paths=paths)
+    stdout.write("[image] attachment active. Use /dropimage or /drop to release it.\n")
+    stdout.flush()
     session.send_content(message, stream=session.stream_enabled, disable_tools=True)
     return False
 
@@ -574,6 +723,9 @@ def _run_doc_shortcut(
         return False
 
     repl_state.pending_attachment = None
+    _set_active_attachment(repl_state, kind="document", paths=paths)
+    stdout.write("[doc] attachment active. Use /dropdoc or /drop to release it.\n")
+    stdout.flush()
     session.send_content(message, stream=session.stream_enabled, disable_tools=True)
     return False
 
@@ -747,6 +899,7 @@ def _run_command(
 ) -> bool:
     if repl_state is None:
         repl_state = _ReplState()
+    logger.debug("Running command name=%s has_argument=%s", command, bool(argument))
     if command in {"help", "h", "?"}:
         stdout.write(
             render_help_screen(
@@ -828,10 +981,45 @@ def _run_command(
             stdin=stdin,
             path_picker=path_picker,
         )
+    if command == "drop":
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        stdout.write("Active attachments cleared.\n")
+        stdout.flush()
+        return False
+    if command == "dropimage":
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=False,
+            clear_pending=True,
+        )
+        stdout.write("Active image attachments cleared.\n")
+        stdout.flush()
+        return False
+    if command == "dropdoc":
+        _clear_attachments(
+            repl_state,
+            clear_images=False,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        stdout.write("Active document attachments cleared.\n")
+        stdout.flush()
+        return False
     if command in {"exit", "quit", "q"}:
         return True
     if command in {"reset", "new"}:
-        repl_state.pending_attachment = None
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
         session.reset()
         _refresh_repl_screen(stdout, session, startup=False)
         stdout.write("Conversation reset.\n")
@@ -843,7 +1031,12 @@ def _run_command(
         return False
     if command == "system":
         if argument:
-            repl_state.pending_attachment = None
+            _clear_attachments(
+                repl_state,
+                clear_images=True,
+                clear_documents=True,
+                clear_pending=True,
+            )
             session.set_system_prompt(argument)
             _refresh_repl_screen(stdout, session, startup=False)
             stdout.write("System prompt updated and conversation reset.\n")
@@ -906,7 +1099,12 @@ def _run_remote_command(
             model_id=remote_config.model_id,
             server_url=None,
         )
-        repl_state.pending_attachment = None
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
         _refresh_repl_screen(stdout, session, startup=False)
         stdout.write("Remote backend enabled. Conversation reset.\n")
         stdout.flush()
@@ -923,7 +1121,12 @@ def _run_remote_command(
             model_id=local_config.model_id,
             server_url=local_config.server_url,
         )
-        repl_state.pending_attachment = None
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
         _refresh_repl_screen(stdout, session, startup=False)
         stdout.write("Local backend enabled. Conversation reset.\n")
         stdout.flush()
@@ -992,13 +1195,14 @@ def _run_repl(
     stream: bool,
     path_picker: PathPicker | None,
 ) -> int:
+    logger.info("Starting interactive REPL")
     _refresh_repl_screen(stdout, session, startup=True)
     history = _InputHistory()
     repl_state = _ReplState()
     while True:
         try:
             line = _read_repl_line(
-                prompt="mistral4small> ",
+                prompt=_repl_prompt(repl_state),
                 input_func=input_func,
                 stdin=stdin,
                 stdout=stdout,
@@ -1007,10 +1211,12 @@ def _run_repl(
         except EOFError:
             stdout.write("\n")
             stdout.flush()
+            logger.info("REPL exited on EOF")
             return 0
         except KeyboardInterrupt:
             stdout.write("\n")
             stdout.flush()
+            logger.info("REPL input interrupted")
             continue
 
         stripped = line.strip()
@@ -1039,20 +1245,20 @@ def _run_repl(
         if repl_state.pending_attachment is not None:
             pending = repl_state.pending_attachment
             try:
+                next_active_images = list(repl_state.active_images)
+                next_active_documents = list(repl_state.active_documents)
                 if pending.kind == "image":
-                    if session.backend_kind is BackendKind.REMOTE:
-                        content = build_remote_image_message(
-                            pending.paths, prompt=stripped
-                        )
-                    else:
-                        content = build_image_message(pending.paths, prompt=stripped)
+                    next_active_images = [path.expanduser() for path in pending.paths]
                 else:
-                    if session.backend_kind is BackendKind.REMOTE:
-                        content = build_remote_document_message(
-                            pending.paths, prompt=stripped
-                        )
-                    else:
-                        content = build_document_message(pending.paths, prompt=stripped)
+                    next_active_documents = [
+                        path.expanduser() for path in pending.paths
+                    ]
+                content = _build_active_attachment_message(
+                    session,
+                    prompt=stripped,
+                    image_paths=next_active_images,
+                    document_paths=next_active_documents,
+                )
             except Exception as exc:
                 stdout.write(
                     f"[{pending.kind}] could not prepare staged attachment: {exc}\n"
@@ -1060,7 +1266,24 @@ def _run_repl(
                 stdout.flush()
                 repl_state.pending_attachment = None
                 continue
+            repl_state.active_images = next_active_images
+            repl_state.active_documents = next_active_documents
             repl_state.pending_attachment = None
+            result = session.send_content(content, stream=stream, disable_tools=True)
+        elif repl_state.active_images or repl_state.active_documents:
+            try:
+                content = _build_active_attachment_message(
+                    session,
+                    prompt=stripped,
+                    image_paths=repl_state.active_images,
+                    document_paths=repl_state.active_documents,
+                )
+            except Exception as exc:
+                stdout.write(
+                    f"[attachments] could not prepare active attachments: {exc}\n"
+                )
+                stdout.flush()
+                continue
             result = session.send_content(content, stream=stream, disable_tools=True)
         else:
             result = session.send(stripped, stream=stream)
@@ -1079,7 +1302,14 @@ def _build_session(
     tool_bridge: ToolBridge,
     stdout: TextIO,
     stream: bool,
+    logging_summary: str,
 ) -> MistralCodingSession:
+    logger.debug(
+        "Building session backend=%s model=%s stream=%s",
+        BackendKind.LOCAL.value,
+        config.model_id,
+        stream,
+    )
     return MistralCodingSession(
         client=client_factory(config),
         backend_kind=BackendKind.LOCAL,
@@ -1090,6 +1320,7 @@ def _build_session(
         tool_bridge=tool_bridge,
         stdout=stdout,
         stream_enabled=stream,
+        logging_summary=logging_summary,
     )
 
 
@@ -1107,8 +1338,18 @@ def main(
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    logging_config = _resolve_logging_config(args)
+    configure_logging(logging_config)
+    logger.info(
+        "CLI start print_defaults=%s once=%s stream=%s tty=%s",
+        args.print_defaults,
+        args.once is not None,
+        not args.no_stream,
+        stdin.isatty(),
+    )
     config, generation, system_prompt = _resolve_local_configs(args)
     tool_bridge = _build_tool_bridge(args, stderr)
+    logging_summary = render_logging_summary(logging_config)
 
     if args.print_defaults:
         stdout.write(
@@ -1121,6 +1362,7 @@ def main(
                 stream_enabled=not args.no_stream,
                 reasoning_visible=True,
                 tool_summary=tool_bridge.runtime_summary(),
+                logging_summary=logging_summary,
                 stream=stdout,
             )
             + "\nSystem prompt:\n"
@@ -1140,6 +1382,7 @@ def main(
             tool_bridge=tool_bridge,
             stdout=stdout,
             stream=stream,
+            logging_summary=logging_summary,
         )
         session.send(args.once, stream=stream)
         return 0
@@ -1155,6 +1398,7 @@ def main(
                 tool_bridge=tool_bridge,
                 stdout=stdout,
                 stream=stream,
+                logging_summary=logging_summary,
             )
             session.send(piped_prompt, stream=stream)
         return 0
@@ -1167,6 +1411,7 @@ def main(
         tool_bridge=tool_bridge,
         stdout=stdout,
         stream=stream,
+        logging_summary=logging_summary,
     )
     return _run_repl(
         session,

@@ -308,7 +308,7 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
 Result of a single user turn.
 
-#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -376,7 +376,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render a formatted runtime summary.
 

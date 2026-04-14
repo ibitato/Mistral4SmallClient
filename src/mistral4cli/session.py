@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field, replace
 from typing import Any, TextIO, cast
 from urllib.error import HTTPError, URLError
@@ -37,7 +38,10 @@ DEFAULT_SYSTEM_PROMPT = (
     "local tools, MCP, or external OCR/search tools unless the user explicitly "
     "asks for that. Do not claim the attachments are missing when the current "
     "message already contains them. If the conversation includes attached "
-    "images or documents, analyze them carefully before replying."
+    "images or documents, analyze them carefully before replying. Tool results "
+    "are authoritative. After a successful tool call, prefer using the result "
+    "to answer the user instead of repeating the same tool call with the same "
+    "arguments."
 )
 
 REASONING_TAG_PAIRS = (
@@ -45,6 +49,8 @@ REASONING_TAG_PAIRS = (
     ("[THINK]", "[/THINK]"),
     ("[think]", "[/think]"),
 )
+
+logger = logging.getLogger("mistral4cli.session")
 
 
 def render_defaults_summary(
@@ -57,6 +63,7 @@ def render_defaults_summary(
     stream_enabled: bool,
     reasoning_visible: bool,
     tool_summary: str,
+    logging_summary: str,
     stream: TextIO,
 ) -> str:
     """Render the active runtime defaults as human-readable text."""
@@ -70,6 +77,7 @@ def render_defaults_summary(
         stream_enabled=stream_enabled,
         reasoning_visible=reasoning_visible,
         tool_summary=tool_summary,
+        logging_summary=logging_summary,
         stream=stream,
     )
 
@@ -281,7 +289,8 @@ class MistralCodingSession:
     stdout: TextIO | None = None
     stream_enabled: bool = True
     show_reasoning: bool = True
-    max_tool_rounds: int = 4
+    logging_summary: str = "debug=on level=DEBUG rotate=daily retention=2d"
+    max_tool_rounds: int = 20
     messages: list[dict[str, Any]] = field(init=False, repr=False, default_factory=list)
     _mcp_warning_shown: bool = field(init=False, repr=False, default=False)
 
@@ -294,11 +303,22 @@ class MistralCodingSession:
             self.stdout = sys.stdout
         self.system_prompt = self.system_prompt.strip() or DEFAULT_SYSTEM_PROMPT
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        logger.debug(
+            "Session initialized backend=%s model=%s tools=%s",
+            self.backend_kind.value,
+            self.model_id,
+            self.tool_bridge is not None,
+        )
 
     def reset(self) -> None:
         """Reset the conversation to the system prompt."""
 
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        logger.info(
+            "Conversation reset backend=%s model=%s",
+            self.backend_kind.value,
+            self.model_id,
+        )
 
     def set_system_prompt(self, system_prompt: str) -> None:
         """Replace the active system prompt and reset the conversation."""
@@ -333,6 +353,7 @@ class MistralCodingSession:
             stream_enabled=self.stream_enabled,
             reasoning_visible=self.show_reasoning,
             tool_summary=self.describe_tool_status(),
+            logging_summary=self.logging_summary,
             stream=self.stdout,
         )
 
@@ -350,6 +371,12 @@ class MistralCodingSession:
         self.backend_kind = backend_kind
         self.model_id = model_id
         self.server_url = server_url
+        logger.info(
+            "Backend switched backend=%s model=%s server=%s",
+            backend_kind.value,
+            model_id,
+            server_url,
+        )
         self.reset()
 
     @property
@@ -405,9 +432,18 @@ class MistralCodingSession:
         if normalized is None:
             return TurnResult(content="", finish_reason="empty", cancelled=False)
 
+        logger.debug(
+            "Sending turn stream=%s disable_tools=%s attachments=%s content=%s",
+            stream,
+            disable_tools,
+            self._has_attachment_blocks(normalized),
+            self._content_summary(normalized),
+        )
         message_start = len(self.messages)
         self.messages.append({"role": "user", "content": normalized})
         try:
+            seen_tool_calls: set[str] = set()
+            tool_rounds_executed = 0
             tools = (
                 []
                 if disable_tools or self._has_attachment_blocks(normalized)
@@ -467,14 +503,88 @@ class MistralCodingSession:
                             text=f"[tool-error] {exc}", is_error=True
                         )
                     else:
+                        signature = self._tool_call_signature(name, arguments)
+                        if signature in seen_tool_calls:
+                            logger.warning(
+                                (
+                                    "Blocked repeated identical tool call "
+                                    "name=%s arguments=%s"
+                                ),
+                                name,
+                                self._summarize_tool_arguments(arguments),
+                            )
+                            self.messages.append(
+                                self._tool_message(
+                                    call=call,
+                                    result=MCPToolResult(
+                                        text=(
+                                            "[tool-error] repeated identical tool call "
+                                            "blocked; use the prior tool result"
+                                        ),
+                                        is_error=True,
+                                        structured_content={
+                                            "status": "error",
+                                            "tool": name,
+                                            "code": "repeated_identical_tool_call",
+                                            "arguments": arguments,
+                                        },
+                                    ),
+                                )
+                            )
+                            self._print(
+                                "[error] repeated identical tool call blocked\n"
+                            )
+                            return TurnResult(
+                                content="",
+                                finish_reason="error",
+                                cancelled=False,
+                            )
+                        seen_tool_calls.add(signature)
+                        logger.debug(
+                            "Executing tool name=%s arguments=%s",
+                            name,
+                            self._summarize_tool_arguments(arguments),
+                        )
                         result = self._call_tool_bridge(name, arguments)
+                        logger.debug(
+                            "Tool result name=%s error=%s structured=%s",
+                            name,
+                            result.is_error,
+                            result.structured_content is not None,
+                        )
                     self.messages.append(self._tool_message(call=call, result=result))
+                tool_rounds_executed += 1
+
+            if tool_rounds_executed > 0:
+                logger.warning(
+                    "Tool loop limit reached; forcing final answer max_rounds=%s",
+                    self.max_tool_rounds,
+                )
+                final_turn = self._send_single_turn(stream=stream, tools=None)
+                if final_turn.cancelled or final_turn.error:
+                    if final_turn.error:
+                        self._rollback_to(message_start)
+                    return TurnResult(
+                        content=final_turn.content,
+                        finish_reason=final_turn.finish_reason,
+                        reasoning=final_turn.reasoning,
+                        cancelled=final_turn.cancelled,
+                    )
+                self._commit_assistant_message(final_turn)
+                return TurnResult(
+                    content=final_turn.content,
+                    finish_reason=final_turn.finish_reason,
+                    reasoning=final_turn.reasoning,
+                    cancelled=False,
+                )
 
             self._rollback_to(message_start)
             self._print("[error] tool loop limit reached\n")
+            logger.error("Tool loop limit reached max_rounds=%s", self.max_tool_rounds)
             return TurnResult(content="", finish_reason="error", cancelled=False)
         except KeyboardInterrupt:
             self._print("\n[interrupted]\n")
+            logger.info("Turn interrupted by user")
             return TurnResult(content="", finish_reason="cancelled", cancelled=True)
 
     def send(self, user_text: str, *, stream: bool = True) -> TurnResult:
@@ -581,6 +691,15 @@ class MistralCodingSession:
 
         if turn.content:
             self.messages.append({"role": "assistant", "content": turn.content})
+            logger.info(
+                (
+                    "Assistant message committed finish_reason=%s "
+                    "content_len=%s reasoning_len=%s"
+                ),
+                turn.finish_reason,
+                len(turn.content),
+                len(turn.reasoning),
+            )
 
     def _parse_tool_arguments(self, raw_arguments: Any) -> dict[str, Any]:
         if raw_arguments is None:
@@ -601,12 +720,25 @@ class MistralCodingSession:
         self, *, call: dict[str, Any], result: MCPToolResult
     ) -> dict[str, Any]:
         function = call["function"]
+        content = self._render_tool_result(result)
         return {
             "role": "tool",
             "tool_call_id": call["id"],
             "name": function["name"],
-            "content": result.text,
+            "content": content,
         }
+
+    def _render_tool_result(self, result: MCPToolResult) -> str:
+        parts: list[str] = []
+        if result.structured_content is not None:
+            parts.append(
+                json.dumps(
+                    result.structured_content, ensure_ascii=False, sort_keys=True
+                )
+            )
+        if result.text:
+            parts.append(result.text)
+        return "\n\n".join(parts)
 
     def _call_tool_bridge(
         self, public_name: str, arguments: dict[str, Any]
@@ -616,6 +748,38 @@ class MistralCodingSession:
             return self.tool_bridge.call_tool(public_name, arguments)
         except MCPBridgeError as exc:
             return MCPToolResult(text=f"[tool-error] {exc}", is_error=True)
+
+    def _tool_call_signature(self, name: str, arguments: dict[str, Any]) -> str:
+        return json.dumps(
+            {"name": name, "arguments": arguments},
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+
+    def _content_summary(self, content: str | list[dict[str, Any]]) -> str:
+        if isinstance(content, str):
+            return f"text(len={len(content)})"
+        return f"blocks(len={len(content)})"
+
+    def _summarize_tool_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
+        summarized: dict[str, Any] = {}
+        for key, value in arguments.items():
+            if isinstance(value, str):
+                if key in {"content", "prompt", "system_prompt", "api_key"}:
+                    summarized[key] = f"<str len={len(value)}>"
+                elif len(value) > 120:
+                    summarized[key] = f"{value[:117]}..."
+                else:
+                    summarized[key] = value
+                continue
+            if isinstance(value, list):
+                summarized[key] = f"<list len={len(value)}>"
+                continue
+            if isinstance(value, dict):
+                summarized[key] = f"<dict keys={sorted(value)}>"
+                continue
+            summarized[key] = value
+        return summarized
 
     def _resolve_tools(self) -> list[dict[str, Any]]:
         if self.tool_bridge is None:
