@@ -1570,8 +1570,8 @@ def test_local_active_document_is_reinjected_on_followup_turn(tmp_path: Path) ->
     second_content = second_user_messages[-1]
     assert isinstance(first_content, list)
     assert isinstance(second_content, list)
-    assert "tools" not in first_call
-    assert "tools" not in second_call
+    assert "tools" in first_call
+    assert "tools" in second_call
     assert any(block.get("type") == "image_url" for block in first_content[1:])
     assert any(block.get("type") == "image_url" for block in second_content[1:])
 
@@ -1623,13 +1623,13 @@ def test_remote_active_document_is_reinjected_on_followup_turn(tmp_path: Path) -
     second_content = second_user_messages[-1]
     assert isinstance(first_content, list)
     assert isinstance(second_content, list)
-    assert "tools" not in fake_client.chat.complete_calls[0]
-    assert "tools" not in fake_client.chat.complete_calls[1]
+    assert "tools" in fake_client.chat.complete_calls[0]
+    assert "tools" in fake_client.chat.complete_calls[1]
     assert any(block.get("type") == "document_url" for block in first_content[1:])
     assert any(block.get("type") == "document_url" for block in second_content[1:])
 
 
-def test_attachment_turns_do_not_offer_tools(tmp_path: Path) -> None:
+def test_attachment_turns_keep_tools_available_by_default(tmp_path: Path) -> None:
     output = io.StringIO()
     image = FIXTURE_DIR / "wikimedia-demo.png"
     fake_client = FakeClient(complete_text="ok")
@@ -1646,10 +1646,12 @@ def test_attachment_turns_do_not_offer_tools(tmp_path: Path) -> None:
     )
 
     assert result.content == "ok"
-    assert "tools" not in fake_client.chat.complete_calls[0]
+    assert "tools" in fake_client.chat.complete_calls[0]
 
 
-def test_remote_image_turns_use_cloud_shape_and_disable_tools(tmp_path: Path) -> None:
+def test_remote_image_turns_use_cloud_shape_and_keep_tools_available(
+    tmp_path: Path,
+) -> None:
     output = io.StringIO()
     image = FIXTURE_DIR / "wikimedia-demo.png"
     fake_client = FakeClient(complete_text="ok")
@@ -1665,7 +1667,6 @@ def test_remote_image_turns_use_cloud_shape_and_disable_tools(tmp_path: Path) ->
     result = session.send_content(
         build_remote_image_message([image], prompt="Describe the image."),
         stream=False,
-        disable_tools=True,
     )
 
     assert result.content == "ok"
@@ -1675,10 +1676,10 @@ def test_remote_image_turns_use_cloud_shape_and_disable_tools(tmp_path: Path) ->
     assert content[1]["type"] == "image_url"
     assert isinstance(content[1]["image_url"], str)
     assert content[1]["image_url"].startswith("data:image/png;base64,")
-    assert "tools" not in call
+    assert "tools" in call
 
 
-def test_remote_document_turns_use_document_url_and_disable_tools(
+def test_remote_document_turns_use_document_url_and_keep_tools_available(
     tmp_path: Path,
 ) -> None:
     output = io.StringIO()
@@ -1696,7 +1697,6 @@ def test_remote_document_turns_use_document_url_and_disable_tools(
     result = session.send_content(
         build_remote_document_message([pdf_file], prompt="Analyze the document."),
         stream=False,
-        disable_tools=True,
     )
 
     assert result.content == "ok"
@@ -1706,7 +1706,7 @@ def test_remote_document_turns_use_document_url_and_disable_tools(
     assert content[1]["type"] == "document_url"
     assert content[1]["document_url"].startswith("data:application/pdf;base64,")
     assert content[1]["document_name"] == "w3c-dummy.pdf"
-    assert "tools" not in call
+    assert "tools" in call
 
 
 def test_visible_reasoning_is_rendered_but_not_committed() -> None:

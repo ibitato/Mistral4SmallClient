@@ -444,11 +444,7 @@ class MistralCodingSession:
         try:
             seen_tool_calls: set[str] = set()
             tool_rounds_executed = 0
-            tools = (
-                []
-                if disable_tools or self._has_attachment_blocks(normalized)
-                else self._resolve_tools()
-            )
+            tools = [] if disable_tools else self._resolve_tools()
             if not tools:
                 turn = self._send_single_turn(stream=stream, tools=None)
                 if turn.error:

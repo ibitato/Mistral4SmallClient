@@ -664,7 +664,7 @@ def _run_image_shortcut(
     _set_active_attachment(repl_state, kind="image", paths=paths)
     stdout.write("[image] attachment active. Use /dropimage or /drop to release it.\n")
     stdout.flush()
-    session.send_content(message, stream=session.stream_enabled, disable_tools=True)
+    session.send_content(message, stream=session.stream_enabled)
     return False
 
 
@@ -726,7 +726,7 @@ def _run_doc_shortcut(
     _set_active_attachment(repl_state, kind="document", paths=paths)
     stdout.write("[doc] attachment active. Use /dropdoc or /drop to release it.\n")
     stdout.flush()
-    session.send_content(message, stream=session.stream_enabled, disable_tools=True)
+    session.send_content(message, stream=session.stream_enabled)
     return False
 
 
@@ -1269,7 +1269,7 @@ def _run_repl(
             repl_state.active_images = next_active_images
             repl_state.active_documents = next_active_documents
             repl_state.pending_attachment = None
-            result = session.send_content(content, stream=stream, disable_tools=True)
+            result = session.send_content(content, stream=stream)
         elif repl_state.active_images or repl_state.active_documents:
             try:
                 content = _build_active_attachment_message(
@@ -1284,7 +1284,7 @@ def _run_repl(
                 )
                 stdout.flush()
                 continue
-            result = session.send_content(content, stream=stream, disable_tools=True)
+            result = session.send_content(content, stream=stream)
         else:
             result = session.send(stripped, stream=stream)
         if result.cancelled:
