@@ -7,21 +7,21 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
 
-Retro terminal CLI for validating and using **Mistral Small 4** both locally
-against `llama.cpp` and remotely against Mistral cloud, with the official
-`mistralai` Python SDK.
+Retro terminal CLI for using **Mistral Small 4** both locally against
+`llama.cpp` and remotely against Mistral cloud, with the official `mistralai`
+Python SDK.
 
-The repository is intentionally focused on one workflow:
+The repository is intentionally focused on one product:
 
-- run Mistral Small 4 locally with `llama.cpp`
-- switch to the hosted `mistral-small-latest` cloud model when needed
-- exercise the official SDK against both backends
-- validate image, document, tool and MCP flows
-- keep the CLI useful for day-to-day experimentation
+- use Mistral Small 4 locally with `llama.cpp` or remotely with Mistral cloud
+- handle image and document turns through backend-appropriate multimodal flows
+- keep local OS tools and MCP tools available when the task needs them
+- support coding, document work, research, OCR, and general assistant workflows
 
 ## What this project includes
 
 - a dedicated interactive CLI with retro green/orange presentation
+- a general-purpose multimodal assistant experience for Mistral Small 4
 - always-on local tools: `shell`, `read_file`, `write_file`, `list_dir`, `search_text`
 - optional FireCrawl MCP tools loaded from `mcp.json` using
   `FIRECRAWL_API_KEY` from your environment
@@ -66,6 +66,15 @@ Inside the REPL:
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
 - `/reset`, `/system ...`, `/exit`
+
+Typical tasks include:
+
+- general chat and question answering
+- image and document analysis
+- OCR and extraction from attached files
+- summaries, comparisons, translations, and drafting
+- local workspace automation with tools
+- programming and debugging when you want it
 
 Remote mode requirements:
 
@@ -168,8 +177,9 @@ actions so the app stays pinned to the top of the terminal.
 - Secrets are not stored in the repository.
 - `mcp.json` uses `${FIRECRAWL_API_KEY}` interpolation instead of a checked-in token.
 - Remote cloud mode reads `MISTRAL_API_KEY` from the user environment at runtime.
-- The repository is intended for local developer use and exposes powerful local tools:
+- The CLI exposes powerful local tools:
   `shell`, `read_file`, `write_file`, `list_dir`, and `search_text`.
+- Run it in a workspace and environment you trust.
 - Keep `.venv`, `.env`, and any ad hoc credential files out of version control.
 
 ## Repository layout

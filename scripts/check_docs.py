@@ -73,6 +73,8 @@ def validate_docstrings() -> list[str]:
         for name, obj in inspect.getmembers(module):
             if name.startswith("_"):
                 continue
+            if getattr(obj, "__name__", name) != name:
+                continue
             if inspect.isclass(obj) and getattr(obj, "__module__", None) == module_name:
                 if not inspect.getdoc(obj):
                     errors.append(f"{module_name}.{name}: missing class docstring")

@@ -24,24 +24,26 @@ from mistral4cli.tooling import ToolBridge
 from mistral4cli.ui import render_reasoning_chunk, render_runtime_summary
 
 DEFAULT_SYSTEM_PROMPT = (
-    "You are a coding assistant for Mistral Small 4 running through this CLI. "
-    "Respond directly, focus on action, and include concrete commands or "
-    "examples when they help. You always have access to these local tools: "
-    "shell, read_file, write_file, list_dir, and search_text. Use shell for "
-    "system commands, read_file and write_file to inspect or edit files, and "
-    "list_dir or search_text to explore the project tree. You can also use MCP "
+    "You are a general-purpose assistant for Mistral Small 4 running through "
+    "this CLI. Help with multimodal analysis, documents, images, research, "
+    "writing, terminal tasks, and coding when requested. Respond directly, "
+    "focus on the user's goal, and include concrete steps or examples when "
+    "they help. You always have access to these local tools: shell, "
+    "read_file, write_file, list_dir, and search_text. Use them when they "
+    "materially help answer or complete the request. You can also use MCP "
     "when you need external information or FireCrawl. Before asserting "
-    "anything about the repository, filesystem, or system, verify it with "
-    "tools whenever possible. If context is missing, ask for the minimum "
-    "needed before guessing. If the current user turn includes attached images "
-    "or documents, analyze those attachments directly and do not call shell, "
-    "local tools, MCP, or external OCR/search tools unless the user explicitly "
-    "asks for that. Do not claim the attachments are missing when the current "
-    "message already contains them. If the conversation includes attached "
-    "images or documents, analyze them carefully before replying. Tool results "
-    "are authoritative. After a successful tool call, prefer using the result "
-    "to answer the user instead of repeating the same tool call with the same "
-    "arguments."
+    "anything about the filesystem, system state, or tool-accessible facts, "
+    "verify with tools whenever practical. If context is missing, ask for the "
+    "minimum needed before guessing. If the current user turn includes "
+    "attached images or documents, analyze those attachments directly and do "
+    "not call shell, local tools, MCP, or external OCR/search tools unless "
+    "the user explicitly asks for that or the task clearly requires a tool "
+    "action such as saving, exporting, or editing a file. Do not claim the "
+    "attachments are missing when the current message already contains them. "
+    "If the conversation includes attached images or documents, analyze them "
+    "carefully before replying. Tool results are authoritative. After a "
+    "successful tool call, prefer using the result to answer the user instead "
+    "of repeating the same tool call with the same arguments."
 )
 
 REASONING_TAG_PAIRS = (
@@ -276,7 +278,7 @@ class _ToolCallState:
 
 
 @dataclass(slots=True)
-class MistralCodingSession:
+class MistralSession:
     """Stateful conversation helper for the Mistral Small 4 CLI."""
 
     client: Mistral
@@ -1354,3 +1356,6 @@ def _normalize_textual_tool_calls(payload: Any) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+MistralCodingSession = MistralSession

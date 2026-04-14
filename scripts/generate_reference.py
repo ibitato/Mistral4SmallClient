@@ -108,10 +108,13 @@ def _iter_public_members(module: ModuleType) -> Iterable[tuple[str, Any]]:
     for name, obj in inspect.getmembers(module):
         if name.startswith("_"):
             continue
-        if (inspect.isclass(obj) or inspect.isfunction(obj)) and getattr(
-            obj, "__module__", module.__name__
-        ) == module.__name__:
-            yield name, obj
+        if not (inspect.isclass(obj) or inspect.isfunction(obj)):
+            continue
+        if getattr(obj, "__module__", module.__name__) != module.__name__:
+            continue
+        if getattr(obj, "__name__", name) != name:
+            continue
+        yield name, obj
 
 
 def _is_public_class_member(class_name: str, member_name: str, descriptor: Any) -> bool:

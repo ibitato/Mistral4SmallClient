@@ -1,13 +1,13 @@
-# Mistral Small 4 Local and Remote Harness
+# Mistral Small 4 Local and Remote CLI
 
-This repository validates and exercises the official `mistralai` Python SDK
-against two backends for Mistral Small 4:
+This repository provides a general Mistral Small 4 CLI built on top of the
+official `mistralai` Python SDK against two backends:
 
 - a local `llama.cpp` deployment
 - the hosted Mistral cloud model exposed as `mistral-small-latest`
 
-The CLI is designed to switch between those backends without changing tools,
-attachments, or the general REPL workflow.
+The CLI is designed to switch between those backends without changing the main
+REPL workflow, attachments, or tool availability.
 
 ## Runtime requirements
 
@@ -60,9 +60,9 @@ The integration test uses a `2x2` PNG fixture to avoid that crash.
 
 ## CLI
 
-The repository now ships a dedicated `mistral4cli` REPL for Mistral Small 4.
-It uses the official `mistralai` SDK directly and can target either the local
-or remote backend at runtime.
+The repository ships a dedicated `mistral4cli` REPL for Mistral Small 4. It
+uses the official `mistralai` SDK directly and can target either the local or
+remote backend at runtime.
 
 The REPL has a retro green/orange presentation, an ASCII welcome banner, and
 an actionable help system:
@@ -71,7 +71,7 @@ an actionable help system:
 - `/defaults` prints the active runtime defaults
 - `/timeout [value]` shows or updates the active request timeout
 - `/remote on|off` switches between local `llama.cpp` and Mistral cloud
-- `/tools` shows the loaded FireCrawl MCP catalog
+- `/tools` shows the loaded local and FireCrawl MCP tool catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
 - `/find -- ...` searches text in the project tree
@@ -91,8 +91,8 @@ HTTP endpoint, while local inference continues to go through the official
 Use `--mcp-config <path>` to point to a different config file or `--no-mcp` to
 disable tool loading for a run.
 
-The CLI also exposes always-on local OS tools, so the model can inspect and edit
-the workspace without asking for extra setup:
+The CLI also exposes always-on local OS tools, so the model can inspect files,
+run shell commands, and save output without extra setup:
 
 - `shell`
 - `read_file`
@@ -103,7 +103,7 @@ the workspace without asking for extra setup:
 When FireCrawl is available, those remote tools are added on top of the local
 OS tool set.
 
-The attachment commands are designed for analysis turns:
+The attachment commands are designed for multimodal turns:
 
 - `/image` uses a terminal-native picker and builds a multimodal message with
   one selected image. If the picker cannot run, it falls back to a
@@ -164,8 +164,8 @@ Operational notes:
 - The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set; otherwise it falls back
   to `./mcp.json` if the file exists. The FireCrawl URL in that file expands
   `FIRECRAWL_API_KEY` from the environment.
-- `uv run python -m mistral4cli` plus `/image` or `/doc` can be used to inspect
-  attached files without leaving the session.
+- `uv run python -m mistral4cli` plus `/image` or `/doc` can be used to inspect,
+  summarize, compare, or extract from attached files without leaving the session.
 
 ## Validation targets
 
@@ -224,8 +224,8 @@ cleanly.
 - `MISTRAL_API_KEY` and `FIRECRAWL_API_KEY` must come from the user environment.
 - `mcp.json` only stores `${FIRECRAWL_API_KEY}` interpolation, never a literal key.
 - No cloud secret is required for local mode.
-- The CLI intentionally exposes powerful local OS tools for developer use, so it
-  should be run in a workspace you trust.
+- The CLI intentionally exposes powerful local OS tools, so it should be run in
+  a workspace you trust.
 
 ## Cancellation behavior
 

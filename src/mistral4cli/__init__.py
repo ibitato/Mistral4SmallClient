@@ -13,6 +13,7 @@ from .local_mistral import (
     list_models,
     remote_api_key_available,
 )
+from .session import MistralCodingSession, MistralSession
 
 __all__ = [
     "DEFAULT_MODEL_ID",
@@ -20,6 +21,8 @@ __all__ = [
     "BackendKind",
     "LocalGenerationConfig",
     "LocalMistralConfig",
+    "MistralCodingSession",
+    "MistralSession",
     "RemoteMistralConfig",
     "build_client",
     "get_health",

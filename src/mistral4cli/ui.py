@@ -167,9 +167,12 @@ def render_welcome_banner(summary: str, *, stream: TextIO) -> str:
 
     lines = [
         _paint_multiline(ASCII_BANNER, GREEN, stream, bold=True),
-        _paint("Mistral4Small retro console", ORANGE, stream, bold=True),
+        _paint("Mistral4Small multimodal console", ORANGE, stream, bold=True),
         _paint(
-            "Official SDK, local llama.cpp, optional Mistral cloud and MCP tools.",
+            (
+                "Official SDK, local llama.cpp, remote Mistral cloud, "
+                "multimodal turns, and optional tools."
+            ),
             GREEN,
             stream,
         ),
@@ -225,13 +228,16 @@ def render_help_screen(
     ]
     usage_section = [
         _paint("How to use", ORANGE, stream, bold=True),
-        "Ask for code, debugging, refactors, explanations, or tests.",
+        (
+            "Ask questions, analyze documents or images, summarize, extract, "
+            "compare, draft, translate, troubleshoot, or code."
+        ),
         "For web-backed questions, mention that you want FireCrawl or sources.",
         (
-            "The CLI always exposes local OS tools and auto-loads MCP tools "
-            "from mcp.json when present."
+            "The CLI always exposes local OS tools and auto-loads optional MCP "
+            "tools from mcp.json when present."
         ),
-        "Tool-assisted turns are managed automatically by the session.",
+        "Tool-assisted turns are available when the task needs them.",
     ]
     shortcuts_section = [
         _paint("Shortcuts", ORANGE, stream, bold=True),
@@ -246,11 +252,15 @@ def render_help_screen(
     ]
     examples_section = [
         _paint("Examples", ORANGE, stream, bold=True),
+        '  - "Summarize this document and extract action items."',
+        '  - "Describe this image and list all visible text."',
+        '  - "Compare the attached PDF with the image and highlight differences."',
+        '  - "Translate the attached text into English and keep the structure."',
         '  - "Explain this error and propose the smallest possible fix."',
         '  - "/run --cwd . -- git status"',
         '  - "/run --lines 40 --offset 40 -- git log --oneline"',
-        '  - "/ls src"',
-        '  - "/find --path src --limit 10 -- shell"',
+        '  - "/ls /tmp"',
+        '  - "/find --path docs --limit 10 -- mistral"',
         '  - "/edit notes.txt -- Replace this text."',
         '  - "/image" then type "Describe this image."',
         '  - "/doc" then type "Analyze this document."',
@@ -261,10 +271,10 @@ def render_help_screen(
         '  - "/timeout 300000"',
         '  - "/reasoning off"',
         '  - "/reasoning toggle"',
-        '  - "Use shell to run `git status` and summarize the result."',
-        '  - "Read src/mistral4cli/cli.py and summarize the structure."',
+        '  - "Use shell to inspect /tmp and summarize what changed today."',
+        '  - "Read README.md and summarize the main capabilities."',
         '  - "Search official documentation about X and summarize the API."',
-        '  - "/system You are a strict Python 3.10 reviewer."',
+        '  - "/system You are a concise multilingual assistant."',
         '  - "/reset"',
     ]
     tools_section = [_paint("Available tools", ORANGE, stream, bold=True)]

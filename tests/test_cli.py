@@ -34,7 +34,7 @@ from mistral4cli.local_mistral import (
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.logging_config import DEFAULT_LOG_RETENTION_DAYS
 from mistral4cli.mcp_bridge import MCPToolResult
-from mistral4cli.session import MistralCodingSession
+from mistral4cli.session import MistralCodingSession, MistralSession
 from mistral4cli.ui import (
     CLEAR_SCREEN,
     render_help_screen,
@@ -366,7 +366,7 @@ def test_main_creates_debug_log_file_by_default(tmp_path: Path) -> None:
 
 def test_help_and_banner_are_actionable_and_retro() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeToolBridge(),
@@ -380,7 +380,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
         stream=output,
     )
 
-    assert "Mistral4Small retro console" in banner
+    assert "Mistral4Small multimodal console" in banner
     assert "Type /help for actionable commands" in banner
     assert "Mistral cloud" in banner
     assert "+-" in banner
@@ -401,12 +401,17 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/timeout" in help_text
     assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
+    assert "Describe this image and list all visible text." in help_text
     assert "Ctrl-C cancels the current response" in help_text
+
+
+def test_session_backward_compatibility_alias_points_to_canonical_class() -> None:
+    assert MistralCodingSession is MistralSession
 
 
 def test_help_command_prints_without_pager_in_non_tty() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeToolBridge(),
@@ -429,7 +434,7 @@ def test_help_command_prints_without_pager_in_non_tty() -> None:
 
 def test_help_command_paginates_in_tty(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeToolBridge(),
@@ -456,7 +461,7 @@ def test_help_command_paginates_in_tty(monkeypatch: Any) -> None:
 
 def test_help_command_can_quit_pager_early(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeToolBridge(),
@@ -483,7 +488,7 @@ def test_help_command_can_quit_pager_early(monkeypatch: Any) -> None:
 
 def test_tools_command_prints_without_pager_in_non_tty() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeLongToolBridge(),
@@ -506,7 +511,7 @@ def test_tools_command_prints_without_pager_in_non_tty() -> None:
 
 def test_tools_command_paginates_in_tty(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeLongToolBridge(),
@@ -533,7 +538,7 @@ def test_tools_command_paginates_in_tty(monkeypatch: Any) -> None:
 
 def test_tools_command_can_quit_pager_early(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=FakeLongToolBridge(),
@@ -592,7 +597,7 @@ def test_clear_screen_is_interactive_only(monkeypatch: Any) -> None:
 
 def test_refresh_repl_screen_clears_and_warns_before_banner(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -605,7 +610,7 @@ def test_refresh_repl_screen_clears_and_warns_before_banner(monkeypatch: Any) ->
     rendered = output.getvalue()
     assert rendered.startswith(CLEAR_SCREEN)
     assert "TERM=xterm-256color" in rendered
-    assert "Mistral4Small retro console" in rendered
+    assert "Mistral4Small multimodal console" in rendered
 
 
 def test_tool_command_and_session_tool_loop() -> None:
@@ -634,7 +639,7 @@ def test_tool_command_and_session_tool_loop() -> None:
         ]
     )
     bridge = FakeToolBridge()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=bridge,
@@ -685,7 +690,7 @@ def test_textual_json_tool_call_fallback_executes_tool_loop() -> None:
         ]
     )
     bridge = FakeToolBridge()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=bridge,
@@ -741,7 +746,7 @@ def test_textual_json_tool_call_fallback_executes_shell_tool(tmp_path: Path) -> 
             ),
         ]
     )
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -798,7 +803,7 @@ def test_textual_json_tool_call_fallback_executes_read_file_tool(
             ),
         ]
     )
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -858,7 +863,7 @@ def test_textual_json_tool_call_fallback_executes_search_text_tool(
             ),
         ]
     )
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -907,7 +912,7 @@ def test_repeated_identical_tool_call_is_blocked(tmp_path: Path) -> None:
             ),
         ]
     )
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1008,7 +1013,7 @@ def test_tool_loop_limit_forces_final_answer_after_last_tool(tmp_path: Path) -> 
             ),
         ]
     )
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1030,7 +1035,7 @@ def test_tool_loop_limit_forces_final_answer_after_last_tool(tmp_path: Path) -> 
 def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
     output = io.StringIO()
     fake_client = FakeClient(stream_chunks=["hello", " world"], interrupt_after=1)
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client, generation=LocalGenerationConfig(), stdout=output
     )
 
@@ -1109,7 +1114,7 @@ def test_streaming_textual_json_tool_call_fallback_executes_tool_loop() -> None:
         def __init__(self) -> None:
             self.chat = SequencedChat()
 
-    session = MistralCodingSession(
+    session = MistralSession(
         client=SequencedClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=bridge,
@@ -1129,7 +1134,7 @@ def test_streaming_textual_json_tool_call_fallback_executes_tool_loop() -> None:
 def test_non_stream_cancel_does_not_break_followup() -> None:
     output = io.StringIO()
     fake_client = FakeClient(complete_interrupt_once=True, complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client, generation=LocalGenerationConfig(), stdout=output
     )
 
@@ -1160,7 +1165,7 @@ def test_model_error_rolls_back_failed_turn() -> None:
         def __init__(self) -> None:
             self.chat = ErrorChat()
 
-    session = MistralCodingSession(
+    session = MistralSession(
         client=ErrorClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1250,7 +1255,7 @@ def test_write_tty_newline_emits_crlf() -> None:
 def test_remote_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
     output = io.StringIO()
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -1269,7 +1274,7 @@ def test_remote_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
 def test_remote_request_disables_reasoning_effort_when_hidden() -> None:
     output = io.StringIO()
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -1288,7 +1293,7 @@ def test_remote_request_disables_reasoning_effort_when_hidden() -> None:
 
 def test_remote_command_requires_api_key(monkeypatch: Any) -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1314,7 +1319,7 @@ def test_remote_command_switches_backend_and_resets_conversation(
 ) -> None:
     output = io.StringIO()
     captured: list[object] = []
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1352,7 +1357,7 @@ def test_remote_command_switches_backend_and_resets_conversation(
 
 def test_remote_command_clears_screen_in_tty(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1377,7 +1382,7 @@ def test_remote_off_switches_back_to_local() -> None:
     output = io.StringIO()
     captured: list[object] = []
     local_config = LocalMistralConfig()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -1412,7 +1417,7 @@ def test_remote_off_switches_back_to_local() -> None:
 
 def test_reset_command_reprints_runtime_summary() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1431,7 +1436,7 @@ def test_reset_command_reprints_runtime_summary() -> None:
 
 def test_reset_command_clears_active_attachments() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1456,7 +1461,7 @@ def test_reset_command_clears_active_attachments() -> None:
 
 def test_reset_command_clears_screen_in_tty(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1472,7 +1477,7 @@ def test_reset_command_clears_screen_in_tty(monkeypatch: Any) -> None:
 
 def test_system_command_clears_screen_when_it_resets(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1489,7 +1494,7 @@ def test_system_command_clears_screen_when_it_resets(monkeypatch: Any) -> None:
 
 def test_drop_commands_clear_attachment_state() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1524,7 +1529,7 @@ def test_drop_commands_clear_attachment_state() -> None:
 
 def test_timeout_command_reports_current_timeout() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1536,7 +1541,7 @@ def test_timeout_command_reports_current_timeout() -> None:
 
 def test_timeout_command_updates_timeout_in_minutes() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1549,7 +1554,7 @@ def test_timeout_command_updates_timeout_in_minutes() -> None:
 
 def test_timeout_command_rejects_too_small_value() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1561,7 +1566,7 @@ def test_timeout_command_rejects_too_small_value() -> None:
 
 def test_shortcuts_call_local_tools(tmp_path: Path) -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1596,7 +1601,7 @@ def test_image_shortcut_uses_picker_and_multimodal_payload(
     output = io.StringIO()
     image = FIXTURE_DIR / "wikimedia-demo.png"
     fake_client = FakeClient(stream_chunks=["ok"])
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1631,7 +1636,7 @@ def test_doc_shortcut_without_prompt_stages_attachment_for_next_turn(
     output = io.StringIO()
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
     fake_client = FakeClient(stream_chunks=["ok"])
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1659,7 +1664,7 @@ def test_doc_shortcut_without_prompt_stages_attachment_for_next_turn(
 def test_active_attachment_message_can_combine_image_and_document(
     tmp_path: Path,
 ) -> None:
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1688,7 +1693,7 @@ def test_local_active_document_is_reinjected_on_followup_turn(tmp_path: Path) ->
     output = io.StringIO()
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1741,7 +1746,7 @@ def test_remote_active_document_is_reinjected_on_followup_turn(tmp_path: Path) -
     output = io.StringIO()
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -1794,7 +1799,7 @@ def test_attachment_turns_keep_tools_available_by_default(tmp_path: Path) -> Non
     output = io.StringIO()
     image = FIXTURE_DIR / "wikimedia-demo.png"
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -1816,7 +1821,7 @@ def test_remote_image_turns_use_cloud_shape_and_keep_tools_available(
     output = io.StringIO()
     image = FIXTURE_DIR / "wikimedia-demo.png"
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -1846,7 +1851,7 @@ def test_remote_document_turns_use_document_url_and_keep_tools_available(
     output = io.StringIO()
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
     fake_client = FakeClient(complete_text="ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -1873,7 +1878,7 @@ def test_remote_document_turns_use_document_url_and_keep_tools_available(
 def test_visible_reasoning_is_rendered_but_not_committed() -> None:
     output = io.StringIO()
     fake_client = FakeClient(complete_text="<think>check file</think>ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1892,7 +1897,7 @@ def test_visible_reasoning_is_rendered_but_not_committed() -> None:
 def test_uppercase_think_reasoning_is_rendered_but_not_committed() -> None:
     output = io.StringIO()
     fake_client = FakeClient(complete_text="[THINK]plan[/THINK]ok")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -1911,14 +1916,14 @@ def test_raw_reasoning_content_is_rendered_and_committed_cleanly(
     monkeypatch: Any,
 ) -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
     )
-    monkeypatch.setattr(MistralCodingSession, "_should_use_raw_chat", lambda self: True)
+    monkeypatch.setattr(MistralSession, "_should_use_raw_chat", lambda self: True)
     monkeypatch.setattr(
-        MistralCodingSession,
+        MistralSession,
         "_open_raw_request",
         lambda self, payload: FakeRawHTTPResponse(
             '{"choices":[{"finish_reason":"stop","message":{"role":"assistant",'
@@ -1939,14 +1944,14 @@ def test_raw_stream_reasoning_content_is_rendered_and_committed_cleanly(
     monkeypatch: Any,
 ) -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
     )
-    monkeypatch.setattr(MistralCodingSession, "_should_use_raw_chat", lambda self: True)
+    monkeypatch.setattr(MistralSession, "_should_use_raw_chat", lambda self: True)
     monkeypatch.setattr(
-        MistralCodingSession,
+        MistralSession,
         "_open_raw_request",
         lambda self, payload: FakeRawStreamResponse(
             [
@@ -1980,7 +1985,7 @@ def test_raw_stream_reasoning_content_is_rendered_and_committed_cleanly(
 def test_reasoning_can_be_hidden() -> None:
     output = io.StringIO()
     fake_client = FakeClient(stream_chunks=["<think>hidden</think>", "ok"])
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -2002,7 +2007,7 @@ def test_doc_shortcut_uses_picker_and_document_payload(
     docx_file = FIXTURE_DIR / "pywordform-sample_form.docx"
     pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
     fake_client = FakeClient(stream_chunks=["ok"])
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -2040,7 +2045,7 @@ def test_doc_shortcut_uses_picker_and_document_payload(
 
 def test_reasoning_command_updates_session_state() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         generation=LocalGenerationConfig(),
         stdout=output,
@@ -2064,7 +2069,7 @@ def test_reasoning_command_updates_session_state() -> None:
 
 def test_remote_reasoning_command_reports_remote_backend() -> None:
     output = io.StringIO()
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(),
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -2101,7 +2106,7 @@ def test_remote_structured_reasoning_is_rendered_and_committed_cleanly() -> None
             )
         ]
     )
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -2184,7 +2189,7 @@ def test_remote_stream_reasoning_is_rendered_and_committed_cleanly() -> None:
         ]
     )
     fake_client.chat.stream = lambda **kwargs: fake_client.chat.last_stream  # type: ignore[method-assign]
-    session = MistralCodingSession(
+    session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
@@ -2207,7 +2212,7 @@ def test_image_shortcut_reports_invalid_selection_without_crashing(
     output = io.StringIO()
     invalid_file = tmp_path / "notes.md"
     invalid_file.write_text("not an image", encoding="utf-8")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(stream_chunks=["ok"]),
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),
@@ -2233,7 +2238,7 @@ def test_doc_shortcut_reports_invalid_selection_without_crashing(
     output = io.StringIO()
     invalid_file = tmp_path / "archive.zip"
     invalid_file.write_text("not a document", encoding="utf-8")
-    session = MistralCodingSession(
+    session = MistralSession(
         client=FakeClient(stream_chunks=["ok"]),
         generation=LocalGenerationConfig(),
         tool_bridge=LocalToolBridge(root=tmp_path),

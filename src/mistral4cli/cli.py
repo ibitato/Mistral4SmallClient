@@ -1,4 +1,4 @@
-"""Command-line entrypoint for the Mistral Small 4 coding CLI."""
+"""Command-line entrypoint for the general Mistral Small 4 CLI."""
 
 from __future__ import annotations
 
@@ -59,7 +59,7 @@ from mistral4cli.mcp_bridge import (
 )
 from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
-    MistralCodingSession,
+    MistralSession,
     render_defaults_summary,
 )
 from mistral4cli.tooling import CompositeToolBridge, ToolBridge
@@ -185,7 +185,7 @@ def _repl_prompt(repl_state: _ReplState) -> str:
 
 
 def _build_active_attachment_message(
-    session: MistralCodingSession,
+    session: MistralSession,
     *,
     prompt: str,
     image_paths: Sequence[Path],
@@ -241,7 +241,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mistral4cli",
         description=(
-            "Interactive coding CLI for Mistral Small 4 local and remote backends."
+            "Interactive multimodal CLI for Mistral Small 4 local and remote backends."
         ),
     )
     parser.add_argument(
@@ -295,7 +295,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--system-prompt",
         default=None,
-        help="Override the default coding assistant system prompt.",
+        help="Override the default assistant system prompt.",
     )
     parser.add_argument(
         "--mcp-config",
@@ -475,9 +475,7 @@ def _print_tool_result(stdout: TextIO, text: str) -> None:
     stdout.flush()
 
 
-def _run_shell_shortcut(
-    argument: str, session: MistralCodingSession, stdout: TextIO
-) -> bool:
+def _run_shell_shortcut(argument: str, session: MistralSession, stdout: TextIO) -> bool:
     option_text, command_text = _split_shortcut_argument(argument)
     if command_text is None:
         command_text = option_text
@@ -514,9 +512,7 @@ def _run_shell_shortcut(
     return False
 
 
-def _run_ls_shortcut(
-    argument: str, session: MistralCodingSession, stdout: TextIO
-) -> bool:
+def _run_ls_shortcut(argument: str, session: MistralSession, stdout: TextIO) -> bool:
     tokens = shlex.split(argument)
     parser = argparse.ArgumentParser(prog="/ls", add_help=False, exit_on_error=False)
     parser.add_argument("path", nargs="?", default=".")
@@ -533,9 +529,7 @@ def _run_ls_shortcut(
     return False
 
 
-def _run_find_shortcut(
-    argument: str, session: MistralCodingSession, stdout: TextIO
-) -> bool:
+def _run_find_shortcut(argument: str, session: MistralSession, stdout: TextIO) -> bool:
     option_text, query_text = _split_shortcut_argument(argument)
     if query_text is None:
         query_text = option_text
@@ -568,9 +562,7 @@ def _run_find_shortcut(
     return False
 
 
-def _run_edit_shortcut(
-    argument: str, session: MistralCodingSession, stdout: TextIO
-) -> bool:
+def _run_edit_shortcut(argument: str, session: MistralSession, stdout: TextIO) -> bool:
     option_text, content_text = _split_shortcut_argument(argument)
     if content_text is None:
         parts = shlex.split(option_text)
@@ -607,7 +599,7 @@ def _run_edit_shortcut(
 
 def _run_image_shortcut(
     argument: str,
-    session: MistralCodingSession,
+    session: MistralSession,
     stdout: TextIO,
     *,
     repl_state: _ReplState,
@@ -671,7 +663,7 @@ def _run_image_shortcut(
 
 def _run_doc_shortcut(
     argument: str,
-    session: MistralCodingSession,
+    session: MistralSession,
     stdout: TextIO,
     *,
     repl_state: _ReplState,
@@ -749,14 +741,14 @@ def _normalize_inline_prompt(argument: str) -> str | None:
     return prompt or None
 
 
-def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
+def _print_banner(stdout: TextIO, session: MistralSession) -> None:
     stdout.write(
         render_welcome_banner(session.describe_defaults(), stream=stdout) + "\n"
     )
     stdout.flush()
 
 
-def _print_runtime_refresh(stdout: TextIO, session: MistralCodingSession) -> None:
+def _print_runtime_refresh(stdout: TextIO, session: MistralSession) -> None:
     stdout.write(session.describe_defaults() + "\n")
     stdout.flush()
 
@@ -782,7 +774,7 @@ def _print_terminal_recommendation(stdout: TextIO) -> None:
 
 def _refresh_repl_screen(
     stdout: TextIO,
-    session: MistralCodingSession,
+    session: MistralSession,
     *,
     startup: bool,
 ) -> None:
@@ -932,7 +924,7 @@ def _print_paginated_text(
 def _run_command(
     command: str,
     argument: str,
-    session: MistralCodingSession,
+    session: MistralSession,
     stdout: TextIO,
     *,
     repl_state: _ReplState | None = None,
@@ -1116,7 +1108,7 @@ def _parse_command(line: str) -> tuple[str, str] | None:
 
 def _run_remote_command(
     argument: str,
-    session: MistralCodingSession,
+    session: MistralSession,
     stdout: TextIO,
     *,
     repl_state: _ReplState,
@@ -1189,7 +1181,7 @@ def _run_remote_command(
 
 def _run_timeout_command(
     argument: str,
-    session: MistralCodingSession,
+    session: MistralSession,
     stdout: TextIO,
 ) -> bool:
     normalized = argument.strip().lower()
@@ -1235,7 +1227,7 @@ def _parse_timeout_ms(value: str) -> int:
 
 
 def _run_repl(
-    session: MistralCodingSession,
+    session: MistralSession,
     *,
     local_config: LocalMistralConfig,
     client_factory: Callable[[MistralConfig], Mistral],
@@ -1353,14 +1345,14 @@ def _build_session(
     stdout: TextIO,
     stream: bool,
     logging_summary: str,
-) -> MistralCodingSession:
+) -> MistralSession:
     logger.debug(
         "Building session backend=%s model=%s stream=%s",
         BackendKind.LOCAL.value,
         config.model_id,
         stream,
     )
-    return MistralCodingSession(
+    return MistralSession(
         client=client_factory(config),
         backend_kind=BackendKind.LOCAL,
         model_id=config.model_id,

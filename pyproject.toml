@@ -1,7 +1,7 @@
 [project]
 name = "mistral4cli"
-version = "0.13.0"
-description = "Retro CLI for validating and using Mistral Small 4 locally and remotely"
+version = "1.0.0"
+description = "Retro multimodal CLI for using Mistral Small 4 locally and remotely"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -14,10 +14,12 @@ keywords = [
     "mistralai",
     "llama.cpp",
     "cli",
+    "multimodal",
     "mcp",
+    "tool-use",
     "vision",
+    "documents",
     "ocr",
-    "testing",
 ]
 dependencies = [
     "InquirerPy>=0.3.4,<0.4.0",

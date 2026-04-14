@@ -344,7 +344,7 @@ wheels = [
 
 [[package]]
 name = "mistral4cli"
-version = "0.13.0"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "inquirerpy" },
