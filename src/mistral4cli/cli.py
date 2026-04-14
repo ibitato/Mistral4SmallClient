@@ -6,6 +6,7 @@ import argparse
 import logging
 import os
 import shlex
+import shutil
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -884,6 +885,50 @@ def _read_repl_line(
     return input_func(prompt)
 
 
+def _help_page_lines(stdout: TextIO) -> int:
+    """Return the number of help lines to show per page in TTY mode."""
+
+    try:
+        terminal_lines = shutil.get_terminal_size().lines
+    except OSError:
+        terminal_lines = 24
+    return max(terminal_lines - 2, 8)
+
+
+def _print_paginated_text(
+    *,
+    text: str,
+    stdout: TextIO,
+    stdin: TextIO,
+    prompt_label: str,
+) -> None:
+    """Print text, paging through it in interactive terminals."""
+
+    if not (supports_full_terminal_ui(stdout) and stdin.isatty()):
+        stdout.write(text + "\n")
+        stdout.flush()
+        return
+
+    lines = text.splitlines()
+    page_size = _help_page_lines(stdout)
+    index = 0
+    while index < len(lines):
+        stdout.write("\n".join(lines[index : index + page_size]) + "\n")
+        stdout.flush()
+        index += page_size
+        if index >= len(lines):
+            return
+        stdout.write(f"[{prompt_label}] Press Enter for more, q to quit: ")
+        stdout.flush()
+        answer = stdin.readline()
+        if answer == "":
+            stdout.write("\n")
+            stdout.flush()
+            return
+        if answer.strip().lower() == "q":
+            return
+
+
 def _run_command(
     command: str,
     argument: str,
@@ -901,19 +946,24 @@ def _run_command(
         repl_state = _ReplState()
     logger.debug("Running command name=%s has_argument=%s", command, bool(argument))
     if command in {"help", "h", "?"}:
-        stdout.write(
-            render_help_screen(
+        _print_paginated_text(
+            text=render_help_screen(
                 summary=session.describe_defaults(),
                 tools=session.describe_tools().splitlines(),
                 stream=stdout,
-            )
-            + "\n"
+            ),
+            stdout=stdout,
+            stdin=stdin,
+            prompt_label="help",
         )
-        stdout.flush()
         return False
     if command == "tools":
-        stdout.write(session.describe_tools() + "\n")
-        stdout.flush()
+        _print_paginated_text(
+            text=session.describe_tools(),
+            stdout=stdout,
+            stdin=stdin,
+            prompt_label="tools",
+        )
         return False
     if command == "remote":
         return _run_remote_command(

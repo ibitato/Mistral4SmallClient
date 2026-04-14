@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -270,6 +271,11 @@ class FakeToolBridge:
         )
 
 
+class FakeLongToolBridge(FakeToolBridge):
+    def describe_tools(self) -> str:
+        return "\n".join(f"tool line {index}" for index in range(20))
+
+
 def test_main_returns_zero_without_interactive_input() -> None:
     output = io.StringIO()
     exit_code = main(
@@ -396,6 +402,161 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
     assert "Ctrl-C cancels the current response" in help_text
+
+
+def test_help_command_prints_without_pager_in_non_tty() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+
+    should_exit = _run_command(
+        "help",
+        "",
+        session,
+        output,
+        stdin=FakeStdin("q\n"),
+    )
+
+    rendered = output.getvalue()
+    assert should_exit is False
+    assert "[help] Press Enter for more, q to quit:" not in rendered
+    assert "/exit" in rendered
+
+
+def test_help_command_paginates_in_tty(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+    monkeypatch.setattr(
+        "mistral4cli.cli.shutil.get_terminal_size",
+        lambda: os.terminal_size((100, 12)),
+    )
+
+    should_exit = _run_command(
+        "help",
+        "",
+        session,
+        output,
+        stdin=FakeStdin("\n" * 10, tty=True),
+    )
+
+    rendered = output.getvalue()
+    assert should_exit is False
+    assert "[help] Press Enter for more, q to quit:" in rendered
+    assert "/exit" in rendered
+
+
+def test_help_command_can_quit_pager_early(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+    monkeypatch.setattr(
+        "mistral4cli.cli.shutil.get_terminal_size",
+        lambda: os.terminal_size((100, 12)),
+    )
+
+    should_exit = _run_command(
+        "help",
+        "",
+        session,
+        output,
+        stdin=FakeStdin("q\n", tty=True),
+    )
+
+    rendered = output.getvalue()
+    assert should_exit is False
+    assert "[help] Press Enter for more, q to quit:" in rendered
+    assert "/exit" not in rendered
+
+
+def test_tools_command_prints_without_pager_in_non_tty() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeLongToolBridge(),
+        stdout=output,
+    )
+
+    should_exit = _run_command(
+        "tools",
+        "",
+        session,
+        output,
+        stdin=FakeStdin("q\n"),
+    )
+
+    rendered = output.getvalue()
+    assert should_exit is False
+    assert "[tools] Press Enter for more, q to quit:" not in rendered
+    assert "tool line 19" in rendered
+
+
+def test_tools_command_paginates_in_tty(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeLongToolBridge(),
+        stdout=output,
+    )
+    monkeypatch.setattr(
+        "mistral4cli.cli.shutil.get_terminal_size",
+        lambda: os.terminal_size((100, 8)),
+    )
+
+    should_exit = _run_command(
+        "tools",
+        "",
+        session,
+        output,
+        stdin=FakeStdin("\n" * 10, tty=True),
+    )
+
+    rendered = output.getvalue()
+    assert should_exit is False
+    assert "[tools] Press Enter for more, q to quit:" in rendered
+    assert "tool line 19" in rendered
+
+
+def test_tools_command_can_quit_pager_early(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeLongToolBridge(),
+        stdout=output,
+    )
+    monkeypatch.setattr(
+        "mistral4cli.cli.shutil.get_terminal_size",
+        lambda: os.terminal_size((100, 8)),
+    )
+
+    should_exit = _run_command(
+        "tools",
+        "",
+        session,
+        output,
+        stdin=FakeStdin("q\n", tty=True),
+    )
+
+    rendered = output.getvalue()
+    assert should_exit is False
+    assert "[tools] Press Enter for more, q to quit:" in rendered
+    assert "tool line 0" in rendered
+    assert "tool line 19" not in rendered
 
 
 def test_terminal_recommendation_prefers_xterm_256color(monkeypatch: Any) -> None:
