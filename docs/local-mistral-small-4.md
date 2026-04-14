@@ -157,6 +157,8 @@ Operational notes:
 
 - `Ctrl-C` cancels the current generation without dropping the whole session.
 - `Ctrl-D` exits the CLI.
+- The interactive REPL clears the screen on startup and after reset actions.
+- `TERM=xterm-256color` is recommended for the intended retro palette.
 - `uv run python -m mistral4cli --once "..." --no-stream` runs a one-shot smoke
   prompt against the local server.
 - The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set; otherwise it falls back
@@ -212,6 +214,10 @@ Current constraints from the official SDK and live API:
 Because of that, remote mode is implemented through the official SDK with
 `reasoning_effort`, while the local backend still needs the raw fallback for
 llama.cpp reasoning visibility.
+
+Remote cloud tests are enabled automatically whenever `MISTRAL_API_KEY` exists
+in the environment. When the variable is absent, the remote test module skips
+cleanly.
 
 ## Security notes
 

@@ -11,8 +11,10 @@ from mistral4cli.attachments import (
     build_remote_image_message,
 )
 from mistral4cli.cli import (
+    _clear_screen_if_supported,
     _InputHistory,
     _parse_command,
+    _refresh_repl_screen,
     _ReplState,
     _run_command,
     _write_tty_newline,
@@ -28,7 +30,12 @@ from mistral4cli.local_mistral import (
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.session import MistralCodingSession
-from mistral4cli.ui import render_help_screen, render_welcome_banner
+from mistral4cli.ui import (
+    CLEAR_SCREEN,
+    render_help_screen,
+    render_welcome_banner,
+    terminal_recommendation,
+)
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "internet"
 
@@ -40,6 +47,11 @@ class FakeStdin(io.StringIO):
 
     def isatty(self) -> bool:
         return self._tty
+
+
+class FakeTTYOutput(io.StringIO):
+    def isatty(self) -> bool:
+        return True
 
 
 @dataclass(slots=True)
@@ -355,6 +367,55 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
     assert "Ctrl-C cancels the current response" in help_text
+
+
+def test_terminal_recommendation_prefers_xterm_256color(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    assert terminal_recommendation(stream=output) == ""
+
+
+def test_terminal_recommendation_warns_for_xterm(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+
+    monkeypatch.setenv("TERM", "xterm")
+
+    recommendation = terminal_recommendation(stream=output)
+
+    assert "TERM=xterm-256color" in recommendation
+
+
+def test_clear_screen_is_interactive_only(monkeypatch: Any) -> None:
+    non_tty = io.StringIO()
+    tty_output = FakeTTYOutput()
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    _clear_screen_if_supported(non_tty)
+    _clear_screen_if_supported(tty_output)
+
+    assert non_tty.getvalue() == ""
+    assert tty_output.getvalue() == CLEAR_SCREEN
+
+
+def test_refresh_repl_screen_clears_and_warns_before_banner(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    monkeypatch.setenv("TERM", "xterm")
+
+    _refresh_repl_screen(output, session, startup=True)
+
+    rendered = output.getvalue()
+    assert rendered.startswith(CLEAR_SCREEN)
+    assert "TERM=xterm-256color" in rendered
+    assert "Mistral4Small retro console" in rendered
 
 
 def test_tool_command_and_session_tool_loop() -> None:
@@ -945,6 +1006,29 @@ def test_remote_command_switches_backend_and_resets_conversation(
     assert "Mistral Cloud" in output.getvalue()
 
 
+def test_remote_command_clears_screen_in_tty(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "example-mistral-key")
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    should_exit = _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert should_exit is False
+    assert output.getvalue().startswith(CLEAR_SCREEN)
+
+
 def test_remote_off_switches_back_to_local() -> None:
     output = io.StringIO()
     captured: list[object] = []
@@ -999,6 +1083,39 @@ def test_reset_command_reprints_runtime_summary() -> None:
     assert "Conversation reset." in rendered
     assert "| Backend" in rendered
     assert "| Timeout" in rendered
+
+
+def test_reset_command_clears_screen_in_tty(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    should_exit = _run_command("reset", "", session, output)
+
+    assert should_exit is False
+    assert output.getvalue().startswith(CLEAR_SCREEN)
+
+
+def test_system_command_clears_screen_when_it_resets(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    monkeypatch.setenv("TERM", "xterm-256color")
+
+    should_exit = _run_command("system", "You are terse.", session, output)
+
+    assert should_exit is False
+    assert output.getvalue().startswith(CLEAR_SCREEN)
+    assert session.system_prompt == "You are terse."
 
 
 def test_timeout_command_reports_current_timeout() -> None:

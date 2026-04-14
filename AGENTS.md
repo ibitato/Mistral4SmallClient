@@ -18,9 +18,10 @@ This repository uses Python 3.10, `uv` for environment and dependency management
 - The CLI must always expose local OS tools: `shell`, `read_file`, `write_file`, `list_dir`, and `search_text`.
 - The REPL must keep help clear and actionable: `/help`, `/defaults`, `/tools`, `/run`, `/ls`, `/find`, `/edit`, `/image`, `/doc`, `/reset`, `/system`, `/exit`.
 - `/image` and `/doc` must use a terminal-native file picker in TTY environments and fall back to a manual terminal path prompt when the picker cannot run.
-- `/doc` must rasterize supported documents into images so the model performs OCR/vision directly.
+- `/doc` must use the backend-appropriate document flow: rasterized page images for local `llama.cpp`, and the official remote document flow for Mistral cloud.
 - For long outputs, `shell` and `search_text` must support pagination or truncation with clear continuation indicators.
 - The CLI UI must preserve the retro green/orange style and an ASCII banner that remains readable in TTY terminals.
+- The interactive REPL must clear the screen on startup and conversation resets, and recommend `TERM=xterm-256color` when the terminal is not already configured for the intended palette.
 - All repository text, comments, prompts, and documentation should remain in English.
 - Do not use `pip`, `poetry`, `pipenv`, or global installations for the normal project workflow.
 - Always execute code within the `uv` environment with `uv run ...` or via `make ...`.

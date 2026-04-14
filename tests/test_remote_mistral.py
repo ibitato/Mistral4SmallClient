@@ -16,8 +16,8 @@ def _field(value: object, name: str) -> object:
 
 
 @pytest.mark.skipif(
-    os.environ.get("MISTRAL_RUN_REMOTE_TESTS") != "1",
-    reason="Set MISTRAL_RUN_REMOTE_TESTS=1 to enable remote Mistral tests.",
+    not os.environ.get("MISTRAL_API_KEY"),
+    reason="Set MISTRAL_API_KEY to enable remote Mistral tests.",
 )
 def test_remote_chat_completion_smoke() -> None:
     config = RemoteMistralConfig.from_env()

@@ -387,3 +387,11 @@ Render a detailed tool status screen.
 #### `render_welcome_banner(summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render the startup banner with retro colors when supported.
+
+#### `supports_full_terminal_ui(stream: 'TextIO') -> 'bool'`
+
+Return whether the current output stream supports the interactive TUI.
+
+#### `terminal_recommendation(stream: 'TextIO') -> 'str'`
+
+Return a short terminal recommendation when colors may degrade.

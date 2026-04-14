@@ -150,9 +150,18 @@ make docs
 `make check` runs formatting, lint and type checks.
 `make test` runs the full `pytest` suite, including local integration tests
 that require the `llama.cpp` server.
-Remote cloud integration is available as an opt-in smoke test with
-`MISTRAL_RUN_REMOTE_TESTS=1 MISTRAL_API_KEY=...`.
+Remote cloud integration runs automatically when `MISTRAL_API_KEY` is present
+in the environment and skips cleanly when it is absent.
 `make docs` regenerates the checked-in API reference from public docstrings.
+
+For the intended retro palette in the interactive REPL, prefer:
+
+```bash
+export TERM=xterm-256color
+```
+
+The interactive REPL clears the screen on startup and after conversation reset
+actions so the app stays pinned to the top of the terminal.
 
 ## Security
 

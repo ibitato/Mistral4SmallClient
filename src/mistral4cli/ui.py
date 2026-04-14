@@ -20,6 +20,7 @@ RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
 DIM = "\x1b[2m"
 ITALIC = "\x1b[3m"
+CLEAR_SCREEN = "\x1b[2J\x1b[H"
 
 ASCII_BANNER = (
     r" __  __ _     _             _        _ _  _           _ _ "
@@ -41,6 +42,33 @@ def _supports_color(stream: TextIO) -> bool:
         return False
     isatty = getattr(stream, "isatty", None)
     return bool(isatty and isatty())
+
+
+def supports_full_terminal_ui(stream: TextIO) -> bool:
+    """Return whether the current output stream supports the interactive TUI."""
+
+    if os.environ.get("TERM") == "dumb":
+        return False
+    isatty = getattr(stream, "isatty", None)
+    return bool(isatty and isatty())
+
+
+def terminal_recommendation(*, stream: TextIO) -> str:
+    """Return a short terminal recommendation when colors may degrade."""
+
+    if not supports_full_terminal_ui(stream):
+        return ""
+    if os.environ.get("TERM") == "xterm-256color":
+        return ""
+    return _paint(
+        (
+            "Recommended terminal setting: TERM=xterm-256color for the intended "
+            "retro colors."
+        ),
+        ORANGE,
+        stream,
+        bold=True,
+    )
 
 
 def _paint(text: str, color: str, stream: TextIO, *, bold: bool = False) -> str:

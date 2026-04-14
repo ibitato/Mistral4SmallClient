@@ -56,7 +56,13 @@ from mistral4cli.session import (
     render_defaults_summary,
 )
 from mistral4cli.tooling import CompositeToolBridge, ToolBridge
-from mistral4cli.ui import render_help_screen, render_welcome_banner
+from mistral4cli.ui import (
+    CLEAR_SCREEN,
+    render_help_screen,
+    render_welcome_banner,
+    supports_full_terminal_ui,
+    terminal_recommendation,
+)
 
 
 @dataclass(slots=True)
@@ -602,6 +608,41 @@ def _print_runtime_refresh(stdout: TextIO, session: MistralCodingSession) -> Non
     stdout.flush()
 
 
+def _clear_screen_if_supported(stdout: TextIO) -> None:
+    """Clear the interactive terminal screen when supported."""
+
+    if not supports_full_terminal_ui(stdout):
+        return
+    stdout.write(CLEAR_SCREEN)
+    stdout.flush()
+
+
+def _print_terminal_recommendation(stdout: TextIO) -> None:
+    """Print a short terminal recommendation when the palette may degrade."""
+
+    recommendation = terminal_recommendation(stream=stdout)
+    if not recommendation:
+        return
+    stdout.write(recommendation + "\n")
+    stdout.flush()
+
+
+def _refresh_repl_screen(
+    stdout: TextIO,
+    session: MistralCodingSession,
+    *,
+    startup: bool,
+) -> None:
+    """Redraw the REPL after clearing the terminal in interactive mode."""
+
+    _clear_screen_if_supported(stdout)
+    _print_terminal_recommendation(stdout)
+    if startup:
+        _print_banner(stdout, session)
+    else:
+        _print_runtime_refresh(stdout, session)
+
+
 def _is_default_input_func(input_func: Callable[[str], str]) -> bool:
     """Return whether the REPL uses the standard input() function."""
 
@@ -792,8 +833,9 @@ def _run_command(
     if command in {"reset", "new"}:
         repl_state.pending_attachment = None
         session.reset()
+        _refresh_repl_screen(stdout, session, startup=False)
         stdout.write("Conversation reset.\n")
-        _print_runtime_refresh(stdout, session)
+        stdout.flush()
         return False
     if command == "defaults":
         stdout.write(session.describe_defaults() + "\n")
@@ -803,6 +845,7 @@ def _run_command(
         if argument:
             repl_state.pending_attachment = None
             session.set_system_prompt(argument)
+            _refresh_repl_screen(stdout, session, startup=False)
             stdout.write("System prompt updated and conversation reset.\n")
         else:
             stdout.write("Current system prompt:\n")
@@ -864,8 +907,9 @@ def _run_remote_command(
             server_url=None,
         )
         repl_state.pending_attachment = None
+        _refresh_repl_screen(stdout, session, startup=False)
         stdout.write("Remote backend enabled. Conversation reset.\n")
-        _print_runtime_refresh(stdout, session)
+        stdout.flush()
         return False
 
     if normalized == "off":
@@ -880,8 +924,9 @@ def _run_remote_command(
             server_url=local_config.server_url,
         )
         repl_state.pending_attachment = None
+        _refresh_repl_screen(stdout, session, startup=False)
         stdout.write("Local backend enabled. Conversation reset.\n")
-        _print_runtime_refresh(stdout, session)
+        stdout.flush()
         return False
 
     stdout.write("Usage: /remote [on|off]\n")
@@ -947,7 +992,7 @@ def _run_repl(
     stream: bool,
     path_picker: PathPicker | None,
 ) -> int:
-    _print_banner(stdout, session)
+    _refresh_repl_screen(stdout, session, startup=True)
     history = _InputHistory()
     repl_state = _ReplState()
     while True:
