@@ -52,6 +52,39 @@ Useful one-shot smoke test:
 uv run python -m mistral4cli --once "Return only the word ok." --no-stream
 ```
 
+## Install without cloning the repo
+
+Build distributable artifacts on one machine:
+
+```bash
+make build
+```
+
+This creates:
+
+- `dist/mistral4cli-<version>-py3-none-any.whl`
+- `dist/mistral4cli-<version>.tar.gz`
+
+Copy the wheel to the target server and install it with `uv`:
+
+```bash
+uv tool install ./mistral4cli-<version>-py3-none-any.whl
+```
+
+Then run:
+
+```bash
+mistral4cli
+```
+
+If you prefer an isolated virtual environment instead of a tool install:
+
+```bash
+uv venv
+uv pip install ./mistral4cli-<version>-py3-none-any.whl
+uv run mistral4cli --print-defaults
+```
+
 Inside the REPL:
 
 - `/help` for actionable usage

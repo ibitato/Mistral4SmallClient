@@ -449,7 +449,7 @@ class MistralSession:
             tools = [] if disable_tools else self._resolve_tools()
             if not tools:
                 turn = self._send_single_turn(stream=stream, tools=None)
-                if turn.error:
+                if turn.cancelled or turn.error:
                     self._rollback_to(message_start)
                 if not turn.cancelled and not turn.error:
                     self._commit_assistant_message(turn)
@@ -463,8 +463,7 @@ class MistralSession:
             for _ in range(self.max_tool_rounds):
                 turn = self._send_single_turn(stream=stream, tools=tools)
                 if turn.cancelled or turn.error:
-                    if turn.error:
-                        self._rollback_to(message_start)
+                    self._rollback_to(message_start)
                     return TurnResult(
                         content=turn.content,
                         finish_reason=turn.finish_reason,
@@ -560,8 +559,7 @@ class MistralSession:
                 )
                 final_turn = self._send_single_turn(stream=stream, tools=None)
                 if final_turn.cancelled or final_turn.error:
-                    if final_turn.error:
-                        self._rollback_to(message_start)
+                    self._rollback_to(message_start)
                     return TurnResult(
                         content=final_turn.content,
                         finish_reason=final_turn.finish_reason,
@@ -581,6 +579,7 @@ class MistralSession:
             logger.error("Tool loop limit reached max_rounds=%s", self.max_tool_rounds)
             return TurnResult(content="", finish_reason="error", cancelled=False)
         except KeyboardInterrupt:
+            self._rollback_to(message_start)
             self._print("\n[interrupted]\n")
             logger.info("Turn interrupted by user")
             return TurnResult(content="", finish_reason="cancelled", cancelled=True)

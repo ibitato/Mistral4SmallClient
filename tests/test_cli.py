@@ -1045,10 +1045,7 @@ def test_stream_cancel_does_not_commit_partial_assistant_turn() -> None:
     assert result.content == "hello"
     assert fake_client.chat.last_stream is not None
     assert fake_client.chat.last_stream.closed is True
-    assert session.messages == [
-        {"role": "system", "content": session.system_prompt},
-        {"role": "user", "content": "Haz una respuesta larga."},
-    ]
+    assert session.messages == [{"role": "system", "content": session.system_prompt}]
     assert "[interrupted]" in output.getvalue()
 
 
@@ -1149,8 +1146,66 @@ def test_non_stream_cancel_does_not_break_followup() -> None:
     assert second.content == "ok"
     assert session.messages[0] == {"role": "system", "content": session.system_prompt}
     assert session.messages[1]["role"] == "user"
+    assert len([m for m in session.messages if m["role"] == "user"]) == 1
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
     assert "[interrupted]" in output.getvalue()
+
+
+def test_raw_stream_cancel_rolls_back_user_turn_and_allows_followup(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    responses = iter(
+        [
+            FakeRawStreamResponse(
+                [
+                    (
+                        'data: {"choices":[{"finish_reason":null,"delta":'
+                        '{"content":"hola"}}]}'
+                    ),
+                ]
+            ),
+            FakeRawHTTPResponse(
+                '{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}'
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(MistralSession, "_should_use_raw_chat", lambda self: True)
+
+    def open_raw_request(self: MistralSession, payload: dict[str, Any]) -> object:
+        response = next(responses)
+        if isinstance(response, FakeRawStreamResponse):
+
+            class InterruptingResponse(FakeRawStreamResponse):
+                def __iter__(self_inner):
+                    iterator = super().__iter__()
+                    yield next(iterator)
+                    raise KeyboardInterrupt
+
+            return InterruptingResponse(
+                [line.decode("utf-8").rstrip("\n") for line in response.lines]
+            )
+        return response
+
+    monkeypatch.setattr(MistralSession, "_open_raw_request", open_raw_request)
+
+    first = session.send("Primera pregunta.", stream=True)
+    second = session.send("Return only ok.", stream=False)
+
+    assert first.cancelled is True
+    assert second.cancelled is False
+    assert second.content == "ok"
+    assert session.messages == [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": "Return only ok."},
+        {"role": "assistant", "content": "ok"},
+    ]
 
 
 def test_model_error_rolls_back_failed_turn() -> None:

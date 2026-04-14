@@ -1,4 +1,4 @@
-.PHONY: help sync lock format format-check lint typecheck test docs docs-check check run cancel-probe clean
+.PHONY: help sync lock build format format-check lint typecheck test docs docs-check check run cancel-probe clean
 
 UV ?= uv
 
@@ -7,6 +7,7 @@ help:
 		'Available targets:' \
 		'  make sync       - create or update the uv virtual environment' \
 		'  make lock       - refresh uv.lock' \
+		'  make build      - build wheel and source distribution in dist/' \
 		'  make format     - format Python code with ruff' \
 		'  make format-check - verify formatting without changing files' \
 		'  make lint       - lint Python code with ruff' \
@@ -24,6 +25,9 @@ sync:
 
 lock:
 	$(UV) lock
+
+build:
+	$(UV) build
 
 format:
 	$(UV) run ruff format .
