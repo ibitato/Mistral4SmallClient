@@ -32,8 +32,12 @@ DEFAULT_SYSTEM_PROMPT = (
     "when you need external information or FireCrawl. Before asserting "
     "anything about the repository, filesystem, or system, verify it with "
     "tools whenever possible. If context is missing, ask for the minimum "
-    "needed before guessing. If the conversation includes attached images or "
-    "documents, analyze them carefully before replying."
+    "needed before guessing. If the current user turn includes attached images "
+    "or documents, analyze those attachments directly and do not call shell, "
+    "local tools, MCP, or external OCR/search tools unless the user explicitly "
+    "asks for that. Do not claim the attachments are missing when the current "
+    "message already contains them. If the conversation includes attached "
+    "images or documents, analyze them carefully before replying."
 )
 
 REASONING_TAG_PAIRS = (
@@ -53,6 +57,7 @@ def render_defaults_summary(
     stream_enabled: bool,
     reasoning_visible: bool,
     tool_summary: str,
+    stream: TextIO,
 ) -> str:
     """Render the active runtime defaults as human-readable text."""
 
@@ -65,6 +70,7 @@ def render_defaults_summary(
         stream_enabled=stream_enabled,
         reasoning_visible=reasoning_visible,
         tool_summary=tool_summary,
+        stream=stream,
     )
 
 
@@ -317,6 +323,7 @@ class MistralCodingSession:
     def describe_defaults(self) -> str:
         """Render the active runtime defaults as human-readable text."""
 
+        assert self.stdout is not None
         return render_defaults_summary(
             backend_kind=self.backend_kind,
             model_id=self.model_id,
@@ -326,6 +333,7 @@ class MistralCodingSession:
             stream_enabled=self.stream_enabled,
             reasoning_visible=self.show_reasoning,
             tool_summary=self.describe_tool_status(),
+            stream=self.stdout,
         )
 
     def switch_backend(
@@ -389,6 +397,7 @@ class MistralCodingSession:
         content: str | list[dict[str, Any]],
         *,
         stream: bool = True,
+        disable_tools: bool = False,
     ) -> TurnResult:
         """Send a text or multimodal user turn and update the conversation."""
 
@@ -399,7 +408,11 @@ class MistralCodingSession:
         message_start = len(self.messages)
         self.messages.append({"role": "user", "content": normalized})
         try:
-            tools = self._resolve_tools()
+            tools = (
+                []
+                if disable_tools or self._has_attachment_blocks(normalized)
+                else self._resolve_tools()
+            )
             if not tools:
                 turn = self._send_single_turn(stream=stream, tools=None)
                 if turn.error:
@@ -614,6 +627,13 @@ class MistralCodingSession:
                 self._print(f"[mcp] {exc}\n")
                 self._mcp_warning_shown = True
             return []
+
+    def _has_attachment_blocks(self, content: str | list[dict[str, Any]]) -> bool:
+        if isinstance(content, str):
+            return False
+        return any(
+            block.get("type") in {"image_url", "document_url"} for block in content
+        )
 
     def _send_single_turn(
         self,

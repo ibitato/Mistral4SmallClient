@@ -20,6 +20,7 @@ keywords = [
     "testing",
 ]
 dependencies = [
+    "InquirerPy>=0.3.4,<0.4.0",
     "mcp>=1.23,<2.0",
     "mistralai>=2.3.2,<3.0",
     "pillow>=11.0,<12.0",

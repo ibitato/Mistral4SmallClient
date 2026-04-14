@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import shutil
+import textwrap
 from collections.abc import Sequence
 from typing import TextIO
 
@@ -62,6 +64,33 @@ def _paint_multiline(
     )
 
 
+def _terminal_width(stream: TextIO) -> int:
+    try:
+        return max(shutil.get_terminal_size().columns, 72)
+    except OSError:
+        return 100
+
+
+def _render_table(
+    title: str,
+    rows: Sequence[tuple[str, str]],
+    *,
+    stream: TextIO,
+) -> str:
+    label_width = max(len(label) for label, _ in rows)
+    total_width = min(_terminal_width(stream), 120)
+    value_width = max(total_width - label_width - 7, 24)
+    border = f"+-{'-' * label_width}-+-{'-' * value_width}-+"
+    body = [border, f"| {title:<{label_width + value_width + 3}} |", border]
+    for label, value in rows:
+        wrapped = textwrap.wrap(value, width=value_width) or [""]
+        body.append(f"| {label:<{label_width}} | {wrapped[0]:<{value_width}} |")
+        for extra in wrapped[1:]:
+            body.append(f"| {'':<{label_width}} | {extra:<{value_width}} |")
+    body.append(border)
+    return _paint_multiline("\n".join(body), GREEN, stream)
+
+
 def render_runtime_summary(
     *,
     backend_kind: BackendKind,
@@ -72,8 +101,9 @@ def render_runtime_summary(
     stream_enabled: bool,
     reasoning_visible: bool,
     tool_summary: str,
+    stream: TextIO,
 ) -> str:
-    """Render a compact runtime summary."""
+    """Render a formatted runtime summary."""
 
     max_tokens = (
         "unset" if generation.max_tokens is None else str(generation.max_tokens)
@@ -81,24 +111,25 @@ def render_runtime_summary(
     prompt_mode = generation.prompt_mode or "unset"
     stream_mode = "on" if stream_enabled else "off"
     reasoning_mode = "on" if reasoning_visible else "off"
-    lines = [
-        "Mistral Small 4 CLI",
-        f"Backend: {backend_kind.value}",
-        f"Server: {server_url or REMOTE_SERVER_LABEL}",
-        f"Model: {model_id}",
-        f"Timeout: {timeout_ms} ms",
+    rows = [
+        ("Backend", backend_kind.value),
+        ("Server", server_url or REMOTE_SERVER_LABEL),
+        ("Model", model_id),
+        ("Timeout", f"{timeout_ms} ms"),
         (
-            "Sampling: "
-            f"temperature={generation.temperature} "
-            f"top_p={generation.top_p} "
-            f"prompt_mode={prompt_mode} "
-            f"max_tokens={max_tokens} "
-            f"stream={stream_mode} "
-            f"reasoning={reasoning_mode}"
+            "Sampling",
+            (
+                f"temperature={generation.temperature} "
+                f"top_p={generation.top_p} "
+                f"prompt_mode={prompt_mode} "
+                f"max_tokens={max_tokens} "
+                f"stream={stream_mode} "
+                f"reasoning={reasoning_mode}"
+            ),
         ),
-        f"Tools: {tool_summary}",
+        ("Tools", tool_summary),
     ]
-    return "\n".join(lines)
+    return _render_table("Mistral Small 4 CLI", rows, stream=stream)
 
 
 def render_welcome_banner(summary: str, *, stream: TextIO) -> str:
@@ -144,8 +175,14 @@ def render_help_screen(
         "/ls          List files and directories.",
         "/find        Search text in the project tree.",
         "/edit        Write text to a file.",
-        "/image       Pick images and ask the model to analyze them.",
-        "/doc         Pick documents and send page images for OCR analysis.",
+        (
+            "/image       Pick one image in the terminal; with no --prompt, "
+            "stage it for the next message."
+        ),
+        (
+            "/doc         Pick one document in the terminal; with no --prompt, "
+            "stage it for the next message."
+        ),
         "/remote      Show, enable, or disable the Mistral cloud backend.",
         "/timeout     Show or set the active request timeout.",
         "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
@@ -168,6 +205,10 @@ def render_help_screen(
         "Up/Down arrows browse previous prompts.",
         "Ctrl-C cancels the current response without dropping the session.",
         "Ctrl-D exits the REPL.",
+        (
+            "In attachment pickers, Enter selects the highlighted file and [..] "
+            "goes to the parent directory."
+        ),
         "Visible reasoning is rendered in dim italic text when the backend emits it.",
     ]
     examples_section = [
@@ -178,8 +219,10 @@ def render_help_screen(
         '  - "/ls src"',
         '  - "/find --path src --limit 10 -- shell"',
         '  - "/edit notes.txt -- Replace this text."',
+        '  - "/image" then type "Describe this image."',
+        '  - "/doc" then type "Analyze this document."',
         '  - "/image --prompt Describe the selected image."',
-        '  - "/doc --prompt Summarize the file contents."',
+        '  - "/doc --prompt Summarize the selected document."',
         '  - "/remote on"',
         '  - "/timeout 300000"',
         '  - "/reasoning off"',

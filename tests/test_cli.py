@@ -5,9 +5,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mistral4cli.attachments import (
+    build_image_message,
+    build_remote_document_message,
+    build_remote_image_message,
+)
 from mistral4cli.cli import (
     _InputHistory,
     _parse_command,
+    _ReplState,
     _run_command,
     _write_tty_newline,
     main,
@@ -281,9 +287,11 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert client_factory_called is False
     rendered = output.getvalue()
     assert "Mistral Small 4 CLI" in rendered
-    assert "Backend: local" in rendered
+    assert "| Backend" in rendered
+    assert "local" in rendered
     assert "Local OS tools: ready" in rendered
-    assert f"Timeout: {DEFAULT_TIMEOUT_MS} ms" in rendered
+    assert "| Timeout" in rendered
+    assert f"{DEFAULT_TIMEOUT_MS} ms" in rendered
     assert "temperature=0.7" in rendered
     assert "top_p=0.95" in rendered
     assert "prompt_mode=reasoning" in rendered
@@ -331,6 +339,9 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "Mistral4Small retro console" in banner
     assert "Type /help for actionable commands" in banner
     assert "Mistral cloud" in banner
+    assert "+-" in banner
+    assert "| Backend" in banner
+    assert "| Model" in banner
     assert "/tools" in help_text
     assert "FireCrawl MCP" in help_text
     assert "/run" in help_text
@@ -929,6 +940,9 @@ def test_remote_command_switches_backend_and_resets_conversation(
         {"role": "system", "content": session.system_prompt},
     ]
     assert "Remote backend enabled. Conversation reset." in output.getvalue()
+    assert "| Backend" in output.getvalue()
+    assert "remote" in output.getvalue()
+    assert "Mistral Cloud" in output.getvalue()
 
 
 def test_remote_off_switches_back_to_local() -> None:
@@ -964,6 +978,27 @@ def test_remote_off_switches_back_to_local() -> None:
     assert session.model_id == local_config.model_id
     assert session.server_url == local_config.server_url
     assert "Local backend enabled. Conversation reset." in output.getvalue()
+    assert "| Backend" in output.getvalue()
+    assert local_config.server_url in output.getvalue()
+
+
+def test_reset_command_reprints_runtime_summary() -> None:
+    output = io.StringIO()
+    session = MistralCodingSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.messages.append({"role": "user", "content": "stale"})
+
+    should_exit = _run_command("reset", "", session, output)
+
+    assert should_exit is False
+    assert session.messages == [{"role": "system", "content": session.system_prompt}]
+    rendered = output.getvalue()
+    assert "Conversation reset." in rendered
+    assert "| Backend" in rendered
+    assert "| Timeout" in rendered
 
 
 def test_timeout_command_reports_current_timeout() -> None:
@@ -1067,6 +1102,117 @@ def test_image_shortcut_uses_picker_and_multimodal_payload(
     assert "Describe the image." in content[0]["text"]
     assert content[1]["type"] == "image_url"
     assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+
+
+def test_doc_shortcut_without_prompt_stages_attachment_for_next_turn(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
+    fake_client = FakeClient(stream_chunks=["ok"])
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+    repl_state = _ReplState()
+
+    should_exit = _run_command(
+        "doc",
+        "",
+        session,
+        output,
+        repl_state=repl_state,
+        input_func=lambda _prompt: "",
+        path_picker=lambda **_kwargs: [pdf_file],
+    )
+
+    assert should_exit is False
+    assert repl_state.pending_attachment is not None
+    assert repl_state.pending_attachment.kind == "document"
+    assert fake_client.chat.stream_calls == []
+    assert "attachment staged" in output.getvalue()
+
+
+def test_attachment_turns_do_not_offer_tools(tmp_path: Path) -> None:
+    output = io.StringIO()
+    image = FIXTURE_DIR / "wikimedia-demo.png"
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send_content(
+        build_image_message([image], prompt="Describe the image."),
+        stream=False,
+    )
+
+    assert result.content == "ok"
+    assert "tools" not in fake_client.chat.complete_calls[0]
+
+
+def test_remote_image_turns_use_cloud_shape_and_disable_tools(tmp_path: Path) -> None:
+    output = io.StringIO()
+    image = FIXTURE_DIR / "wikimedia-demo.png"
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send_content(
+        build_remote_image_message([image], prompt="Describe the image."),
+        stream=False,
+        disable_tools=True,
+    )
+
+    assert result.content == "ok"
+    call = fake_client.chat.complete_calls[0]
+    content = call["messages"][1]["content"]
+    assert isinstance(content, list)
+    assert content[1]["type"] == "image_url"
+    assert isinstance(content[1]["image_url"], str)
+    assert content[1]["image_url"].startswith("data:image/png;base64,")
+    assert "tools" not in call
+
+
+def test_remote_document_turns_use_document_url_and_disable_tools(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    pdf_file = FIXTURE_DIR / "w3c-dummy.pdf"
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralCodingSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+
+    result = session.send_content(
+        build_remote_document_message([pdf_file], prompt="Analyze the document."),
+        stream=False,
+        disable_tools=True,
+    )
+
+    assert result.content == "ok"
+    call = fake_client.chat.complete_calls[0]
+    content = call["messages"][1]["content"]
+    assert isinstance(content, list)
+    assert content[1]["type"] == "document_url"
+    assert content[1]["document_url"].startswith("data:application/pdf;base64,")
+    assert content[1]["document_name"] == "w3c-dummy.pdf"
+    assert "tools" not in call
 
 
 def test_visible_reasoning_is_rendered_but_not_committed() -> None:

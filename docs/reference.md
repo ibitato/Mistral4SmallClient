@@ -26,13 +26,17 @@ Build a multimodal user message by rasterizing documents to images.
 
 Build a multimodal user message for one or more images.
 
-#### `build_tk_path_picker() -> 'PathPicker | None'`
+#### `build_remote_document_message(paths: 'Sequence[Path]', prompt: 'str | None' = None) -> 'list[dict[str, Any]]'`
 
-Build a tkinter-based file picker when GUI support is available.
+Build a cloud-native document turn for the official Mistral SDK.
 
-#### `choose_paths(kind: 'str', input_func: 'Callable[[str], str]', stdout: 'TextIO', path_picker: 'PathPicker | None', filetypes: 'Sequence[tuple[str, str]]', multiple: 'bool' = True) -> 'list[Path]'`
+#### `build_remote_image_message(paths: 'Sequence[Path]', prompt: 'str | None' = None) -> 'list[dict[str, Any]]'`
 
-Choose one or more files, preferring a GUI picker when available.
+Build a cloud-native multimodal message for one or more images.
+
+#### `choose_paths(kind: 'str', input_func: 'Callable[[str], str]', stdin: 'TextIO', stdout: 'TextIO', path_picker: 'PathPicker | None', filetypes: 'Sequence[tuple[str, str]]', suffixes: 'set[str]', multiple: 'bool' = True) -> 'list[Path]'`
+
+Choose one or more files, preferring a terminal picker in TTY sessions.
 
 #### `format_selection_summary(paths: 'Sequence[Path]') -> 'str'`
 
@@ -268,7 +272,7 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Send one text user turn and update the conversation history.
 
-  #### `send_content(self, content: 'str | list[dict[str, Any]]', stream: 'bool' = True) -> 'TurnResult'`
+  #### `send_content(self, content: 'str | list[dict[str, Any]]', stream: 'bool' = True, disable_tools: 'bool' = False) -> 'TurnResult'`
 
   Send a text or multimodal user turn and update the conversation.
 
@@ -304,7 +308,7 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
 Result of a single user turn.
 
-#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -372,9 +376,9 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', stream: 'TextIO') -> 'str'`
 
-Render a compact runtime summary.
+Render a formatted runtime summary.
 
 #### `render_tools_screen(tool_lines: 'Sequence[str]', stream: 'TextIO') -> 'str'`
 

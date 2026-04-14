@@ -17,7 +17,7 @@ This repository uses Python 3.10, `uv` for environment and dependency management
 - When working with MCP, use `mcp.json` at the repository root or `MISTRAL_LOCAL_MCP_CONFIG` to point to another configuration. Keep secrets out of the file and resolve them from environment variables such as `FIRECRAWL_API_KEY`.
 - The CLI must always expose local OS tools: `shell`, `read_file`, `write_file`, `list_dir`, and `search_text`.
 - The REPL must keep help clear and actionable: `/help`, `/defaults`, `/tools`, `/run`, `/ls`, `/find`, `/edit`, `/image`, `/doc`, `/reset`, `/system`, `/exit`.
-- `/image` and `/doc` must use a file picker when the environment allows it and fall back to a terminal prompt when no GUI is available.
+- `/image` and `/doc` must use a terminal-native file picker in TTY environments and fall back to a manual terminal path prompt when the picker cannot run.
 - `/doc` must rasterize supported documents into images so the model performs OCR/vision directly.
 - For long outputs, `shell` and `search_text` must support pagination or truncation with clear continuation indicators.
 - The CLI UI must preserve the retro green/orange style and an ASCII banner that remains readable in TTY terminals.

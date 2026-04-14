@@ -15,6 +15,11 @@ from typing import Any, Protocol, TextIO
 
 from PIL import Image, ImageDraw, ImageFont
 
+from mistral4cli.terminal_picker import (
+    TerminalPickerUnavailableError,
+    pick_paths_in_terminal,
+)
+
 DEFAULT_IMAGE_PROMPT = (
     "Analyze the attached images and answer briefly, usefully, and concretely."
 )
@@ -22,11 +27,24 @@ DEFAULT_DOCUMENT_PROMPT = (
     "Analyze the attached documents as OCR images and answer briefly, "
     "usefully, and concretely."
 )
+DEFAULT_REMOTE_DOCUMENT_PROMPT = (
+    "Analyze the attached documents and answer briefly, usefully, and concretely."
+)
 
 IMAGE_FILETYPES: tuple[tuple[str, str], ...] = (
     ("Images", "*.png *.jpg *.jpeg *.webp *.gif *.bmp *.tif *.tiff"),
     ("All files", "*.*"),
 )
+IMAGE_SUFFIXES = {
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".webp",
+    ".gif",
+    ".bmp",
+    ".tif",
+    ".tiff",
+}
 DOCUMENT_FILETYPES: tuple[tuple[str, str], ...] = (
     ("Documents", "*.txt *.md *.rst *.json *.yaml *.yml *.toml *.csv *.pdf *.docx"),
     ("All files", "*.*"),
@@ -44,6 +62,8 @@ TEXT_DOCUMENT_SUFFIXES = {
 }
 PDF_SUFFIX = ".pdf"
 DOCX_SUFFIX = ".docx"
+DOCUMENT_SUFFIXES = TEXT_DOCUMENT_SUFFIXES | {PDF_SUFFIX, DOCX_SUFFIX}
+REMOTE_NATIVE_DOCUMENT_SUFFIXES = {PDF_SUFFIX, DOCX_SUFFIX}
 
 MAX_DOCUMENT_PAGES = 12
 PDF_RENDER_DPI = 150
@@ -98,73 +118,50 @@ def format_selection_summary(paths: Sequence[Path]) -> str:
     return preview
 
 
-def build_tk_path_picker() -> PathPicker | None:
-    """Build a tkinter-based file picker when GUI support is available."""
-
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except Exception:
-        return None
-
-    def picker(
-        *,
-        title: str,
-        filetypes: Sequence[tuple[str, str]],
-        multiple: bool,
-    ) -> list[Path]:
-        try:
-            root = tk.Tk()
-            root.withdraw()
-            try:
-                if multiple:
-                    selection: list[str] = list(
-                        filedialog.askopenfilenames(
-                            title=title,
-                            filetypes=filetypes,
-                        )
-                    )
-                else:
-                    single = filedialog.askopenfilename(
-                        title=title,
-                        filetypes=filetypes,
-                    )
-                    selection = [single] if single else []
-            finally:
-                root.destroy()
-        except Exception:
-            return []
-        return [Path(item).expanduser() for item in selection if item]
-
-    return picker
-
-
 def choose_paths(
     *,
     kind: str,
     input_func: Callable[[str], str],
+    stdin: TextIO,
     stdout: TextIO,
     path_picker: PathPicker | None,
     filetypes: Sequence[tuple[str, str]],
+    suffixes: set[str],
     multiple: bool = True,
 ) -> list[Path]:
-    """Choose one or more files, preferring a GUI picker when available."""
+    """Choose one or more files, preferring a terminal picker in TTY sessions."""
 
-    picker = path_picker or build_tk_path_picker()
-    if picker is not None:
-        selection = picker(
+    if path_picker is not None:
+        selection = path_picker(
             title=f"Select {kind} files",
             filetypes=filetypes,
             multiple=multiple,
         )
         return [path.expanduser() for path in selection]
 
-    prompt = f"Enter one or more {kind} paths separated by spaces (blank to cancel): "
+    if stdin.isatty() and getattr(stdout, "isatty", lambda: False)():
+        try:
+            return pick_paths_in_terminal(
+                kind=kind,
+                suffixes=suffixes,
+                stdout=stdout,
+                multiple=multiple,
+            )
+        except TerminalPickerUnavailableError:
+            pass
+
+    if multiple:
+        prompt = (
+            f"Enter one or more {kind} paths separated by spaces (blank to cancel): "
+        )
+    else:
+        prompt = f"Enter one {kind} path (blank to cancel): "
     raw = input_func(prompt).strip()
     if not raw:
         return []
     try:
-        return [Path(token).expanduser() for token in shlex.split(raw)]
+        parsed = [Path(token).expanduser() for token in shlex.split(raw)]
+        return parsed[:1] if not multiple else parsed
     except ValueError as exc:
         stdout.write(f"[{kind}] invalid paths: {exc}\n")
         stdout.flush()
@@ -192,6 +189,25 @@ def build_image_message(
                 "image_url": {"url": _image_data_url(path)},
             }
         )
+    return content
+
+
+def build_remote_image_message(
+    paths: Sequence[Path], *, prompt: str | None = None
+) -> list[dict[str, Any]]:
+    """Build a cloud-native multimodal message for one or more images."""
+
+    image_paths = [path.expanduser() for path in paths]
+    if not image_paths:
+        raise ValueError("At least one image is required")
+
+    message = (prompt or DEFAULT_IMAGE_PROMPT).strip() or DEFAULT_IMAGE_PROMPT
+    message_lines = [message, "", "Attached images:"]
+    message_lines.extend(f"- {path.name}" for path in image_paths)
+    content: list[dict[str, Any]] = [{"type": "text", "text": "\n".join(message_lines)}]
+
+    for path in image_paths:
+        content.append({"type": "image_url", "image_url": _image_data_url(path)})
     return content
 
 
@@ -232,6 +248,57 @@ def build_document_message(
                     "text": (
                         f"[note: {path.name} truncated to {MAX_DOCUMENT_PAGES} pages]"
                     ),
+                }
+            )
+    return content
+
+
+def build_remote_document_message(
+    paths: Sequence[Path], *, prompt: str | None = None
+) -> list[dict[str, Any]]:
+    """Build a cloud-native document turn for the official Mistral SDK."""
+
+    document_paths = [path.expanduser() for path in paths]
+    if not document_paths:
+        raise ValueError("At least one document is required")
+
+    message = (
+        prompt or DEFAULT_REMOTE_DOCUMENT_PROMPT
+    ).strip() or DEFAULT_REMOTE_DOCUMENT_PROMPT
+    content: list[dict[str, Any]] = [{"type": "text", "text": message}]
+
+    for index, path in enumerate(document_paths, start=1):
+        suffix = path.suffix.lower()
+        if suffix in REMOTE_NATIVE_DOCUMENT_SUFFIXES:
+            content.append(
+                {
+                    "type": "document_url",
+                    "document_url": _document_data_url(path),
+                    "document_name": path.name,
+                }
+            )
+            continue
+
+        if suffix not in TEXT_DOCUMENT_SUFFIXES:
+            raise ValueError(
+                f"Unsupported remote document type: {path.suffix or path.name}"
+            )
+
+        loaded = load_document(path)
+        content.append(
+            {
+                "type": "text",
+                "text": (
+                    f"[Document {index}: {path.name}]\n"
+                    f"{loaded.text or '[Empty document]'}"
+                ),
+            }
+        )
+        if loaded.truncated:
+            content.append(
+                {
+                    "type": "text",
+                    "text": f"[note: {path.name} truncated before sending]",
                 }
             )
     return content
@@ -528,10 +595,30 @@ def _image_data_url(path: Path) -> str:
     mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
     if not mime_type.startswith("image/"):
         raise ValueError(f"Unsupported image type: {path.suffix or path.name}")
-    data = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{mime_type};base64,{data}"
+    return _file_data_url(path, mime_type=mime_type)
 
 
 def _image_data_url_from_bytes(data: bytes, *, mime_type: str = "image/png") -> str:
     encoded = base64.b64encode(data).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
+
+
+def _document_data_url(path: Path) -> str:
+    mime_type = mimetypes.guess_type(path.name)[0]
+    if not mime_type:
+        suffix = path.suffix.lower()
+        if suffix == PDF_SUFFIX:
+            mime_type = "application/pdf"
+        elif suffix == DOCX_SUFFIX:
+            mime_type = (
+                "application/vnd.openxmlformats-officedocument"
+                ".wordprocessingml.document"
+            )
+        else:
+            mime_type = "application/octet-stream"
+    return _file_data_url(path, mime_type=mime_type)
+
+
+def _file_data_url(path: Path, *, mime_type: str) -> str:
+    data = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{data}"

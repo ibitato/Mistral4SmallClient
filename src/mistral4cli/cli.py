@@ -8,16 +8,21 @@ import shlex
 import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import TextIO
 
 from mistralai.client import Mistral
 
 from mistral4cli.attachments import (
     DOCUMENT_FILETYPES,
+    DOCUMENT_SUFFIXES,
     IMAGE_FILETYPES,
+    IMAGE_SUFFIXES,
     PathPicker,
     build_document_message,
     build_image_message,
+    build_remote_document_message,
+    build_remote_image_message,
     choose_paths,
     format_selection_summary,
 )
@@ -102,6 +107,22 @@ class _InputHistory:
 
         self.browse_index = None
         self.draft = ""
+
+
+@dataclass(slots=True)
+class _PendingAttachment:
+    """Attachment selection staged for the next user prompt."""
+
+    kind: str
+    summary: str
+    paths: list[Path]
+
+
+@dataclass(slots=True)
+class _ReplState:
+    """Mutable REPL state that survives between commands."""
+
+    pending_attachment: _PendingAttachment | None = None
 
 
 def _optional_prompt_mode(value: str | None) -> str | None:
@@ -436,7 +457,9 @@ def _run_image_shortcut(
     session: MistralCodingSession,
     stdout: TextIO,
     *,
+    repl_state: _ReplState,
     input_func: Callable[[str], str],
+    stdin: TextIO,
     path_picker: PathPicker | None,
 ) -> bool:
     prompt = _normalize_inline_prompt(argument)
@@ -444,10 +467,12 @@ def _run_image_shortcut(
     paths = choose_paths(
         kind="image",
         input_func=input_func,
+        stdin=stdin,
         stdout=stdout,
         path_picker=path_picker,
         filetypes=IMAGE_FILETYPES,
-        multiple=True,
+        suffixes=IMAGE_SUFFIXES,
+        multiple=False,
     )
     if not paths:
         stdout.write("[image] selection canceled.\n")
@@ -457,14 +482,34 @@ def _run_image_shortcut(
     summary = format_selection_summary(paths)
     stdout.write(f"[image] selected: {summary}\n")
     stdout.flush()
+    if any(path.suffix.lower() not in IMAGE_SUFFIXES for path in paths):
+        stdout.write("[image] could not prepare attachment: unsupported image file\n")
+        stdout.flush()
+        return False
+    if prompt is None:
+        repl_state.pending_attachment = _PendingAttachment(
+            kind="image",
+            summary=summary,
+            paths=list(paths),
+        )
+        stdout.write(
+            "[image] attachment staged. Type your next prompt to analyze it.\n"
+        )
+        stdout.flush()
+        return False
+
     try:
-        message = build_image_message(paths, prompt=prompt)
+        if session.backend_kind is BackendKind.REMOTE:
+            message = build_remote_image_message(paths, prompt=prompt)
+        else:
+            message = build_image_message(paths, prompt=prompt)
     except Exception as exc:
         stdout.write(f"[image] could not prepare attachment: {exc}\n")
         stdout.flush()
         return False
 
-    session.send_content(message, stream=session.stream_enabled)
+    repl_state.pending_attachment = None
+    session.send_content(message, stream=session.stream_enabled, disable_tools=True)
     return False
 
 
@@ -473,7 +518,9 @@ def _run_doc_shortcut(
     session: MistralCodingSession,
     stdout: TextIO,
     *,
+    repl_state: _ReplState,
     input_func: Callable[[str], str],
+    stdin: TextIO,
     path_picker: PathPicker | None,
 ) -> bool:
     prompt = _normalize_inline_prompt(argument)
@@ -481,10 +528,12 @@ def _run_doc_shortcut(
     paths = choose_paths(
         kind="document",
         input_func=input_func,
+        stdin=stdin,
         stdout=stdout,
         path_picker=path_picker,
         filetypes=DOCUMENT_FILETYPES,
-        multiple=True,
+        suffixes=DOCUMENT_SUFFIXES,
+        multiple=False,
     )
     if not paths:
         stdout.write("[doc] selection canceled.\n")
@@ -494,14 +543,32 @@ def _run_doc_shortcut(
     summary = format_selection_summary(paths)
     stdout.write(f"[doc] selected: {summary}\n")
     stdout.flush()
+    if any(path.suffix.lower() not in DOCUMENT_SUFFIXES for path in paths):
+        stdout.write("[doc] could not prepare attachment: unsupported document file\n")
+        stdout.flush()
+        return False
+    if prompt is None:
+        repl_state.pending_attachment = _PendingAttachment(
+            kind="document",
+            summary=summary,
+            paths=list(paths),
+        )
+        stdout.write("[doc] attachment staged. Type your next prompt to analyze it.\n")
+        stdout.flush()
+        return False
+
     try:
-        message = build_document_message(paths, prompt=prompt)
+        if session.backend_kind is BackendKind.REMOTE:
+            message = build_remote_document_message(paths, prompt=prompt)
+        else:
+            message = build_document_message(paths, prompt=prompt)
     except Exception as exc:
         stdout.write(f"[doc] could not prepare attachment: {exc}\n")
         stdout.flush()
         return False
 
-    session.send_content(message, stream=session.stream_enabled)
+    repl_state.pending_attachment = None
+    session.send_content(message, stream=session.stream_enabled, disable_tools=True)
     return False
 
 
@@ -527,6 +594,11 @@ def _print_banner(stdout: TextIO, session: MistralCodingSession) -> None:
     stdout.write(
         render_welcome_banner(session.describe_defaults(), stream=stdout) + "\n"
     )
+    stdout.flush()
+
+
+def _print_runtime_refresh(stdout: TextIO, session: MistralCodingSession) -> None:
+    stdout.write(session.describe_defaults() + "\n")
     stdout.flush()
 
 
@@ -625,11 +697,15 @@ def _run_command(
     session: MistralCodingSession,
     stdout: TextIO,
     *,
+    repl_state: _ReplState | None = None,
     local_config: LocalMistralConfig | None = None,
     client_factory: Callable[[MistralConfig], Mistral] = build_client,
     input_func: Callable[[str], str] = input,
+    stdin: TextIO = sys.stdin,
     path_picker: PathPicker | None = None,
 ) -> bool:
+    if repl_state is None:
+        repl_state = _ReplState()
     if command in {"help", "h", "?"}:
         stdout.write(
             render_help_screen(
@@ -650,6 +726,7 @@ def _run_command(
             argument,
             session,
             stdout,
+            repl_state=repl_state,
             local_config=local_config,
             client_factory=client_factory,
         )
@@ -685,7 +762,9 @@ def _run_command(
             argument,
             session,
             stdout,
+            repl_state=repl_state,
             input_func=input_func,
+            stdin=stdin,
             path_picker=path_picker,
         )
     if command == "doc":
@@ -693,7 +772,9 @@ def _run_command(
             argument,
             session,
             stdout,
+            repl_state=repl_state,
             input_func=input_func,
+            stdin=stdin,
             path_picker=path_picker,
         )
     if command == "docs":
@@ -701,15 +782,18 @@ def _run_command(
             argument,
             session,
             stdout,
+            repl_state=repl_state,
             input_func=input_func,
+            stdin=stdin,
             path_picker=path_picker,
         )
     if command in {"exit", "quit", "q"}:
         return True
     if command in {"reset", "new"}:
+        repl_state.pending_attachment = None
         session.reset()
         stdout.write("Conversation reset.\n")
-        stdout.flush()
+        _print_runtime_refresh(stdout, session)
         return False
     if command == "defaults":
         stdout.write(session.describe_defaults() + "\n")
@@ -717,6 +801,7 @@ def _run_command(
         return False
     if command == "system":
         if argument:
+            repl_state.pending_attachment = None
             session.set_system_prompt(argument)
             stdout.write("System prompt updated and conversation reset.\n")
         else:
@@ -748,6 +833,7 @@ def _run_remote_command(
     session: MistralCodingSession,
     stdout: TextIO,
     *,
+    repl_state: _ReplState,
     local_config: LocalMistralConfig | None,
     client_factory: Callable[[MistralConfig], Mistral],
 ) -> bool:
@@ -777,8 +863,9 @@ def _run_remote_command(
             model_id=remote_config.model_id,
             server_url=None,
         )
+        repl_state.pending_attachment = None
         stdout.write("Remote backend enabled. Conversation reset.\n")
-        stdout.flush()
+        _print_runtime_refresh(stdout, session)
         return False
 
     if normalized == "off":
@@ -792,8 +879,9 @@ def _run_remote_command(
             model_id=local_config.model_id,
             server_url=local_config.server_url,
         )
+        repl_state.pending_attachment = None
         stdout.write("Local backend enabled. Conversation reset.\n")
-        stdout.flush()
+        _print_runtime_refresh(stdout, session)
         return False
 
     stdout.write("Usage: /remote [on|off]\n")
@@ -861,6 +949,7 @@ def _run_repl(
 ) -> int:
     _print_banner(stdout, session)
     history = _InputHistory()
+    repl_state = _ReplState()
     while True:
         try:
             line = _read_repl_line(
@@ -891,16 +980,45 @@ def _run_repl(
                 command[1],
                 session,
                 stdout,
+                repl_state=repl_state,
                 local_config=local_config,
                 client_factory=client_factory,
                 input_func=input_func,
+                stdin=stdin,
                 path_picker=path_picker,
             )
             if should_exit:
                 return 0
             continue
 
-        result = session.send(stripped, stream=stream)
+        if repl_state.pending_attachment is not None:
+            pending = repl_state.pending_attachment
+            try:
+                if pending.kind == "image":
+                    if session.backend_kind is BackendKind.REMOTE:
+                        content = build_remote_image_message(
+                            pending.paths, prompt=stripped
+                        )
+                    else:
+                        content = build_image_message(pending.paths, prompt=stripped)
+                else:
+                    if session.backend_kind is BackendKind.REMOTE:
+                        content = build_remote_document_message(
+                            pending.paths, prompt=stripped
+                        )
+                    else:
+                        content = build_document_message(pending.paths, prompt=stripped)
+            except Exception as exc:
+                stdout.write(
+                    f"[{pending.kind}] could not prepare staged attachment: {exc}\n"
+                )
+                stdout.flush()
+                repl_state.pending_attachment = None
+                continue
+            repl_state.pending_attachment = None
+            result = session.send_content(content, stream=stream, disable_tools=True)
+        else:
+            result = session.send(stripped, stream=stream)
         if result.cancelled:
             continue
 
@@ -958,6 +1076,7 @@ def main(
                 stream_enabled=not args.no_stream,
                 reasoning_visible=True,
                 tool_summary=tool_bridge.runtime_summary(),
+                stream=stdout,
             )
             + "\nSystem prompt:\n"
             + system_prompt

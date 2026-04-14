@@ -76,8 +76,8 @@ an actionable help system:
 - `/ls [PATH]` lists files and directories
 - `/find -- ...` searches text in the project tree
 - `/edit PATH -- ...` writes text to a file
-- `/image --prompt ...` opens an image picker and sends the selected images as a multimodal turn
-- `/doc --prompt ...` opens a document picker and rasterizes each page so the model can OCR it directly
+- `/image --prompt ...` opens a terminal image picker and sends the selected images as a multimodal turn
+- `/doc --prompt ...` opens a terminal document picker and uses the backend-appropriate document flow
 - `/reset` clears the conversation but keeps the system prompt
 - `/system <text>` replaces the system prompt and resets the chat
 - `/exit` or `/quit` leaves the REPL
@@ -105,17 +105,21 @@ OS tool set.
 
 The attachment commands are designed for analysis turns:
 
-- `/image` prefers a GUI picker and builds a multimodal message with one or
-  more selected images. If no GUI picker is available, it falls back to a
-  terminal path prompt.
-- `/doc` prefers a GUI picker and rasterizes supported documents into page
-  images before sending them to the model. Supported document types are
+- `/image` uses a terminal-native picker and builds a multimodal message with
+  one selected image. If the picker cannot run, it falls back to a
+  manual terminal path prompt.
+- `/doc` uses a terminal-native picker for supported document types:
   `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `toml`, `csv`, `pdf`, and `docx`.
 - Both commands accept an optional `--prompt`/`-p` argument so you can steer
   the analysis without retyping the default instruction.
-- PDF documents are rendered with `pdftoppm`, and plain text / DOCX documents
-  are wrapped into page images locally so the model performs the OCR/reading
-  step itself.
+- The picker stays fully inside the terminal: first select a root directory,
+  then use the fuzzy picker to choose one matching file.
+- In local mode, `/doc` rasterizes the selected document into page images before
+  sending it to `llama.cpp`.
+- In remote mode, `/image` uses the official SDK `image_url` chat flow, and
+  `/doc` uses the official SDK `document_url` chat flow for `pdf` and `docx`.
+- In remote mode, plain-text documents are embedded directly as text because
+  they are already machine-readable and do not need OCR.
 
 For long outputs the local shell and search tools are paginated, so you can use
 `offset`/`lines` style arguments to continue from a later page instead of

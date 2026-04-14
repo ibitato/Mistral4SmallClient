@@ -25,7 +25,7 @@ The repository is intentionally focused on one workflow:
 - always-on local tools: `shell`, `read_file`, `write_file`, `list_dir`, `search_text`
 - optional FireCrawl MCP tools loaded from `mcp.json` using
   `FIRECRAWL_API_KEY` from your environment
-- `/image` and `/doc` attachment commands
+- `/image` and `/doc` attachment commands with a terminal-native picker
 - `/remote on|off` to switch between local `llama.cpp` and Mistral cloud
 - tests for completion, streaming, cancellation recovery and multimodal payloads
 
@@ -44,6 +44,7 @@ uv run python -m mistral4cli
 - `MISTRAL_API_KEY` in your shell if you want remote mode
 - `FIRECRAWL_API_KEY` in your shell if you want FireCrawl MCP tools
 - `pdftoppm` available in `PATH` if you want PDF document rasterization via `/doc`
+- a real terminal with TTY support if you want the interactive attachment picker
 
 Useful one-shot smoke test:
 
@@ -61,8 +62,8 @@ Inside the REPL:
 - `/ls [PATH]` to inspect the tree
 - `/find -- ...` to search text in the workspace
 - `/edit PATH -- ...` to write text files
-- `/image` to pick and analyze images
-- `/doc` to pick and analyze documents
+- `/image` to pick and analyze images in the terminal
+- `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
 - `/reset`, `/system ...`, `/exit`
 
@@ -79,6 +80,14 @@ Typical environment setup:
 export MISTRAL_API_KEY=...
 export FIRECRAWL_API_KEY=...
 ```
+
+Attachment picker flow:
+
+- `/image` and `/doc` use a pure terminal picker with no GUI requirements
+- first choose a root directory
+- then use a fuzzy list to pick one matching file
+- `Enter` selects the highlighted file, `[..]` moves to the parent directory, `Ctrl-C` cancels
+- if the picker cannot run, the CLI falls back to manual path entry
 
 ## Local Mistral Small 4 setup
 
@@ -112,6 +121,14 @@ Remote mode keeps the same sampling defaults, but it does not send
 `mistral-small-latest`, so the CLI uses the official SDK with
 `reasoning_effort=high` when visible reasoning is enabled, and
 `reasoning_effort=none` when it is disabled.
+
+Attachment handling is backend-aware:
+
+- local `/image` sends `image_url` blocks to `llama.cpp`
+- local `/doc` rasterizes supported documents into page images for OCR/vision
+- remote `/image` uses the official SDK vision flow with `image_url`
+- remote `/doc` uses the official SDK document flow with `document_url` for `pdf` and `docx`
+- remote plain-text documents are embedded directly as text because they are already machine-readable
 
 The repository now includes the exact reasoning template at
 [`mistral-small-4-reasoning.jinja`](mistral-small-4-reasoning.jinja). In this
