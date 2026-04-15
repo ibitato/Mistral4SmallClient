@@ -1,4 +1,4 @@
-"""Command-line entrypoint for the general Mistral Small 4 CLI."""
+"""Linux-only command-line entrypoint for the general Mistral Small 4 CLI."""
 
 from __future__ import annotations
 
@@ -60,11 +60,14 @@ from mistral4cli.mcp_bridge import (
 from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralSession,
+    SessionStatusSnapshot,
+    UsageSnapshot,
     render_defaults_summary,
 )
 from mistral4cli.tooling import CompositeToolBridge, ToolBridge
 from mistral4cli.ui import (
     CLEAR_SCREEN,
+    InteractiveTTYRenderer,
     render_help_screen,
     render_welcome_banner,
     supports_full_terminal_ui,
@@ -72,6 +75,7 @@ from mistral4cli.ui import (
 )
 
 logger = logging.getLogger("mistral4cli.cli")
+LINUX_ONLY_MESSAGE = "This client is currently supported on Linux only."
 
 
 @dataclass(slots=True)
@@ -180,8 +184,49 @@ def _repl_prompt(repl_state: _ReplState) -> str:
     if repl_state.active_documents:
         tokens.append(f"doc:{len(repl_state.active_documents)}")
     if not tokens:
-        return "mistral4small> "
-    return f"mistral4small[{','.join(tokens)}]> "
+        return "M4S> "
+    return f"M4S[{','.join(tokens)}]> "
+
+
+def _format_usage_for_status(usage: UsageSnapshot | None) -> str:
+    if usage is None or usage.total_tokens is None:
+        return "ctx:-"
+    if usage.max_context_tokens is None:
+        return f"ctx:{usage.total_tokens}/?"
+    return f"ctx:{usage.total_tokens}/{usage.max_context_tokens}"
+
+
+def _format_session_total_for_status(usage: UsageSnapshot | None) -> str:
+    if usage is None or usage.total_tokens is None:
+        return "sum:-"
+    return f"sum:{usage.total_tokens}"
+
+
+def _status_phase_label(snapshot: SessionStatusSnapshot) -> str:
+    if snapshot.phase == "tool" and snapshot.detail:
+        return f"tool:{snapshot.detail}"
+    if snapshot.phase == "thinking":
+        return "thinking..."
+    return snapshot.phase
+
+
+def _repl_status_line(session: MistralSession, repl_state: _ReplState) -> str:
+    snapshot = session.status_snapshot()
+    parts = [
+        _status_phase_label(snapshot),
+        session.backend_kind.value,
+        session.model_id,
+        f"reasoning:{'on' if session.show_reasoning else 'off'}",
+    ]
+    if repl_state.pending_attachment is not None:
+        parts.append(f"stage:{repl_state.pending_attachment.kind}")
+    if repl_state.active_images:
+        parts.append(f"img:{len(repl_state.active_images)}")
+    if repl_state.active_documents:
+        parts.append(f"doc:{len(repl_state.active_documents)}")
+    parts.append(_format_usage_for_status(snapshot.last_usage))
+    parts.append(_format_session_total_for_status(snapshot.cumulative_usage))
+    return " | ".join(parts)
 
 
 def _build_active_attachment_message(
@@ -741,6 +786,24 @@ def _normalize_inline_prompt(argument: str) -> str | None:
     return prompt or None
 
 
+def _linux_supported() -> bool:
+    """Return whether the current runtime platform is supported."""
+
+    return sys.platform.startswith("linux")
+
+
+def _ensure_supported_platform(stderr: TextIO) -> bool:
+    """Fail fast when the CLI is launched outside Linux."""
+
+    if _linux_supported():
+        return True
+    # Fail before any session setup because local tool semantics and terminal
+    # behavior are intentionally defined only for Linux in this client.
+    stderr.write(LINUX_ONLY_MESSAGE + "\n")
+    stderr.flush()
+    return False
+
+
 def _print_banner(stdout: TextIO, session: MistralSession) -> None:
     stdout.write(
         render_welcome_banner(session.describe_defaults(), stream=stdout) + "\n"
@@ -809,7 +872,11 @@ def _write_tty_newline(stdout: TextIO) -> None:
 
 
 def _read_tty_line(
-    prompt: str, stdin: TextIO, stdout: TextIO, history: _InputHistory
+    prompt: str,
+    stdin: TextIO,
+    stdout: TextIO,
+    history: _InputHistory,
+    renderer: InteractiveTTYRenderer | None = None,
 ) -> str:
     """Read one REPL line with simple raw-mode editing and history navigation."""
 
@@ -819,28 +886,43 @@ def _read_tty_line(
     fileno = stdin.fileno()
     original_attrs = termios.tcgetattr(fileno)
     buffer = ""
-    stdout.write(prompt)
-    stdout.flush()
+    if renderer is not None:
+        renderer.render_input(prompt, buffer)
+    else:
+        stdout.write(prompt)
+        stdout.flush()
     try:
         tty.setraw(fileno)
         while True:
             char = stdin.read(1)
             if char == "":
+                if renderer is not None:
+                    renderer.clear_overlay()
                 raise EOFError
             if char in {"\r", "\n"}:
-                _write_tty_newline(stdout)
+                if renderer is not None:
+                    renderer.commit_input(prompt, buffer)
+                else:
+                    _write_tty_newline(stdout)
                 history.reset_navigation()
                 return buffer
             if char == "\x03":
+                if renderer is not None:
+                    renderer.clear_overlay()
                 raise KeyboardInterrupt
             if char == "\x04":
                 if not buffer:
+                    if renderer is not None:
+                        renderer.clear_overlay()
                     raise EOFError
                 continue
             if char in {"\x7f", "\b"}:
                 if buffer:
                     buffer = buffer[:-1]
-                    _redraw_prompt_line(stdout, prompt, buffer)
+                    if renderer is not None:
+                        renderer.render_input(prompt, buffer)
+                    else:
+                        _redraw_prompt_line(stdout, prompt, buffer)
                 continue
             if char == "\x1b":
                 next_char = stdin.read(1)
@@ -849,15 +931,24 @@ def _read_tty_line(
                 direction = stdin.read(1)
                 if direction == "A":
                     buffer = history.previous(buffer)
-                    _redraw_prompt_line(stdout, prompt, buffer)
+                    if renderer is not None:
+                        renderer.render_input(prompt, buffer)
+                    else:
+                        _redraw_prompt_line(stdout, prompt, buffer)
                 elif direction == "B":
                     buffer = history.next()
-                    _redraw_prompt_line(stdout, prompt, buffer)
+                    if renderer is not None:
+                        renderer.render_input(prompt, buffer)
+                    else:
+                        _redraw_prompt_line(stdout, prompt, buffer)
                 continue
             if char.isprintable():
                 buffer += char
-                stdout.write(char)
-                stdout.flush()
+                if renderer is not None:
+                    renderer.render_input(prompt, buffer)
+                else:
+                    stdout.write(char)
+                    stdout.flush()
     finally:
         termios.tcsetattr(fileno, termios.TCSADRAIN, original_attrs)
 
@@ -869,11 +960,12 @@ def _read_repl_line(
     stdin: TextIO,
     stdout: TextIO,
     history: _InputHistory,
+    renderer: InteractiveTTYRenderer | None = None,
 ) -> str:
     """Read one REPL line using raw TTY mode when available."""
 
     if stdin.isatty() and _is_default_input_func(input_func):
-        return _read_tty_line(prompt, stdin, stdout, history)
+        return _read_tty_line(prompt, stdin, stdout, history, renderer)
     return input_func(prompt)
 
 
@@ -1241,6 +1333,19 @@ def _run_repl(
     _refresh_repl_screen(stdout, session, startup=True)
     history = _InputHistory()
     repl_state = _ReplState()
+    renderer: InteractiveTTYRenderer | None = None
+    if (
+        supports_full_terminal_ui(stdout)
+        and stdin.isatty()
+        and _is_default_input_func(input_func)
+    ):
+        renderer = InteractiveTTYRenderer(
+            stream=stdout,
+            status_provider=lambda: _repl_status_line(session, repl_state),
+        )
+        session.answer_writer = renderer.write_answer
+        session.reasoning_writer = renderer.write_reasoning
+        session.status_callback = renderer.show_status
     while True:
         try:
             line = _read_repl_line(
@@ -1249,6 +1354,7 @@ def _run_repl(
                 stdin=stdin,
                 stdout=stdout,
                 history=history,
+                renderer=renderer,
             )
         except EOFError:
             stdout.write("\n")
@@ -1280,7 +1386,13 @@ def _run_repl(
                 stdin=stdin,
                 path_picker=path_picker,
             )
+            if renderer is not None:
+                renderer.finalize_output()
             if should_exit:
+                if renderer is not None:
+                    renderer.clear_overlay()
+                    stdout.write("\r")
+                    stdout.flush()
                 return 0
             continue
 
@@ -1329,6 +1441,8 @@ def _run_repl(
             result = session.send_content(content, stream=stream)
         else:
             result = session.send(stripped, stream=stream)
+        if renderer is not None:
+            renderer.finalize_output()
         if result.cancelled:
             continue
 
@@ -1380,6 +1494,8 @@ def main(
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if not _ensure_supported_platform(stderr):
+        return 1
     logging_config = _resolve_logging_config(args)
     configure_logging(logging_config)
     logger.info(

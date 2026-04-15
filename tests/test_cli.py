@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import io
 import os
+import pty
+import re
+import select
+import signal
+import subprocess
+import sys
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -12,12 +19,14 @@ from mistral4cli.attachments import (
     build_remote_image_message,
 )
 from mistral4cli.cli import (
+    LINUX_ONLY_MESSAGE,
     _build_active_attachment_message,
     _clear_screen_if_supported,
     _InputHistory,
     _parse_command,
     _PendingAttachment,
     _refresh_repl_screen,
+    _repl_status_line,
     _ReplState,
     _run_command,
     _run_repl,
@@ -34,15 +43,28 @@ from mistral4cli.local_mistral import (
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.logging_config import DEFAULT_LOG_RETENTION_DAYS
 from mistral4cli.mcp_bridge import MCPToolResult
-from mistral4cli.session import MistralCodingSession, MistralSession
+from mistral4cli.session import (
+    DEFAULT_SYSTEM_PROMPT,
+    MistralCodingSession,
+    MistralSession,
+)
 from mistral4cli.ui import (
     CLEAR_SCREEN,
+    GREEN,
+    ORANGE,
+    RESET,
+    InteractiveTTYRenderer,
+    SmartOutputWriter,
+    iter_typewriter_chunks,
+    paint_prompt_lines,
     render_help_screen,
     render_welcome_banner,
     terminal_recommendation,
+    wrap_prompt_buffer,
 )
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "internet"
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 
 
 class FakeStdin(io.StringIO):
@@ -97,11 +119,19 @@ class FakeChoice:
 @dataclass(slots=True)
 class FakeResponse:
     choices: list[FakeChoice]
+    usage: object | None = None
 
 
 @dataclass(slots=True)
 class FakeEvent:
     data: FakeResponse
+
+
+@dataclass(slots=True)
+class FakeUsage:
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
 
 
 class FakeStream:
@@ -289,6 +319,77 @@ def test_main_returns_zero_without_interactive_input() -> None:
     assert output.getvalue() == ""
 
 
+def test_main_rejects_non_linux_before_print_defaults(monkeypatch: Any) -> None:
+    output = io.StringIO()
+    error = io.StringIO()
+    client_factory_called = False
+
+    def client_factory(_config: Any) -> FakeClient:
+        nonlocal client_factory_called
+        client_factory_called = True
+        return FakeClient()
+
+    monkeypatch.setattr("mistral4cli.cli.sys.platform", "darwin")
+
+    exit_code = main(
+        ["--print-defaults", "--no-mcp"],
+        stdin=FakeStdin(""),
+        stdout=output,
+        stderr=error,
+        client_factory=client_factory,
+    )
+
+    assert exit_code == 1
+    assert output.getvalue() == ""
+    assert error.getvalue() == LINUX_ONLY_MESSAGE + "\n"
+    assert client_factory_called is False
+
+
+def test_main_rejects_non_linux_before_once(monkeypatch: Any) -> None:
+    output = io.StringIO()
+    error = io.StringIO()
+    client_factory_called = False
+
+    def client_factory(_config: Any) -> FakeClient:
+        nonlocal client_factory_called
+        client_factory_called = True
+        return FakeClient()
+
+    monkeypatch.setattr("mistral4cli.cli.sys.platform", "win32")
+
+    exit_code = main(
+        ["--once", "Return only ok.", "--no-mcp"],
+        stdin=FakeStdin(""),
+        stdout=output,
+        stderr=error,
+        client_factory=client_factory,
+    )
+
+    assert exit_code == 1
+    assert output.getvalue() == ""
+    assert error.getvalue() == LINUX_ONLY_MESSAGE + "\n"
+    assert client_factory_called is False
+
+
+def test_main_rejects_non_linux_before_interactive_start(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    error = io.StringIO()
+
+    monkeypatch.setattr("mistral4cli.cli.sys.platform", "darwin")
+
+    exit_code = main(
+        ["--no-mcp"],
+        stdin=FakeStdin("", tty=True),
+        stdout=output,
+        stderr=error,
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert exit_code == 1
+    assert output.getvalue() == ""
+    assert error.getvalue() == LINUX_ONLY_MESSAGE + "\n"
+
+
 def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     output = io.StringIO()
     client_factory_called = False
@@ -403,6 +504,19 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "Search official documentation" in help_text
     assert "Describe this image and list all visible text." in help_text
     assert "Ctrl-C cancels the current response" in help_text
+
+
+def test_default_system_prompt_hardens_tool_selection_rules() -> None:
+    assert "This client is supported on Linux only." in DEFAULT_SYSTEM_PROMPT
+    assert "shell is the primary tool for OS inspection" in DEFAULT_SYSTEM_PROMPT
+    assert (
+        "search_text is only for searching text inside files" in DEFAULT_SYSTEM_PROMPT
+    )
+    assert '"Check running nginx processes" -> shell.' in DEFAULT_SYSTEM_PROMPT
+    assert '"Find files mentioning timeout in src/" -> search_text with path=src.' in (
+        DEFAULT_SYSTEM_PROMPT
+    )
+    assert "Tool results are authoritative." in DEFAULT_SYSTEM_PROMPT
 
 
 def test_session_backward_compatibility_alias_points_to_canonical_class() -> None:
@@ -1299,12 +1413,313 @@ def test_input_history_skips_empty_and_consecutive_duplicates() -> None:
     assert history.entries == ["first", "second"]
 
 
+def test_wrap_prompt_buffer_uses_continuation_prefix_for_long_input() -> None:
+    lines = wrap_prompt_buffer(
+        "M4S> ",
+        (
+            "This is a deliberately long prompt that should wrap into multiple "
+            "display lines for the interactive composer."
+        ),
+        width=48,
+    )
+
+    assert len(lines) >= 2
+    assert lines[0].startswith("M4S> ")
+    assert lines[1].startswith("... ")
+
+
+def test_paint_prompt_lines_styles_prompt_prefixes(monkeypatch: Any) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+
+    painted = paint_prompt_lines(
+        ["M4S> hola", "... mundo"],
+        prompt="M4S> ",
+        stream=output,
+    )
+
+    assert GREEN in painted[0]
+    assert "M4S> hola" in ANSI_ESCAPE_RE.sub("", painted[0])
+    assert GREEN in painted[1]
+    assert "... mundo" in ANSI_ESCAPE_RE.sub("", painted[1])
+
+
+def test_smart_output_writer_wraps_prose_without_breaking_words(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    writer = SmartOutputWriter(stream=output)
+    monkeypatch.setattr(
+        "mistral4cli.ui.shutil.get_terminal_size",
+        lambda: os.terminal_size((28, 24)),
+    )
+
+    rendered = writer.feed("Alpha beta gamma delta epsilon zeta eta theta iota kappa")
+    rendered += writer.finish()
+
+    lines = rendered.splitlines()
+    assert len(lines) >= 2
+    assert "epsi-\n" not in rendered
+    assert all(len(line) <= 28 for line in lines)
+
+
+def test_smart_output_writer_preserves_fenced_code_blocks(monkeypatch: Any) -> None:
+    output = io.StringIO()
+    writer = SmartOutputWriter(stream=output)
+    monkeypatch.setattr(
+        "mistral4cli.ui.shutil.get_terminal_size",
+        lambda: os.terminal_size((20, 24)),
+    )
+
+    rendered = writer.feed(
+        "```python\nvery_long_identifier = another_identifier\n```\n"
+    )
+
+    assert rendered == "```python\nvery_long_identifier = another_identifier\n```\n"
+
+
+def test_iter_typewriter_chunks_preserves_ansi_sequences_and_newlines() -> None:
+    text = f"{ORANGE}hola{RESET}\nmundo"
+
+    chunks = iter_typewriter_chunks(text, visible_chars=2)
+
+    assert "".join(chunks) == text
+    assert any(chunk.endswith("\n") for chunk in chunks)
+    assert any(ORANGE in chunk for chunk in chunks)
+
+
+def test_renderer_typewriter_batches_multichunk_answer(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=lambda: "answering | local | model | ctx:- | sum:-",
+    )
+    pauses: list[float] = []
+    monkeypatch.setattr("mistral4cli.ui.ANSWER_TYPEWRITER_VISIBLE_CHARS", 4)
+    monkeypatch.setattr("mistral4cli.ui.ANSWER_TYPEWRITER_PAUSE_S", 0.001)
+    monkeypatch.setattr("mistral4cli.ui.time.sleep", pauses.append)
+
+    renderer.write_answer("abcdefghijkl")
+    renderer.finalize_output()
+
+    assert output.getvalue() == "abcdefghijkl"
+    assert pauses == [0.001, 0.001]
+
+
+def test_repl_status_line_shows_phase_attachments_and_usage() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="ok"),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=FakeUsage(prompt_tokens=12, completion_tokens=6, total_tokens=18),
+            )
+        ]
+    )
+    session = MistralSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    repl_state = _ReplState(
+        pending_attachment=_PendingAttachment(
+            kind="document",
+            summary="w3c-dummy.pdf",
+            paths=[FIXTURE_DIR / "w3c-dummy.pdf"],
+        ),
+        active_images=[FIXTURE_DIR / "wikimedia-demo.png"],
+    )
+
+    session.send("Return only ok.", stream=False)
+
+    rendered = _repl_status_line(session, repl_state)
+    assert "done" in rendered
+    assert "stage:document" in rendered
+    assert "img:1" in rendered
+    assert "ctx:18/256000" in rendered
+    assert "sum:18" in rendered
+
+
+def test_status_bar_leaves_one_column_to_avoid_terminal_autowrap(
+    monkeypatch: Any,
+) -> None:
+    output = FakeTTYOutput()
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=lambda: "idle | local | model | reasoning:on | ctx:- | sum:-",
+    )
+    monkeypatch.setattr(
+        "mistral4cli.ui.shutil.get_terminal_size",
+        lambda: os.terminal_size((20, 24)),
+    )
+
+    rendered = renderer.render_status_bar()
+    plain = ANSI_ESCAPE_RE.sub("", rendered)
+
+    assert len(plain) == 19
+
+
+def test_render_input_omits_status_bar_while_user_is_typing(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=lambda: "thinking... | local | model | ctx:- | sum:-",
+    )
+    monkeypatch.setattr(
+        "mistral4cli.ui.shutil.get_terminal_size",
+        lambda: os.terminal_size((40, 24)),
+    )
+
+    renderer.render_input("M4S> ", "hola")
+
+    rendered = output.getvalue()
+    plain = ANSI_ESCAPE_RE.sub("", rendered)
+    assert "M4S> hola" in plain
+    assert "thinking..." not in plain
+    assert GREEN in rendered
+
+
+def test_renderer_flushes_pending_reasoning_before_answer(
+    monkeypatch: Any,
+) -> None:
+    output = FakeTTYOutput()
+    fake_client = FakeClient(complete_text="<think>plan first</think>ok")
+    session = MistralSession(
+        client=fake_client,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=lambda: "answering | local | model | ctx:- | sum:-",
+    )
+    session.answer_writer = renderer.write_answer
+    session.reasoning_writer = renderer.write_reasoning
+    monkeypatch.setattr("mistral4cli.ui._terminal_width", lambda *_args, **_kwargs: 200)
+
+    result = session.send("Return ok.", stream=False)
+    renderer.finalize_output()
+
+    plain = ANSI_ESCAPE_RE.sub("", output.getvalue())
+    assert result.reasoning == "plan first"
+    assert result.content == "ok"
+    assert "plan first\n\nok\n" in plain
+
+
 def test_write_tty_newline_emits_crlf() -> None:
     output = io.StringIO()
 
     _write_tty_newline(output)
 
     assert output.getvalue() == "\r\n"
+
+
+def test_repl_quit_with_renderer_restores_column_zero(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = FakeTTYOutput()
+    session = MistralSession(
+        client=FakeClient(complete_text="ok"),
+        generation=LocalGenerationConfig(),
+        tool_bridge=LocalToolBridge(root=tmp_path),
+        stdout=output,
+    )
+    monkeypatch.setattr("mistral4cli.cli._is_default_input_func", lambda _func: True)
+    monkeypatch.setattr(
+        "mistral4cli.cli._read_repl_line",
+        lambda **_kwargs: "/quit",
+    )
+
+    exit_code = _run_repl(
+        session,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeClient(),
+        input_func=lambda _prompt: "/quit",
+        stdin=FakeStdin("", tty=True),
+        stdout=output,
+        stream=False,
+        path_picker=None,
+    )
+
+    assert exit_code == 0
+    assert output.getvalue().endswith("\r")
+
+
+def test_tty_repl_quit_exits_without_lingering_process_group(tmp_path: Path) -> None:
+    master_fd, slave_fd = pty.openpty()
+    env = os.environ.copy()
+    env["NO_COLOR"] = "1"
+    env["TERM"] = "xterm-256color"
+    src_path = str(Path(__file__).resolve().parents[1] / "src")
+    env["PYTHONPATH"] = (
+        f"{src_path}:{env['PYTHONPATH']}" if env.get("PYTHONPATH") else src_path
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "mistral4cli",
+            "--no-mcp",
+            "--log-dir",
+            str(tmp_path),
+        ],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+        start_new_session=True,
+        close_fds=True,
+    )
+    os.close(slave_fd)
+    prompt_seen = False
+    try:
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            ready, _, _ = select.select([master_fd], [], [], 0.2)
+            if master_fd not in ready:
+                if process.poll() is not None:
+                    break
+                continue
+            chunk = os.read(master_fd, 65536)
+            if not chunk:
+                break
+            if b"M4S>" in chunk:
+                prompt_seen = True
+                break
+        assert prompt_seen, "interactive prompt did not appear before timeout"
+
+        os.write(master_fd, b"/quit\n")
+        assert process.wait(timeout=10) == 0
+
+        time.sleep(0.2)
+        group_scan = subprocess.run(
+            ["ps", "-o", "pid=", "-g", str(process.pid)],
+            capture_output=True,
+            text=True,
+        )
+        assert group_scan.returncode != 0 or group_scan.stdout.strip() == ""
+    finally:
+        try:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait(timeout=5)
+        finally:
+            os.close(master_fd)
 
 
 def test_remote_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
@@ -1324,6 +1739,95 @@ def test_remote_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
     assert result.content == "ok"
     assert "prompt_mode" not in fake_client.chat.complete_calls[0]
     assert fake_client.chat.complete_calls[0]["reasoning_effort"] == "high"
+
+
+def test_remote_non_stream_usage_is_tracked_in_status_snapshot() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="ok"),
+                        finish_reason="stop",
+                    )
+                ],
+                usage=FakeUsage(prompt_tokens=10, completion_tokens=5, total_tokens=15),
+            )
+        ]
+    )
+    session = MistralSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return only ok.", stream=False)
+
+    snapshot = session.status_snapshot()
+    assert result.content == "ok"
+    assert snapshot.last_usage is not None
+    assert snapshot.last_usage.total_tokens == 15
+    assert snapshot.last_usage.max_context_tokens == 256_000
+    assert snapshot.cumulative_usage is not None
+    assert snapshot.cumulative_usage.total_tokens == 15
+
+
+def test_remote_stream_usage_is_tracked_in_status_snapshot() -> None:
+    output = io.StringIO()
+
+    class UsageStreamChat:
+        def __init__(self) -> None:
+            self.complete_calls: list[dict[str, Any]] = []
+            self.stream_calls: list[dict[str, Any]] = []
+            self.last_stream = FakeStream(
+                [
+                    FakeEvent(
+                        data=FakeResponse(
+                            choices=[
+                                FakeChoice(
+                                    delta=FakeDelta(content="ok"),
+                                    finish_reason="stop",
+                                )
+                            ],
+                            usage=FakeUsage(
+                                prompt_tokens=20,
+                                completion_tokens=10,
+                                total_tokens=30,
+                            ),
+                        )
+                    )
+                ]
+            )
+
+        def stream(self, **kwargs: Any) -> FakeStream:
+            self.stream_calls.append(kwargs)
+            return self.last_stream
+
+    class UsageStreamClient:
+        def __init__(self) -> None:
+            self.chat = UsageStreamChat()
+
+    session = MistralSession(
+        client=UsageStreamClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return only ok.", stream=True)
+
+    snapshot = session.status_snapshot()
+    assert result.content == "ok"
+    assert snapshot.last_usage is not None
+    assert snapshot.last_usage.total_tokens == 30
+    assert snapshot.cumulative_usage is not None
+    assert snapshot.cumulative_usage.total_tokens == 30
 
 
 def test_remote_request_disables_reasoning_effort_when_hidden() -> None:

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import textwrap
-from collections.abc import Sequence
+import time
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from typing import TextIO
 
 from mistral4cli.local_mistral import (
@@ -33,6 +36,13 @@ ASCII_BANNER = (
     "\n"
     r"                    [ Mistral4Small ]                    "
 )
+
+ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+PROMPT_CONTINUATION_PREFIX = "... "
+ANSWER_TYPEWRITER_VISIBLE_CHARS = 48
+ANSWER_TYPEWRITER_PAUSE_S = 0.008
+REASONING_TYPEWRITER_VISIBLE_CHARS = 56
+REASONING_TYPEWRITER_PAUSE_S = 0.006
 
 
 def _supports_color(stream: TextIO) -> bool:
@@ -84,6 +94,10 @@ def _paint_reasoning(text: str, stream: TextIO) -> str:
     return f"{DIM}{ITALIC}{ORANGE}{text}{RESET}"
 
 
+def _paint_prompt(text: str, stream: TextIO) -> str:
+    return _paint(text, GREEN, stream, bold=True)
+
+
 def _paint_multiline(
     text: str, color: str, stream: TextIO, *, bold: bool = False
 ) -> str:
@@ -92,11 +106,387 @@ def _paint_multiline(
     )
 
 
-def _terminal_width(stream: TextIO) -> int:
+def _terminal_width(stream: TextIO, *, minimum: int = 72) -> int:
     try:
-        return max(shutil.get_terminal_size().columns, 72)
+        return max(shutil.get_terminal_size().columns, minimum)
     except OSError:
-        return 100
+        return max(100, minimum)
+
+
+def _strip_ansi(text: str) -> str:
+    return ANSI_ESCAPE_RE.sub("", text)
+
+
+def _truncate_plain_text(text: str, width: int) -> str:
+    if width <= 0:
+        return ""
+    if len(text) <= width:
+        return text
+    if width == 1:
+        return text[:1]
+    if width <= 3:
+        return text[:width]
+    return f"{text[: width - 3]}..."
+
+
+def _clear_rendered_block(stream: TextIO, line_count: int) -> None:
+    if line_count <= 0:
+        return
+    stream.write("\r")
+    for _ in range(line_count - 1):
+        stream.write("\x1b[1A")
+    for index in range(line_count):
+        stream.write("\r\x1b[2K")
+        if index < line_count - 1:
+            stream.write("\x1b[1B")
+    for _ in range(line_count - 1):
+        stream.write("\x1b[1A")
+    stream.write("\r")
+    stream.flush()
+
+
+def iter_typewriter_chunks(text: str, *, visible_chars: int) -> list[str]:
+    """Split ANSI-decorated text into small visible chunks for TTY playback."""
+
+    if not text:
+        return []
+    chunks: list[str] = []
+    current: list[str] = []
+    visible = 0
+    index = 0
+    while index < len(text):
+        match = ANSI_ESCAPE_RE.match(text, index)
+        if match is not None:
+            current.append(match.group(0))
+            index = match.end()
+            continue
+        char = text[index]
+        current.append(char)
+        index += 1
+        if char == "\n":
+            chunks.append("".join(current))
+            current = []
+            visible = 0
+            continue
+        visible += 1
+        if visible >= visible_chars:
+            chunks.append("".join(current))
+            current = []
+            visible = 0
+    if current:
+        chunks.append("".join(current))
+    return chunks
+
+
+def wrap_prompt_buffer(prompt: str, buffer: str, *, width: int) -> list[str]:
+    """Wrap one logical REPL buffer into prompt-display lines."""
+
+    available_width = max(width, len(prompt) + 8, len(PROMPT_CONTINUATION_PREFIX) + 8)
+    content = buffer or ""
+    wrapped = textwrap.wrap(
+        content,
+        width=available_width,
+        initial_indent=prompt,
+        subsequent_indent=PROMPT_CONTINUATION_PREFIX,
+        replace_whitespace=False,
+        drop_whitespace=False,
+        break_long_words=False,
+        break_on_hyphens=False,
+    )
+    if not wrapped:
+        return [prompt]
+    return wrapped
+
+
+def paint_prompt_lines(
+    lines: Sequence[str],
+    *,
+    prompt: str,
+    stream: TextIO,
+) -> list[str]:
+    """Paint the REPL prompt prefixes without affecting wrap calculations."""
+
+    painted: list[str] = []
+    for line in lines:
+        if line.startswith(prompt):
+            painted.append(_paint_prompt(prompt, stream) + line[len(prompt) :])
+            continue
+        if line.startswith(PROMPT_CONTINUATION_PREFIX):
+            painted.append(
+                _paint_prompt(PROMPT_CONTINUATION_PREFIX, stream)
+                + line[len(PROMPT_CONTINUATION_PREFIX) :]
+            )
+            continue
+        painted.append(line)
+    return painted
+
+
+def _detect_hanging_indent(text: str) -> str:
+    bullet_match = re.match(r"^(\s*(?:[-*+]\s+|\d+\.\s+))", text)
+    if bullet_match is not None:
+        return " " * len(bullet_match.group(1))
+    return ""
+
+
+def _looks_like_literal_line(text: str) -> bool:
+    stripped = text.strip()
+    if not stripped:
+        return True
+    if text.startswith(("    ", "\t")):
+        return True
+    if stripped.startswith("```"):
+        return True
+    if text.lstrip() != text and stripped.startswith(("-", "*", "+")):
+        return True
+    if stripped.startswith(("{", "}", "[", "]")):
+        return True
+    if stripped.endswith(("{", "[", "}", "]", ",", ":")):
+        return True
+    return bool("|" in text and text.count("|") >= 2)
+
+
+def _wrap_prose_line(text: str, *, width: int) -> list[str]:
+    hanging_indent = _detect_hanging_indent(text)
+    wrapper = textwrap.TextWrapper(
+        width=width,
+        replace_whitespace=False,
+        drop_whitespace=False,
+        break_long_words=False,
+        break_on_hyphens=False,
+        subsequent_indent=hanging_indent,
+    )
+    wrapped = wrapper.wrap(text)
+    return wrapped or [text]
+
+
+@dataclass(slots=True)
+class SmartOutputWriter:
+    """Incremental terminal writer that wraps normal prose safely."""
+
+    stream: TextIO
+    style: Callable[[str, TextIO], str] | None = None
+    _pending: str = ""
+    _in_fence: bool = False
+
+    def feed(self, text: str) -> str:
+        """Consume streamed text and return the wrapped terminal output."""
+
+        if not text:
+            return ""
+        self._pending += text
+        output: list[str] = []
+        while "\n" in self._pending:
+            line, self._pending = self._pending.split("\n", 1)
+            output.extend(self._render_complete_line(line))
+            output.append("\n")
+        output.extend(self._emit_soft_wraps())
+        return "".join(output)
+
+    def finish(self) -> str:
+        """Flush any pending text that was held for wrapping decisions."""
+
+        if not self._pending:
+            return ""
+        line = self._pending
+        self._pending = ""
+        return "".join(self._render_complete_line(line))
+
+    def _render_complete_line(self, line: str) -> list[str]:
+        stripped = line.strip()
+        literal = self._in_fence or _looks_like_literal_line(line)
+        rendered_lines = (
+            [line]
+            if literal
+            else _wrap_prose_line(
+                line,
+                width=_terminal_width(self.stream, minimum=20),
+            )
+        )
+        if stripped.startswith("```"):
+            self._in_fence = not self._in_fence
+        return [self._style_line(item) for item in rendered_lines]
+
+    def _emit_soft_wraps(self) -> list[str]:
+        if (
+            not self._pending
+            or self._in_fence
+            or _looks_like_literal_line(self._pending)
+        ):
+            return []
+        output: list[str] = []
+        width = _terminal_width(self.stream, minimum=20)
+        while len(self._pending) > width:
+            breakpoint = self._soft_break_index(self._pending, width)
+            if breakpoint is None:
+                break
+            line = self._pending[:breakpoint].rstrip()
+            remainder = self._pending[breakpoint:].lstrip()
+            output.append(self._style_line(line))
+            output.append("\n")
+            self._pending = remainder
+        return output
+
+    def _soft_break_index(self, text: str, width: int) -> int | None:
+        window = text[:width]
+        whitespace_positions = [
+            index for index, char in enumerate(window) if char.isspace()
+        ]
+        if not whitespace_positions:
+            return None
+        return whitespace_positions[-1] + 1
+
+    def _style_line(self, text: str) -> str:
+        if self.style is None or not text:
+            return text
+        return self.style(text, self.stream)
+
+
+@dataclass(slots=True)
+class InteractiveTTYRenderer:
+    """Manage the wrapped REPL composer, status bar, and streamed output."""
+
+    stream: TextIO
+    status_provider: Callable[[], str]
+    answer_writer: SmartOutputWriter = field(init=False)
+    reasoning_writer: SmartOutputWriter = field(init=False)
+    _overlay_lines: int = 0
+
+    def __post_init__(self) -> None:
+        self.answer_writer = SmartOutputWriter(stream=self.stream)
+        self.reasoning_writer = SmartOutputWriter(
+            stream=self.stream,
+            style=lambda text, active_stream: _paint_reasoning(text, active_stream),
+        )
+
+    def render_input(self, prompt: str, buffer: str) -> None:
+        """Draw only the wrapped input composer while the user is typing."""
+
+        lines = wrap_prompt_buffer(
+            prompt,
+            buffer,
+            width=_terminal_width(self.stream, minimum=20),
+        )
+        self._replace_overlay(
+            paint_prompt_lines(lines, prompt=prompt, stream=self.stream)
+        )
+
+    def commit_input(self, prompt: str, buffer: str) -> None:
+        """Replace the overlay with the committed input before a turn starts."""
+
+        lines = wrap_prompt_buffer(
+            prompt,
+            buffer,
+            width=_terminal_width(self.stream, minimum=20),
+        )
+        self.clear_overlay()
+        painted = paint_prompt_lines(lines, prompt=prompt, stream=self.stream)
+        self.stream.write("\n".join(painted) + "\n")
+        self.stream.flush()
+
+    def clear_overlay(self) -> None:
+        """Remove the currently rendered composer and status-bar overlay."""
+
+        _clear_rendered_block(self.stream, self._overlay_lines)
+        self._overlay_lines = 0
+
+    def show_status(self) -> None:
+        """Render only the bottom status bar as the active overlay."""
+
+        self._replace_overlay([self.render_status_bar()])
+
+    def write_answer(self, text: str) -> None:
+        """Write wrapped assistant answer text below the overlay."""
+
+        self.clear_overlay()
+        # Flush any pending reasoning fragment before the answer starts so the
+        # visible chain-of-thought never gets stranded in the TTY writer buffer.
+        reasoning_tail = self.reasoning_writer.finish()
+        if reasoning_tail:
+            self._write_typewriter(
+                reasoning_tail,
+                visible_chars=REASONING_TYPEWRITER_VISIBLE_CHARS,
+                pause_s=REASONING_TYPEWRITER_PAUSE_S,
+            )
+        rendered = self.answer_writer.feed(text)
+        if rendered:
+            self._write_typewriter(
+                rendered,
+                visible_chars=ANSWER_TYPEWRITER_VISIBLE_CHARS,
+                pause_s=ANSWER_TYPEWRITER_PAUSE_S,
+            )
+
+    def write_reasoning(self, text: str) -> None:
+        """Write wrapped visible-reasoning text below the overlay."""
+
+        self.clear_overlay()
+        rendered = self.reasoning_writer.feed(text)
+        if rendered:
+            self._write_typewriter(
+                rendered,
+                visible_chars=REASONING_TYPEWRITER_VISIBLE_CHARS,
+                pause_s=REASONING_TYPEWRITER_PAUSE_S,
+            )
+
+    def finalize_output(self) -> None:
+        """Flush any pending output fragments before restoring the status bar."""
+
+        self.clear_overlay()
+        answer_tail = self.answer_writer.finish()
+        reasoning_tail = self.reasoning_writer.finish()
+        if reasoning_tail:
+            self._write_typewriter(
+                reasoning_tail,
+                visible_chars=REASONING_TYPEWRITER_VISIBLE_CHARS,
+                pause_s=REASONING_TYPEWRITER_PAUSE_S,
+            )
+        if answer_tail:
+            self._write_typewriter(
+                answer_tail,
+                visible_chars=ANSWER_TYPEWRITER_VISIBLE_CHARS,
+                pause_s=ANSWER_TYPEWRITER_PAUSE_S,
+            )
+
+    def render_status_bar(self) -> str:
+        """Render the one-line bottom status bar for the current turn state."""
+
+        width = _terminal_width(self.stream, minimum=20)
+        # Keep one column free to avoid terminal auto-wrap when the status line
+        # lands exactly on the last visible cell.
+        content_width = max(1, width - 1)
+        text = _truncate_plain_text(self.status_provider(), content_width)
+        return _paint(text.ljust(content_width), ORANGE, self.stream, bold=True)
+
+    def _replace_overlay(self, lines: Sequence[str]) -> None:
+        self.clear_overlay()
+        rendered = list(lines)
+        if not rendered:
+            return
+        self.stream.write("\r")
+        self.stream.write("\n".join(f"{line}\x1b[K" for line in rendered))
+        self.stream.flush()
+        self._overlay_lines = len(rendered)
+
+    def _write_typewriter(
+        self,
+        text: str,
+        *,
+        visible_chars: int,
+        pause_s: float,
+    ) -> None:
+        """Emit streamed output in fast ANSI-safe batches for a typewriter feel."""
+
+        if not text:
+            return
+        chunks = iter_typewriter_chunks(text, visible_chars=visible_chars)
+        if len(chunks) <= 1:
+            self.stream.write(text)
+            self.stream.flush()
+            return
+        for index, chunk in enumerate(chunks):
+            self.stream.write(chunk)
+            self.stream.flush()
+            if index < len(chunks) - 1:
+                time.sleep(pause_s)
 
 
 def _render_table(

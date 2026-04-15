@@ -9,9 +9,12 @@ official `mistralai` Python SDK against two backends:
 The CLI is designed to switch between those backends without changing the main
 REPL workflow, attachments, or tool availability.
 
+The client is currently supported on Linux only.
+
 ## Runtime requirements
 
 - Python `3.10`
+- Linux
 - `uv`
 - local mode: a running `llama.cpp` server at `http://127.0.0.1:8080`
 - remote mode: `MISTRAL_API_KEY` in the environment
@@ -82,6 +85,12 @@ an actionable help system:
 - `/system <text>` replaces the system prompt and resets the chat
 - `/exit` or `/quit` leaves the REPL
 
+TTY usability details:
+
+- long prompts wrap in the interactive composer instead of overflowing one line
+- a bottom status bar shows phase, backend, attachments, and token usage
+- assistant prose wraps cleanly without splitting words in the middle
+
 FireCrawl MCP is configured in [`mcp.json`](../mcp.json) and loaded
 automatically when present. The checked-in config expands
 `FIRECRAWL_API_KEY` at runtime, so the secret stays out of the repository. The
@@ -102,6 +111,25 @@ run shell commands, and save output without extra setup:
 
 When FireCrawl is available, those remote tools are added on top of the local
 OS tool set.
+
+Tool semantics are intentionally narrow:
+
+- `shell` is the primary tool for Linux and OS inspection, command execution,
+  `rg`/`grep`/`find`, `git`, processes, services, packages, env vars, logs, and
+  other system-level discovery.
+- `search_text` is only for searching text inside files under a workspace path.
+  It is for repo/source lookup and returns one matching line per file.
+- `list_dir` is for directory orientation.
+- `read_file` is for reading one specific known file.
+- `write_file` is for saving or updating text when the task requires it.
+
+Examples:
+
+- "Find files mentioning timeout in `src/`" -> `search_text`
+- "Check running nginx processes" -> `shell`
+- "Search the OS for docker service files" -> `shell`
+- "Show what is in `/etc/systemd`" -> `list_dir` or `shell`
+- "Read `pyproject.toml`" -> `read_file`
 
 The attachment commands are designed for multimodal turns:
 

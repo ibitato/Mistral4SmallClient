@@ -1,4 +1,4 @@
-"""Always-on local OS tools for the Mistral Small 4 CLI."""
+"""Always-on local Linux shell and workspace tools for the Mistral Small 4 CLI."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class LocalToolSpec:
 
 @dataclass(slots=True)
 class LocalToolBridge:
-    """Local filesystem and shell tools that are always available."""
+    """Local Linux filesystem and shell tools that are always available."""
 
     root: Path = field(default_factory=Path.cwd)
 
@@ -86,8 +86,10 @@ class LocalToolBridge:
             LocalToolSpec(
                 name="shell",
                 description=(
-                    "Run a shell command under the current user. Output is "
-                    "paginated; use offset_lines/max_lines to page."
+                    "Run a Linux shell command under the current user. Use this "
+                    "for OS inspection, rg/grep/find, git, processes, services, "
+                    "packages, env vars, logs, and system-level searches. Output "
+                    "is paginated; use offset_lines/max_lines to page."
                 ),
                 input_schema={
                     "type": "object",
@@ -104,7 +106,10 @@ class LocalToolBridge:
             ),
             LocalToolSpec(
                 name="read_file",
-                description="Read a UTF-8 text file from disk.",
+                description=(
+                    "Read one known UTF-8 text file from disk after you have "
+                    "identified the target path."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -117,7 +122,11 @@ class LocalToolBridge:
             ),
             LocalToolSpec(
                 name="write_file",
-                description="Write UTF-8 text to disk, creating parents if needed.",
+                description=(
+                    "Write UTF-8 text to a known file path, creating parents if "
+                    "needed. Use only when the task requires saving or updating "
+                    "text on disk."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -130,7 +139,11 @@ class LocalToolBridge:
             ),
             LocalToolSpec(
                 name="list_dir",
-                description="List files and directories.",
+                description=(
+                    "List files and directories at one path for directory "
+                    "orientation within the workspace before reading or "
+                    "searching deeper."
+                ),
                 input_schema={
                     "type": "object",
                     "properties": {
@@ -143,8 +156,12 @@ class LocalToolBridge:
             LocalToolSpec(
                 name="search_text",
                 description=(
-                    "Search for text in project files. Results are paginated; "
-                    "use offset/max_results to page."
+                    "Search text inside workspace files under a specific path. "
+                    "Use this for repo or source searches such as finding files "
+                    "that mention a symbol. It returns one matching line per "
+                    "file and is not a replacement for Linux shell grep/find, "
+                    "process inspection, package lookup, logs, or OS-wide search. "
+                    "Results are paginated; use offset/max_results to page."
                 ),
                 input_schema={
                     "type": "object",
@@ -360,6 +377,8 @@ class LocalToolBridge:
                     content = path.read_text(encoding="utf-8", errors="ignore")
                 except OSError:
                     continue
+                # Keep this tool focused on quick workspace discovery. Exhaustive
+                # or OS-level grep belongs to the Linux shell tool instead.
                 for line_number, line in enumerate(content.splitlines(), start=1):
                     if query_lower in line.lower():
                         excerpt = line.strip()

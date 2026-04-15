@@ -11,6 +11,8 @@ Retro terminal CLI for using **Mistral Small 4** both locally against
 `llama.cpp` and remotely against Mistral cloud, with the official `mistralai`
 Python SDK.
 
+The client is currently supported on **Linux only**.
+
 The repository is intentionally focused on one product:
 
 - use Mistral Small 4 locally with `llama.cpp` or remotely with Mistral cloud
@@ -39,6 +41,7 @@ uv run python -m mistral4cli
 ## Requirements
 
 - Python `3.10`
+- Linux
 - `uv`
 - a local `llama.cpp` server at `http://127.0.0.1:8080` if you want local mode
 - `MISTRAL_API_KEY` in your shell if you want remote mode
@@ -100,6 +103,12 @@ Inside the REPL:
 - `/remote on|off` to switch cloud mode
 - `/reset`, `/system ...`, `/exit`
 
+Interactive TTY behavior:
+
+- long prompts wrap in the composer instead of overflowing one raw line
+- a bottom status bar shows live phase, backend, attachments, and token usage
+- assistant prose wraps cleanly without splitting words in the middle
+
 Typical tasks include:
 
 - general chat and question answering
@@ -108,6 +117,27 @@ Typical tasks include:
 - summaries, comparisons, translations, and drafting
 - local workspace automation with tools
 - programming and debugging when you want it
+
+## Local tool semantics
+
+The model always sees these local tools, but they are intentionally specialized:
+
+- `shell` is the primary tool for Linux and OS inspection: `rg`, `grep`, `find`,
+  `git`, `ps`, `systemctl`, package managers, logs, env vars, permissions, and
+  system-level discovery.
+- `search_text` is only for searching text inside files under a workspace path.
+  It is for repo/source lookup and returns one matching line per file.
+- `list_dir` is for directory orientation before reading or searching deeper.
+- `read_file` is for reading one specific known text file.
+- `write_file` is for saving or updating text on disk when the task requires it.
+
+Examples:
+
+- "Find files mentioning timeout in `src/`" -> `search_text`
+- "Check running nginx processes" -> `shell`
+- "Search the OS for docker service files" -> `shell`
+- "Show what is in `/etc/systemd`" -> `list_dir` or `shell`
+- "Read `pyproject.toml`" -> `read_file`
 
 Remote mode requirements:
 

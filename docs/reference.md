@@ -52,7 +52,7 @@ Render a supported document into image blocks for the model.
 
 ## `mistral4cli.cli`
 
-Command-line entrypoint for the general Mistral Small 4 CLI.
+Linux-only command-line entrypoint for the general Mistral Small 4 CLI.
 
 #### `build_parser() -> 'argparse.ArgumentParser'`
 
@@ -134,11 +134,11 @@ Update the effective timeout on a Mistral client in place.
 
 ## `mistral4cli.local_tools`
 
-Always-on local OS tools for the Mistral Small 4 CLI.
+Always-on local Linux shell and workspace tools for the Mistral Small 4 CLI.
 
 ### Class `LocalToolBridge`
 
-Local filesystem and shell tools that are always available.
+Local Linux filesystem and shell tools that are always available.
 
 #### Methods
 
@@ -288,6 +288,10 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Update the active request timeout in milliseconds.
 
+  #### `status_snapshot(self) -> 'SessionStatusSnapshot'`
+
+  Return the current live status for interactive UI rendering.
+
   #### `switch_backend(self, client: 'Mistral', backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None') -> 'None'`
 
   Swap the active model backend and reset the conversation.
@@ -304,9 +308,27 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Return whether the active backend can render visible reasoning.
 
+### Class `SessionStatusSnapshot`
+
+User-facing live status for the current interactive turn.
+
 ### Class `TurnResult`
 
 Result of a single user turn.
+
+### Class `UsageSnapshot`
+
+Normalized token usage metadata for one turn or a session.
+
+#### Methods
+
+  #### `is_empty(self) -> 'bool'`
+
+  Return whether this usage snapshot carries any usable values.
+
+  #### `merge(self, other: 'UsageSnapshot | None') -> 'UsageSnapshot'`
+
+  Return the cumulative sum of this usage and another snapshot.
 
 #### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
@@ -368,6 +390,58 @@ Minimal interface shared by local and MCP tool bridges.
 
 Terminal rendering helpers for the Mistral Small 4 CLI.
 
+### Class `InteractiveTTYRenderer`
+
+Manage the wrapped REPL composer, status bar, and streamed output.
+
+#### Methods
+
+  #### `clear_overlay(self) -> 'None'`
+
+  Remove the currently rendered composer and status-bar overlay.
+
+  #### `commit_input(self, prompt: 'str', buffer: 'str') -> 'None'`
+
+  Replace the overlay with the committed input before a turn starts.
+
+  #### `finalize_output(self) -> 'None'`
+
+  Flush any pending output fragments before restoring the status bar.
+
+  #### `render_input(self, prompt: 'str', buffer: 'str') -> 'None'`
+
+  Draw the wrapped input composer together with the status bar.
+
+  #### `render_status_bar(self) -> 'str'`
+
+  Render the one-line bottom status bar for the current turn state.
+
+  #### `show_status(self) -> 'None'`
+
+  Render only the bottom status bar as the active overlay.
+
+  #### `write_answer(self, text: 'str') -> 'None'`
+
+  Write wrapped assistant answer text below the overlay.
+
+  #### `write_reasoning(self, text: 'str') -> 'None'`
+
+  Write wrapped visible-reasoning text below the overlay.
+
+### Class `SmartOutputWriter`
+
+Incremental terminal writer that wraps normal prose safely.
+
+#### Methods
+
+  #### `feed(self, text: 'str') -> 'str'`
+
+  Consume streamed text and return the wrapped terminal output.
+
+  #### `finish(self) -> 'str'`
+
+  Flush any pending text that was held for wrapping decisions.
+
 #### `render_help_screen(summary: 'str', tools: 'Sequence[str] | None', stream: 'TextIO') -> 'str'`
 
 Render a concise but actionable help screen.
@@ -395,3 +469,7 @@ Return whether the current output stream supports the interactive TUI.
 #### `terminal_recommendation(stream: 'TextIO') -> 'str'`
 
 Return a short terminal recommendation when colors may degrade.
+
+#### `wrap_prompt_buffer(prompt: 'str', buffer: 'str', width: 'int') -> 'list[str]'`
+
+Wrap one logical REPL buffer into prompt-display lines.

@@ -5,6 +5,22 @@ from pathlib import Path
 from mistral4cli.local_tools import LocalToolBridge
 
 
+def test_local_tool_descriptions_harden_shell_vs_search_text() -> None:
+    bridge = LocalToolBridge()
+
+    tools = {
+        entry["function"]["name"]: entry["function"]["description"]
+        for entry in bridge.to_mistral_tools()
+    }
+
+    assert "Linux shell command" in tools["shell"]
+    assert "processes" in tools["shell"]
+    assert "workspace files" in tools["search_text"]
+    assert "not a replacement for Linux shell grep/find" in tools["search_text"]
+    assert "known UTF-8 text file" in tools["read_file"]
+    assert "directory orientation" in tools["list_dir"]
+
+
 def test_local_tools_can_read_write_list_and_search(tmp_path: Path) -> None:
     bridge = LocalToolBridge(root=tmp_path)
 

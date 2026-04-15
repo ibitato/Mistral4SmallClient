@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any, TextIO, cast
 from urllib.error import HTTPError, URLError
@@ -23,27 +24,85 @@ from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolResult
 from mistral4cli.tooling import ToolBridge
 from mistral4cli.ui import render_reasoning_chunk, render_runtime_summary
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You are a general-purpose assistant for Mistral Small 4 running through "
-    "this CLI. Help with multimodal analysis, documents, images, research, "
-    "writing, terminal tasks, and coding when requested. Respond directly, "
-    "focus on the user's goal, and include concrete steps or examples when "
-    "they help. You always have access to these local tools: shell, "
-    "read_file, write_file, list_dir, and search_text. Use them when they "
-    "materially help answer or complete the request. You can also use MCP "
-    "when you need external information or FireCrawl. Before asserting "
-    "anything about the filesystem, system state, or tool-accessible facts, "
-    "verify with tools whenever practical. If context is missing, ask for the "
-    "minimum needed before guessing. If the current user turn includes "
-    "attached images or documents, analyze those attachments directly and do "
-    "not call shell, local tools, MCP, or external OCR/search tools unless "
-    "the user explicitly asks for that or the task clearly requires a tool "
-    "action such as saving, exporting, or editing a file. Do not claim the "
-    "attachments are missing when the current message already contains them. "
-    "If the conversation includes attached images or documents, analyze them "
-    "carefully before replying. Tool results are authoritative. After a "
-    "successful tool call, prefer using the result to answer the user instead "
-    "of repeating the same tool call with the same arguments."
+DEFAULT_SYSTEM_PROMPT = "\n".join(
+    [
+        (
+            "You are the assistant inside the Mistral4Cli Linux terminal "
+            "client for Mistral Small 4."
+        ),
+        (
+            "Respond directly, stay focused on the user's goal, and prefer "
+            "concrete results over speculation."
+        ),
+        "",
+        "Environment rules:",
+        (
+            "- This client is supported on Linux only. Assume Linux paths, "
+            "commands, and tooling semantics."
+        ),
+        (
+            "- You always have access to these local tools: shell, read_file, "
+            "write_file, list_dir, and search_text."
+        ),
+        "- You can also use MCP when external information is needed.",
+        (
+            "- Before asserting anything about the filesystem, system state, "
+            "or tool-accessible facts, verify with tools whenever practical."
+        ),
+        (
+            "- Tool results are authoritative. After a successful tool call, "
+            "use that result instead of repeating the same call."
+        ),
+        "",
+        "Tool selection rules:",
+        (
+            "- shell is the primary tool for OS inspection and command "
+            "execution. Use it for rg/grep/find, git, processes, services, "
+            "packages, env vars, permissions, logs, network state, /proc, "
+            "/sys, and general Linux discovery."
+        ),
+        (
+            "- search_text is only for searching text inside files under a "
+            "specific workspace path. It returns one matching line per file "
+            "and is not a replacement for shell grep/find or OS-wide search."
+        ),
+        "- list_dir is for directory orientation before deeper reads or searches.",
+        "- read_file is for reading a specific known file after you know the path.",
+        (
+            "- write_file is only for creating or updating text on disk when "
+            "the user asks for that outcome."
+        ),
+        "",
+        "Examples:",
+        '- "Find files mentioning timeout in src/" -> search_text with path=src.',
+        '- "Check running nginx processes" -> shell.',
+        '- "Search the OS for docker service files" -> shell.',
+        '- "Show what is in /etc/systemd" -> list_dir or shell.',
+        '- "Read pyproject.toml" -> read_file.',
+        '- "Save this summary to notes.txt" -> write_file.',
+        "",
+        "Attachment rules:",
+        (
+            "- If the current user turn includes attached images or documents, "
+            "analyze those attachments directly first."
+        ),
+        (
+            "- Do not call shell, local tools, MCP, or external OCR/search "
+            "tools for an attachment turn unless the user explicitly asks for "
+            "that or the task clearly requires a tool action such as saving, "
+            "exporting, or editing a file."
+        ),
+        (
+            "- Do not claim the attachments are missing when the current "
+            "message already contains them."
+        ),
+        (
+            "- If the conversation includes attached images or documents, "
+            "analyze them carefully before replying."
+        ),
+        "",
+        "If context is missing, ask for the minimum needed before guessing.",
+    ]
 )
 
 REASONING_TAG_PAIRS = (
@@ -53,6 +112,13 @@ REASONING_TAG_PAIRS = (
 )
 
 logger = logging.getLogger("mistral4cli.session")
+
+REMOTE_CONTEXT_WINDOWS = {
+    "mistral-small-latest": 256_000,
+    "mistral-small-2603": 256_000,
+    "mistral-small-2603+1": 256_000,
+    "mistral-small-4-0-26-03": 256_000,
+}
 
 
 def render_defaults_summary(
@@ -92,6 +158,50 @@ class TurnResult:
     finish_reason: str
     reasoning: str = ""
     cancelled: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class UsageSnapshot:
+    """Normalized token usage metadata for one turn or a session."""
+
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+    max_context_tokens: int | None = None
+
+    def merge(self, other: UsageSnapshot | None) -> UsageSnapshot:
+        """Return the cumulative sum of this usage and another snapshot."""
+
+        if other is None:
+            return self
+        return UsageSnapshot(
+            prompt_tokens=_sum_optional_ints(self.prompt_tokens, other.prompt_tokens),
+            completion_tokens=_sum_optional_ints(
+                self.completion_tokens,
+                other.completion_tokens,
+            ),
+            total_tokens=_sum_optional_ints(self.total_tokens, other.total_tokens),
+            max_context_tokens=self.max_context_tokens or other.max_context_tokens,
+        )
+
+    def is_empty(self) -> bool:
+        """Return whether this usage snapshot carries any usable values."""
+
+        return (
+            self.prompt_tokens is None
+            and self.completion_tokens is None
+            and self.total_tokens is None
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SessionStatusSnapshot:
+    """User-facing live status for the current interactive turn."""
+
+    phase: str
+    detail: str | None
+    last_usage: UsageSnapshot | None
+    cumulative_usage: UsageSnapshot | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -293,8 +403,24 @@ class MistralSession:
     show_reasoning: bool = True
     logging_summary: str = "debug=on level=DEBUG rotate=daily retention=2d"
     max_tool_rounds: int = 20
+    answer_writer: Callable[[str], None] | None = None
+    reasoning_writer: Callable[[str], None] | None = None
+    status_callback: Callable[[], None] | None = None
     messages: list[dict[str, Any]] = field(init=False, repr=False, default_factory=list)
     _mcp_warning_shown: bool = field(init=False, repr=False, default=False)
+    _status_phase: str = field(init=False, repr=False, default="idle")
+    _status_detail: str | None = field(init=False, repr=False, default=None)
+    _last_usage: UsageSnapshot | None = field(init=False, repr=False, default=None)
+    _cumulative_usage: UsageSnapshot | None = field(
+        init=False,
+        repr=False,
+        default=None,
+    )
+    _turn_usage_accumulator: UsageSnapshot | None = field(
+        init=False,
+        repr=False,
+        default=None,
+    )
 
     def __post_init__(self) -> None:
         """Normalize the session state after dataclass initialization."""
@@ -316,6 +442,7 @@ class MistralSession:
         """Reset the conversation to the system prompt."""
 
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        self._set_status("idle")
         logger.info(
             "Conversation reset backend=%s model=%s",
             self.backend_kind.value,
@@ -421,6 +548,26 @@ class MistralSession:
 
         return self._call_tool_bridge(public_name, arguments)
 
+    def status_snapshot(self) -> SessionStatusSnapshot:
+        """Return the current live status for interactive UI rendering."""
+
+        max_context_tokens = self._model_context_window()
+        last_usage = self._with_context_window(self._last_usage, max_context_tokens)
+        combined_cumulative = self._cumulative_usage
+        if self._turn_usage_accumulator is not None:
+            combined_cumulative = self._turn_usage_accumulator.merge(
+                combined_cumulative
+            )
+        cumulative_usage = self._with_context_window(
+            combined_cumulative, max_context_tokens
+        )
+        return SessionStatusSnapshot(
+            phase=self._status_phase,
+            detail=self._status_detail,
+            last_usage=last_usage,
+            cumulative_usage=cumulative_usage,
+        )
+
     def send_content(
         self,
         content: str | list[dict[str, Any]],
@@ -443,6 +590,9 @@ class MistralSession:
         )
         message_start = len(self.messages)
         self.messages.append({"role": "user", "content": normalized})
+        self._last_usage = None
+        self._turn_usage_accumulator = None
+        self._set_status("thinking")
         try:
             seen_tool_calls: set[str] = set()
             tool_rounds_executed = 0
@@ -451,8 +601,15 @@ class MistralSession:
                 turn = self._send_single_turn(stream=stream, tools=None)
                 if turn.cancelled or turn.error:
                     self._rollback_to(message_start)
+                    self._turn_usage_accumulator = None
+                    if turn.cancelled:
+                        self._set_status("interrupted")
+                    else:
+                        self._set_status("error")
                 if not turn.cancelled and not turn.error:
                     self._commit_assistant_message(turn)
+                    self._commit_turn_usage()
+                    self._set_status("done")
                 return TurnResult(
                     content=turn.content,
                     finish_reason=turn.finish_reason,
@@ -464,6 +621,11 @@ class MistralSession:
                 turn = self._send_single_turn(stream=stream, tools=tools)
                 if turn.cancelled or turn.error:
                     self._rollback_to(message_start)
+                    self._turn_usage_accumulator = None
+                    if turn.cancelled:
+                        self._set_status("interrupted")
+                    else:
+                        self._set_status("error")
                     return TurnResult(
                         content=turn.content,
                         finish_reason=turn.finish_reason,
@@ -473,6 +635,8 @@ class MistralSession:
 
                 if turn.finish_reason != "tool_calls" or not turn.tool_calls:
                     self._commit_assistant_message(turn)
+                    self._commit_turn_usage()
+                    self._set_status("done")
                     return TurnResult(
                         content=turn.content,
                         finish_reason=turn.finish_reason,
@@ -531,6 +695,8 @@ class MistralSession:
                             self._print(
                                 "[error] repeated identical tool call blocked\n"
                             )
+                            self._turn_usage_accumulator = None
+                            self._set_status("error")
                             return TurnResult(
                                 content="",
                                 finish_reason="error",
@@ -542,7 +708,9 @@ class MistralSession:
                             name,
                             self._summarize_tool_arguments(arguments),
                         )
+                        self._set_status("tool", detail=name)
                         result = self._call_tool_bridge(name, arguments)
+                        self._set_status("thinking")
                         logger.debug(
                             "Tool result name=%s error=%s structured=%s",
                             name,
@@ -560,6 +728,11 @@ class MistralSession:
                 final_turn = self._send_single_turn(stream=stream, tools=None)
                 if final_turn.cancelled or final_turn.error:
                     self._rollback_to(message_start)
+                    self._turn_usage_accumulator = None
+                    if final_turn.cancelled:
+                        self._set_status("interrupted")
+                    else:
+                        self._set_status("error")
                     return TurnResult(
                         content=final_turn.content,
                         finish_reason=final_turn.finish_reason,
@@ -567,6 +740,8 @@ class MistralSession:
                         cancelled=final_turn.cancelled,
                     )
                 self._commit_assistant_message(final_turn)
+                self._commit_turn_usage()
+                self._set_status("done")
                 return TurnResult(
                     content=final_turn.content,
                     finish_reason=final_turn.finish_reason,
@@ -575,12 +750,16 @@ class MistralSession:
                 )
 
             self._rollback_to(message_start)
+            self._turn_usage_accumulator = None
             self._print("[error] tool loop limit reached\n")
+            self._set_status("error")
             logger.error("Tool loop limit reached max_rounds=%s", self.max_tool_rounds)
             return TurnResult(content="", finish_reason="error", cancelled=False)
         except KeyboardInterrupt:
             self._rollback_to(message_start)
+            self._turn_usage_accumulator = None
             self._print("\n[interrupted]\n")
+            self._set_status("interrupted")
             logger.info("Turn interrupted by user")
             return TurnResult(content="", finish_reason="cancelled", cancelled=True)
 
@@ -651,12 +830,18 @@ class MistralSession:
             raise RuntimeError(f"raw chat request failed: {exc.reason}") from exc
 
     def _print(self, text: str) -> None:
+        if self.answer_writer is not None:
+            self.answer_writer(text)
+            return
         assert self.stdout is not None
         self.stdout.write(text)
         self.stdout.flush()
 
     def _print_reasoning(self, text: str) -> None:
         if not text or not self.show_reasoning:
+            return
+        if self.reasoning_writer is not None:
+            self.reasoning_writer(text)
             return
         assert self.stdout is not None
         self.stdout.write(render_reasoning_chunk(text, stream=self.stdout))
@@ -827,6 +1012,8 @@ class MistralSession:
             self._print(f"[error] {exc}\n")
             return _ModelTurn(content="", finish_reason="error", error=True)
 
+        self._record_usage(raw.get("usage"))
+
         choice = raw["choices"][0]
         message = choice.get("message", {})
         raw_content = message.get("content") or ""
@@ -851,11 +1038,13 @@ class MistralSession:
             )
 
         if reasoning:
+            self._set_status("answering")
             self._print_reasoning(reasoning)
             printed_anything = True
             reasoning_printed = True
         for segment in parsed.segments:
             if segment.kind == "answer":
+                self._set_status("answering")
                 answer_started = self._print_answer_separator(
                     reasoning_printed=reasoning_printed,
                     answer_started=answer_started,
@@ -886,6 +1075,7 @@ class MistralSession:
         printed_anything = False
         reasoning_printed = False
         answer_started = False
+        usage_snapshot: Any = None
 
         try:
             with self._open_raw_request(payload) as response:
@@ -899,12 +1089,19 @@ class MistralSession:
                     event = json.loads(data_line)
                     choices = event.get("choices") or []
                     if not choices:
+                        usage = event.get("usage")
+                        if usage is not None:
+                            usage_snapshot = usage
                         continue
                     choice = choices[0]
                     finish_reason = choice.get("finish_reason") or finish_reason
                     delta = choice.get("delta") or {}
+                    usage = event.get("usage")
+                    if usage is not None:
+                        usage_snapshot = usage
                     reasoning_delta = delta.get("reasoning_content")
                     if isinstance(reasoning_delta, str) and reasoning_delta:
+                        self._set_status("answering")
                         reasoning_parts.append(reasoning_delta)
                         self._print_reasoning(reasoning_delta)
                         printed_anything = True
@@ -913,9 +1110,11 @@ class MistralSession:
                     if isinstance(content, str) and content:
                         for segment in parser.feed(content):
                             if segment.kind == "reasoning":
+                                self._set_status("answering")
                                 self._print_reasoning(segment.text)
                                 reasoning_printed = True
                             else:
+                                self._set_status("answering")
                                 answer_parts.append(segment.text)
                                 display_text = deferred_answer.feed(segment.text)
                                 if display_text:
@@ -943,11 +1142,15 @@ class MistralSession:
             self._print(f"\n[error] {exc}\n")
             return _ModelTurn(content="", finish_reason="error", error=True)
 
+        self._record_usage(usage_snapshot)
+
         for segment in parser.finish():
             if segment.kind == "reasoning":
+                self._set_status("answering")
                 self._print_reasoning(segment.text)
                 reasoning_printed = True
             else:
+                self._set_status("answering")
                 answer_parts.append(segment.text)
                 display_text = deferred_answer.feed(segment.text)
                 if display_text:
@@ -969,6 +1172,7 @@ class MistralSession:
 
         deferred_tail = deferred_answer.finalize()
         if deferred_tail and not tool_calls:
+            self._set_status("answering")
             answer_started = self._print_answer_separator(
                 reasoning_printed=reasoning_printed,
                 answer_started=answer_started,
@@ -1000,6 +1204,7 @@ class MistralSession:
             self._print(f"[error] {exc}\n")
             return _ModelTurn(content="", finish_reason="error", error=True)
 
+        self._record_usage(getattr(response, "usage", None))
         choice = response.choices[0]
         message = choice.message
         if message is None:
@@ -1030,9 +1235,11 @@ class MistralSession:
 
         for segment in segments:
             if segment.kind == "reasoning":
+                self._set_status("answering")
                 self._print_reasoning(segment.text)
                 reasoning_printed = True
             else:
+                self._set_status("answering")
                 answer_started = self._print_answer_separator(
                     reasoning_printed=reasoning_printed,
                     answer_started=answer_started,
@@ -1059,6 +1266,7 @@ class MistralSession:
         answer_started = False
         answer_parts: list[str] = []
         reasoning_parts: list[str] = []
+        usage_snapshot: Any = None
 
         try:
             stream = self.client.chat.stream(
@@ -1068,18 +1276,26 @@ class MistralSession:
                 for event in active_stream:
                     data = getattr(event, "data", None)
                     if not data or not getattr(data, "choices", None):
+                        usage = getattr(data, "usage", None)
+                        if usage is not None:
+                            usage_snapshot = usage
                         continue
                     choice = data.choices[0]
+                    usage = getattr(data, "usage", None)
+                    if usage is not None:
+                        usage_snapshot = usage
                     finish_reason = choice.finish_reason or finish_reason
                     delta = choice.delta
                     content = getattr(delta, "content", None)
                     if isinstance(content, str) and content:
                         for segment in parser.feed(content):
                             if segment.kind == "reasoning":
+                                self._set_status("answering")
                                 self._print_reasoning(segment.text)
                                 reasoning_printed = True
                                 reasoning_parts.append(segment.text)
                             else:
+                                self._set_status("answering")
                                 answer_parts.append(segment.text)
                                 display_text = deferred_answer.feed(segment.text)
                                 if display_text:
@@ -1092,10 +1308,12 @@ class MistralSession:
                     elif isinstance(content, list):
                         for segment in _content_segments_from_value(content):
                             if segment.kind == "reasoning":
+                                self._set_status("answering")
                                 self._print_reasoning(segment.text)
                                 reasoning_printed = True
                                 reasoning_parts.append(segment.text)
                             else:
+                                self._set_status("answering")
                                 answer_parts.append(segment.text)
                                 display_text = deferred_answer.feed(segment.text)
                                 if display_text:
@@ -1123,12 +1341,16 @@ class MistralSession:
             self._print(f"\n[error] {exc}\n")
             return _ModelTurn(content="", finish_reason="error", error=True)
 
+        self._record_usage(usage_snapshot)
+
         for segment in parser.finish():
             if segment.kind == "reasoning":
+                self._set_status("answering")
                 self._print_reasoning(segment.text)
                 reasoning_printed = True
                 reasoning_parts.append(segment.text)
             else:
+                self._set_status("answering")
                 answer_parts.append(segment.text)
                 display_text = deferred_answer.feed(segment.text)
                 if display_text:
@@ -1149,6 +1371,7 @@ class MistralSession:
 
         deferred_tail = deferred_answer.finalize()
         if deferred_tail and not tool_calls:
+            self._set_status("answering")
             answer_started = self._print_answer_separator(
                 reasoning_printed=reasoning_printed,
                 answer_started=answer_started,
@@ -1188,6 +1411,49 @@ class MistralSession:
     def _display_generation(self) -> LocalGenerationConfig:
         return replace(self.generation, prompt_mode=self._effective_prompt_mode())
 
+    def _set_status(self, phase: str, detail: str | None = None) -> None:
+        if self._status_phase == phase and self._status_detail == detail:
+            return
+        self._status_phase = phase
+        self._status_detail = detail
+        if self.status_callback is not None:
+            self.status_callback()
+
+    def _record_usage(self, raw_usage: Any) -> None:
+        usage = _normalize_usage_snapshot(
+            raw_usage,
+            max_context_tokens=self._model_context_window(),
+        )
+        if usage is None or usage.is_empty():
+            return
+        self._last_usage = usage
+        self._turn_usage_accumulator = usage.merge(self._turn_usage_accumulator)
+        if self.status_callback is not None:
+            self.status_callback()
+
+    def _model_context_window(self) -> int | None:
+        if self.backend_kind is not BackendKind.REMOTE:
+            return None
+        normalized_model = self.model_id.strip().lower()
+        return REMOTE_CONTEXT_WINDOWS.get(normalized_model)
+
+    def _with_context_window(
+        self,
+        usage: UsageSnapshot | None,
+        max_context_tokens: int | None,
+    ) -> UsageSnapshot | None:
+        if usage is None:
+            return None
+        return replace(usage, max_context_tokens=max_context_tokens)
+
+    def _commit_turn_usage(self) -> None:
+        if self._turn_usage_accumulator is None:
+            return
+        self._cumulative_usage = self._turn_usage_accumulator.merge(
+            self._cumulative_usage
+        )
+        self._turn_usage_accumulator = None
+
 
 def _normalize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
     if not tool_calls:
@@ -1211,6 +1477,47 @@ def _normalize_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
             }
         )
     return normalized
+
+
+def _sum_optional_ints(left: int | None, right: int | None) -> int | None:
+    if left is None and right is None:
+        return None
+    return (left or 0) + (right or 0)
+
+
+def _normalize_usage_snapshot(
+    raw_usage: Any,
+    *,
+    max_context_tokens: int | None,
+) -> UsageSnapshot | None:
+    if raw_usage is None:
+        return None
+    prompt_tokens = _field(raw_usage, "prompt_tokens")
+    completion_tokens = _field(raw_usage, "completion_tokens")
+    total_tokens = _field(raw_usage, "total_tokens")
+    if not any(
+        value is not None for value in (prompt_tokens, completion_tokens, total_tokens)
+    ):
+        return None
+    return UsageSnapshot(
+        prompt_tokens=_coerce_optional_int(prompt_tokens),
+        completion_tokens=_coerce_optional_int(completion_tokens),
+        total_tokens=_coerce_optional_int(total_tokens),
+        max_context_tokens=max_context_tokens,
+    )
+
+
+def _coerce_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _field(value: Any, name: str, default: Any = None) -> Any:
