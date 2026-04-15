@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  release:
+    types:
+      - published
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-artifacts:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v8.0.0
+        with:
+          python-version: "3.10"
+          enable-cache: true
+
+      - name: Build source distribution and wheel
+        run: uv build
+
+      - name: Upload build artifacts to workflow run
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: mistral4cli-release-artifacts
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish artifacts to GitHub release
+        uses: softprops/action-gh-release@v2.3.3
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          generate_release_notes: true
