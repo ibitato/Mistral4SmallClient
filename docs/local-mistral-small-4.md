@@ -87,8 +87,12 @@ an actionable help system:
 
 TTY usability details:
 
+- the prompt is rendered as a retro green `M4S>` composer in TTY sessions
 - long prompts wrap in the interactive composer instead of overflowing one line
-- a bottom status bar shows phase, backend, attachments, and token usage
+- a bottom status bar appears during active turns and shows phase, backend,
+  attachments, and token usage
+- assistant reasoning and answer text stream with a fast typewriter-style
+  cadence in TTY mode
 - assistant prose wraps cleanly without splitting words in the middle
 
 FireCrawl MCP is configured in [`mcp.json`](../mcp.json) and loaded

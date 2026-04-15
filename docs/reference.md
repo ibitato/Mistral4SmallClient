@@ -406,11 +406,11 @@ Manage the wrapped REPL composer, status bar, and streamed output.
 
   #### `finalize_output(self) -> 'None'`
 
-  Flush any pending output fragments before restoring the status bar.
+  Flush any pending output fragments before the turn fully settles.
 
   #### `render_input(self, prompt: 'str', buffer: 'str') -> 'None'`
 
-  Draw the wrapped input composer together with the status bar.
+  Draw only the wrapped input composer while the user is typing.
 
   #### `render_status_bar(self) -> 'str'`
 
@@ -418,15 +418,15 @@ Manage the wrapped REPL composer, status bar, and streamed output.
 
   #### `show_status(self) -> 'None'`
 
-  Render only the bottom status bar as the active overlay.
+  Render only the bottom status bar while a turn is active.
 
   #### `write_answer(self, text: 'str') -> 'None'`
 
-  Write wrapped assistant answer text below the overlay.
+  Write wrapped assistant answer text with a fast TTY typewriter feel.
 
   #### `write_reasoning(self, text: 'str') -> 'None'`
 
-  Write wrapped visible-reasoning text below the overlay.
+  Write visible reasoning text with the same TTY streaming cadence.
 
 ### Class `SmartOutputWriter`
 
@@ -441,6 +441,14 @@ Incremental terminal writer that wraps normal prose safely.
   #### `finish(self) -> 'str'`
 
   Flush any pending text that was held for wrapping decisions.
+
+#### `iter_typewriter_chunks(text: 'str', visible_chars: 'int') -> 'list[str]'`
+
+Split ANSI-decorated text into small visible chunks for TTY playback.
+
+#### `paint_prompt_lines(lines: 'Sequence[str]', prompt: 'str', stream: 'TextIO') -> 'list[str]'`
+
+Paint the REPL prompt prefixes without affecting wrap calculations.
 
 #### `render_help_screen(summary: 'str', tools: 'Sequence[str] | None', stream: 'TextIO') -> 'str'`
 

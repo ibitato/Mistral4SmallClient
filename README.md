@@ -105,8 +105,12 @@ Inside the REPL:
 
 Interactive TTY behavior:
 
+- the prompt is rendered as a retro green `M4S>` composer in TTY sessions
 - long prompts wrap in the composer instead of overflowing one raw line
-- a bottom status bar shows live phase, backend, attachments, and token usage
+- a bottom status bar appears during active turns and shows live phase, backend,
+  attachments, and token usage
+- assistant reasoning and answer text stream with a fast typewriter-style
+  cadence in TTY mode
 - assistant prose wraps cleanly without splitting words in the middle
 
 Typical tasks include:

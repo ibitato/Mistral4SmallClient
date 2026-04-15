@@ -39,10 +39,10 @@ ASCII_BANNER = (
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 PROMPT_CONTINUATION_PREFIX = "... "
-ANSWER_TYPEWRITER_VISIBLE_CHARS = 48
-ANSWER_TYPEWRITER_PAUSE_S = 0.008
-REASONING_TYPEWRITER_VISIBLE_CHARS = 56
-REASONING_TYPEWRITER_PAUSE_S = 0.006
+ANSWER_TYPEWRITER_VISIBLE_CHARS = 8
+ANSWER_TYPEWRITER_PAUSE_S = 0.018
+REASONING_TYPEWRITER_VISIBLE_CHARS = 10
+REASONING_TYPEWRITER_PAUSE_S = 0.016
 
 
 def _supports_color(stream: TextIO) -> bool:
@@ -390,12 +390,12 @@ class InteractiveTTYRenderer:
         self._overlay_lines = 0
 
     def show_status(self) -> None:
-        """Render only the bottom status bar as the active overlay."""
+        """Render only the bottom status bar while a turn is active."""
 
         self._replace_overlay([self.render_status_bar()])
 
     def write_answer(self, text: str) -> None:
-        """Write wrapped assistant answer text below the overlay."""
+        """Write wrapped assistant answer text with a fast TTY typewriter feel."""
 
         self.clear_overlay()
         # Flush any pending reasoning fragment before the answer starts so the
@@ -416,7 +416,7 @@ class InteractiveTTYRenderer:
             )
 
     def write_reasoning(self, text: str) -> None:
-        """Write wrapped visible-reasoning text below the overlay."""
+        """Write visible reasoning text with the same TTY streaming cadence."""
 
         self.clear_overlay()
         rendered = self.reasoning_writer.feed(text)
@@ -428,7 +428,7 @@ class InteractiveTTYRenderer:
             )
 
     def finalize_output(self) -> None:
-        """Flush any pending output fragments before restoring the status bar."""
+        """Flush any pending output fragments before the turn fully settles."""
 
         self.clear_overlay()
         answer_tail = self.answer_writer.finish()
@@ -485,7 +485,12 @@ class InteractiveTTYRenderer:
         for index, chunk in enumerate(chunks):
             self.stream.write(chunk)
             self.stream.flush()
-            if index < len(chunks) - 1:
+            next_chunk = chunks[index + 1] if index < len(chunks) - 1 else ""
+            if (
+                index < len(chunks) - 1
+                and not chunk.endswith("\n")
+                and not next_chunk.startswith("\n")
+            ):
                 time.sleep(pause_s)
 
 

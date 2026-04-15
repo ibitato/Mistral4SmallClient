@@ -1507,6 +1507,24 @@ def test_renderer_typewriter_batches_multichunk_answer(monkeypatch: Any) -> None
     assert pauses == [0.001, 0.001]
 
 
+def test_renderer_typewriter_skips_pause_after_newline(monkeypatch: Any) -> None:
+    output = FakeTTYOutput()
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=lambda: "answering | local | model | ctx:- | sum:-",
+    )
+    pauses: list[float] = []
+    monkeypatch.setattr("mistral4cli.ui.ANSWER_TYPEWRITER_VISIBLE_CHARS", 4)
+    monkeypatch.setattr("mistral4cli.ui.ANSWER_TYPEWRITER_PAUSE_S", 0.001)
+    monkeypatch.setattr("mistral4cli.ui.time.sleep", pauses.append)
+
+    renderer.write_answer("abcd\nefgh")
+    renderer.finalize_output()
+
+    assert output.getvalue() == "abcd\nefgh"
+    assert pauses == []
+
+
 def test_repl_status_line_shows_phase_attachments_and_usage() -> None:
     output = io.StringIO()
     fake_client = FakeClient(
