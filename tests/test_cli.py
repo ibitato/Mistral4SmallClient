@@ -3553,6 +3553,45 @@ def test_conversations_missing_reasoning_prints_best_effort_notice_once() -> Non
     )
 
 
+def test_conversations_reasoning_disabled_requests_none_and_skips_notice() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_no_reasoning",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "ok"}],
+                    )
+                ],
+            )
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        show_reasoning=False,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+    session.set_reasoning_visibility(False)
+
+    result = session.send("Return ok.", stream=False)
+
+    assert result.reasoning == ""
+    assert result.content == "ok"
+    assert conversations.start_calls[0]["completion_args"]["reasoning_effort"] == "none"
+    assert "Mistral Conversations returned no thinking blocks" not in output.getvalue()
+
+
 def test_image_shortcut_reports_invalid_selection_without_crashing(
     tmp_path: Path,
 ) -> None:
