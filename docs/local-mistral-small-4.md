@@ -75,6 +75,8 @@ an actionable help system:
 - `/timeout [value]` shows or updates the active request timeout
 - `/remote on|off` switches between local `llama.cpp` and Mistral cloud
 - `/conv on|off|new|id|history|messages|delete` manages optional Mistral Cloud Conversations mode
+- `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` manages
+  chat-completions context compaction
 - `/tools` shows the loaded local and FireCrawl MCP tool catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
@@ -188,12 +190,31 @@ Conversations mode:
 - with `store=off`, each user turn is stateless and no `conversation_id` is kept
 - supports `/conv id`, `/conv history`, `/conv messages`, and `/conv delete`
 
+Context management:
+
+- applies to the default non-Conversations chat-completions mode
+- local mode defaults to the documented `--ctx-size 262144`
+- remote chat completions default to a `256000` token window
+- auto-compaction is enabled by default at `90%` with an `8192` token response
+  reserve
+- `/compact` manually summarizes older turns into a compact assistant message
+  while keeping the most recent 6 user turns verbatim
+- `/compact status` shows the estimated context, configured window, threshold,
+  reserve, retained turns, and auto mode
+- `/compact threshold 85`, `/compact reserve 4096`, `/compact keep 4`, and
+  `/compact auto off` tune the policy inside the REPL
+- if the estimated prompt is still above the hard window after compaction, the
+  CLI blocks the turn before sending it to the backend
+- Conversations mode leaves context handling to the Mistral Conversations
+  backend and is not compacted locally
+
 Session commands:
 
 - `/help`
 - `/defaults`
 - `/remote [on|off]`
 - `/conv [on|off|new|store on|store off|id|history|messages|delete]`
+- `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]`
 - `/reset`
 - `/system <text>`
 - `/exit` or `/quit`

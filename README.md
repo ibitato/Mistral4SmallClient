@@ -29,6 +29,7 @@ The repository is intentionally focused on one product:
   `FIRECRAWL_API_KEY` from your environment
 - `/image` and `/doc` attachment commands with a terminal-native picker
 - `/remote on|off` to switch between local `llama.cpp` and Mistral cloud
+- `/compact` to inspect, tune, or manually compact chat-completions context
 - tests for completion, streaming, cancellation recovery and multimodal payloads
 
 ## Quick start
@@ -68,7 +69,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.3.0` also trigger a GitHub Actions release build that
+Version tags such as `v1.4.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -105,6 +106,7 @@ Inside the REPL:
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
 - `/conv on|off|new|id|history|messages|delete` to use Mistral Cloud Conversations
+- `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` to manage context
 - `/reset`, `/system ...`, `/exit`
 
 Interactive TTY behavior:
@@ -159,6 +161,22 @@ Remote mode requirements:
   `conversation_id` across turns
 - the default request timeout is `300000 ms` (5 minutes)
 
+Context management:
+
+- default chat completions are client-managed and send the full local history
+- the CLI estimates context before each non-Conversations request because the
+  SDK does not expose a backend tokenizer for this path
+- local mode defaults to the configured Mistral Small 4 window of `262144`
+  tokens; remote chat completions default to `256000` tokens
+- auto-compaction is enabled by default at `90%` of the configured window and
+  reserves `8192` tokens for the next response
+- `/compact` summarizes older turns into one compact assistant message and keeps
+  the most recent 6 user turns verbatim
+- if compaction cannot bring a request under the hard window, the CLI blocks the
+  turn before sending it to the backend
+- Conversations mode is not compacted locally; its server-side context handling
+  remains backend-managed by Mistral
+
 Typical environment setup:
 
 ```bash
@@ -201,6 +219,7 @@ Recommended runtime defaults used by the CLI:
 - streaming on by default
 - `max_tokens` unset unless you override it
 - Conversations mode off by default; `store=on` when enabled
+- auto context compaction on at `90%`, preserving 6 recent turns
 
 Remote mode keeps the same sampling defaults, but it does not send
 `prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for

@@ -34,6 +34,20 @@ ENV_MAX_TOKENS = "MISTRAL_LOCAL_MAX_TOKENS"
 ENV_REMOTE_API_KEY = "MISTRAL_API_KEY"
 ENV_CONVERSATIONS = "MISTRAL_CONVERSATIONS"
 ENV_CONVERSATION_STORE = "MISTRAL_CONVERSATION_STORE"
+ENV_CONTEXT_AUTO_COMPACT = "MISTRAL_CONTEXT_AUTO_COMPACT"
+ENV_CONTEXT_THRESHOLD = "MISTRAL_CONTEXT_THRESHOLD"
+ENV_CONTEXT_RESERVE_TOKENS = "MISTRAL_CONTEXT_RESERVE_TOKENS"
+ENV_CONTEXT_LOCAL_WINDOW_TOKENS = "MISTRAL_CONTEXT_LOCAL_WINDOW_TOKENS"
+ENV_CONTEXT_REMOTE_WINDOW_TOKENS = "MISTRAL_CONTEXT_REMOTE_WINDOW_TOKENS"
+ENV_CONTEXT_KEEP_RECENT_TURNS = "MISTRAL_CONTEXT_KEEP_RECENT_TURNS"
+ENV_CONTEXT_SUMMARY_MAX_TOKENS = "MISTRAL_CONTEXT_SUMMARY_MAX_TOKENS"
+
+DEFAULT_LOCAL_CONTEXT_WINDOW_TOKENS = 262_144
+DEFAULT_REMOTE_CONTEXT_WINDOW_TOKENS = 256_000
+DEFAULT_CONTEXT_THRESHOLD = 0.9
+DEFAULT_CONTEXT_RESERVE_TOKENS = 8_192
+DEFAULT_CONTEXT_KEEP_RECENT_TURNS = 6
+DEFAULT_CONTEXT_SUMMARY_MAX_TOKENS = 2_048
 
 
 class BackendKind(str, Enum):
@@ -143,6 +157,68 @@ class ConversationConfig:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ContextConfig:
+    """Client-side context overflow and compaction policy."""
+
+    auto_compact: bool = True
+    threshold: float = DEFAULT_CONTEXT_THRESHOLD
+    reserve_tokens: int = DEFAULT_CONTEXT_RESERVE_TOKENS
+    local_window_tokens: int = DEFAULT_LOCAL_CONTEXT_WINDOW_TOKENS
+    remote_window_tokens: int = DEFAULT_REMOTE_CONTEXT_WINDOW_TOKENS
+    keep_recent_turns: int = DEFAULT_CONTEXT_KEEP_RECENT_TURNS
+    summary_max_tokens: int = DEFAULT_CONTEXT_SUMMARY_MAX_TOKENS
+
+    @classmethod
+    def from_env(cls) -> ContextConfig:
+        """Build context defaults from environment variables."""
+
+        return cls(
+            auto_compact=_env_bool(ENV_CONTEXT_AUTO_COMPACT, default=True),
+            threshold=_env_float(
+                ENV_CONTEXT_THRESHOLD,
+                default=DEFAULT_CONTEXT_THRESHOLD,
+            ),
+            reserve_tokens=_env_int(
+                ENV_CONTEXT_RESERVE_TOKENS,
+                default=DEFAULT_CONTEXT_RESERVE_TOKENS,
+            ),
+            local_window_tokens=_env_int(
+                ENV_CONTEXT_LOCAL_WINDOW_TOKENS,
+                default=DEFAULT_LOCAL_CONTEXT_WINDOW_TOKENS,
+            ),
+            remote_window_tokens=_env_int(
+                ENV_CONTEXT_REMOTE_WINDOW_TOKENS,
+                default=DEFAULT_REMOTE_CONTEXT_WINDOW_TOKENS,
+            ),
+            keep_recent_turns=_env_int(
+                ENV_CONTEXT_KEEP_RECENT_TURNS,
+                default=DEFAULT_CONTEXT_KEEP_RECENT_TURNS,
+            ),
+            summary_max_tokens=_env_int(
+                ENV_CONTEXT_SUMMARY_MAX_TOKENS,
+                default=DEFAULT_CONTEXT_SUMMARY_MAX_TOKENS,
+            ),
+        ).normalized()
+
+    def normalized(self) -> ContextConfig:
+        """Return a sanitized copy with bounded operational values."""
+
+        threshold = self.threshold
+        if threshold > 1:
+            threshold = threshold / 100
+        threshold = min(max(threshold, 0.1), 0.99)
+        return ContextConfig(
+            auto_compact=self.auto_compact,
+            threshold=threshold,
+            reserve_tokens=max(0, self.reserve_tokens),
+            local_window_tokens=max(1_024, self.local_window_tokens),
+            remote_window_tokens=max(1_024, self.remote_window_tokens),
+            keep_recent_turns=max(1, self.keep_recent_turns),
+            summary_max_tokens=max(256, self.summary_max_tokens),
+        )
+
+
 MistralConfig = LocalMistralConfig | RemoteMistralConfig
 
 
@@ -156,6 +232,26 @@ def _env_bool(name: str, *, default: bool) -> bool:
     if normalized in {"0", "false", "no", "off"}:
         return False
     return default
+
+
+def _env_int(name: str, *, default: int) -> int:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
+def _env_float(name: str, *, default: float) -> float:
+    value = os.environ.get(name)
+    if value is None or not value.strip():
+        return default
+    try:
+        return float(value.strip().rstrip("%"))
+    except ValueError:
+        return default
 
 
 def get_client_timeout_ms(client: Mistral, default: int = DEFAULT_TIMEOUT_MS) -> int:

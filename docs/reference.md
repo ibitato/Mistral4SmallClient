@@ -70,6 +70,20 @@ Configuration and client helpers for local and remote Mistral backends.
 
 Runtime backend modes supported by the CLI.
 
+### Class `ContextConfig`
+
+Client-side context overflow and compaction policy.
+
+#### Methods
+
+  #### `from_env(cls) -> 'ContextConfig'`
+
+  Build context defaults from environment variables.
+
+  #### `normalized(self) -> 'ContextConfig'`
+
+  Return a sanitized copy with bounded operational values.
+
 ### Class `ConversationConfig`
 
 Runtime defaults for Mistral Cloud Conversations mode.
@@ -248,6 +262,20 @@ Resolve the MCP config path from CLI, env or repo defaults.
 
 Interactive session management for the Mistral Small 4 CLI.
 
+### Class `CompactResult`
+
+Result of a manual or automatic context compaction pass.
+
+#### Methods
+
+  #### `summary(self) -> 'str'`
+
+  Return a concise user-facing compaction summary.
+
+### Class `ContextStatus`
+
+Estimated context state before sending a chat-completions turn.
+
 ### Class `MistralSession`
 
 Stateful conversation helper for the Mistral Small 4 CLI.
@@ -257,6 +285,22 @@ Stateful conversation helper for the Mistral Small 4 CLI.
   #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
 
   Execute a tool through the active bridge.
+
+  #### `compact_context(self) -> 'CompactResult'`
+
+  Summarize old chat-completions history and keep recent turns.
+
+  #### `configure_context(self, auto_compact: 'bool | None' = None, threshold: 'float | None' = None, reserve_tokens: 'int | None' = None, keep_recent_turns: 'int | None' = None) -> 'None'`
+
+  Update mutable context policy knobs at runtime.
+
+  #### `context_status(self) -> 'ContextStatus'`
+
+  Return the current estimated context state for chat completions.
+
+  #### `context_status_text(self) -> 'str'`
+
+  Return a user-facing context policy summary.
 
   #### `conversation_history_text(self, messages_only: 'bool' = False) -> 'str'`
 
@@ -289,6 +333,10 @@ Stateful conversation helper for the Mistral Small 4 CLI.
   #### `enable_conversations(self, client: 'Mistral', model_id: 'str', store: 'bool', server_url: 'str | None' = None) -> 'None'`
 
   Enable Mistral Cloud Conversations mode and reset the active chat.
+
+  #### `estimate_context_tokens(self, messages: 'list[dict[str, Any]] | None' = None, tools: 'list[dict[str, Any]] | None' = None) -> 'int'`
+
+  Estimate request tokens when backend tokenizers are unavailable.
 
   #### `reasoning_status_text(self) -> 'str'`
 
@@ -364,7 +412,7 @@ Normalized token usage metadata for one turn or a session.
 
   Return the cumulative sum of this usage and another snapshot.
 
-#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig | None' = None, conversation_id: 'str | None' = None, tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig | None' = None, context: 'ContextConfig | None' = None, conversation_id: 'str | None' = None, tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -492,7 +540,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig', context: 'ContextConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render a formatted runtime summary.
 

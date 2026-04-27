@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented here.
 
+## 1.4.0 - 2026-04-27
+
+### Added
+
+- Client-side context overflow management for the default chat-completions mode.
+- Automatic context compaction before a request crosses the configured threshold,
+  enabled by default at `90%`.
+- Manual `/compact` REPL command with `status`, `auto`, `threshold`, `reserve`,
+  and `keep` actions.
+- CLI and environment configuration for context windows, reserve tokens, compact
+  threshold, retained recent turns, and summary budget.
+- Unit and functional coverage for manual compaction, automatic compaction,
+  overflow blocking, CLI flags, and slash command behavior.
+
+### Changed
+
+- Bumped package version to `1.4.0`.
+- Local context status now uses the configured 262144-token Mistral Small 4
+  window instead of showing an unknown limit.
+- Normal non-Conversations chat completions keep tools enabled even when
+  `conversation_store=off` is configured for Conversations mode.
+- Updated README, local runtime docs, and generated API reference for context
+  management.
+
 ## 1.3.0 - 2026-04-27
 
 ### Added

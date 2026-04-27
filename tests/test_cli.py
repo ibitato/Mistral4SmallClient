@@ -36,6 +36,8 @@ from mistral4cli.cli import (
 from mistral4cli.local_mistral import (
     DEFAULT_TIMEOUT_MS,
     BackendKind,
+    ContextConfig,
+    ConversationConfig,
     LocalGenerationConfig,
     LocalMistralConfig,
     RemoteMistralConfig,
@@ -573,9 +575,41 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "prompt_mode=reasoning" in rendered
     assert "reasoning=on" in rendered
     assert "stream=on" in rendered
+    assert "| Context" in rendered
+    assert "auto_compact=on" in rendered
+    assert "threshold=90%" in rendered
+    assert "local_window=262144" in rendered
     assert "| Logging" in rendered
     assert "debug=on" in rendered
     assert f"retention={DEFAULT_LOG_RETENTION_DAYS}d" in rendered
+
+
+def test_print_defaults_applies_context_cli_options() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        [
+            "--print-defaults",
+            "--no-mcp",
+            "--no-auto-compact",
+            "--compact-threshold",
+            "85",
+            "--context-reserve-tokens",
+            "4096",
+            "--context-keep-turns",
+            "4",
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert exit_code == 0
+    rendered = output.getvalue()
+    assert "auto_compact=off" in rendered
+    assert "threshold=85%" in rendered
+    assert "reserve=4096" in rendered
+    assert "keep_turns=4" in rendered
 
 
 def test_once_uses_effective_defaults_and_prints_answer() -> None:
@@ -676,6 +710,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/dropimage" in help_text
     assert "/remote" in help_text
     assert "/conv" in help_text
+    assert "/compact" in help_text
     assert "/timeout" in help_text
     assert "/reasoning" in help_text
     assert "Search official documentation" in help_text
@@ -1549,6 +1584,7 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     assert _parse_command("/remote on") == ("remote", "on")
     assert _parse_command("/conv on") == ("conv", "on")
     assert _parse_command("/conversations new") == ("conversations", "new")
+    assert _parse_command("/compact threshold 85") == ("compact", "threshold 85")
     assert _parse_command("/timeout 5m") == ("timeout", "5m")
     assert _parse_command("/reasoning off") == ("reasoning", "off")
     assert _parse_command("/run --cwd . -- git status") == (
@@ -1558,6 +1594,167 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     assert _parse_command("/find --path src -- shell") == (
         "find",
         "--path src -- shell",
+    )
+
+
+def test_compact_status_and_runtime_configuration_command() -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        context=ContextConfig(
+            threshold=0.9,
+            reserve_tokens=8192,
+            local_window_tokens=262_144,
+        ),
+        stdout=output,
+    )
+
+    _run_command("compact", "status", session, output)
+    _run_command("compact", "threshold 85", session, output)
+    _run_command("compact", "auto off", session, output)
+    _run_command("compact", "reserve 4096", session, output)
+    _run_command("compact", "keep 4", session, output)
+
+    rendered = output.getvalue()
+    assert "Context: client-managed" in rendered
+    assert "threshold=90%" in rendered
+    assert "Compact threshold set to 85%." in rendered
+    assert "Auto compact set to off." in rendered
+    assert "Context reserve set to 4096 tokens." in rendered
+    assert "Compact keep turns set to 4." in rendered
+    assert session.context.threshold == 0.85
+    assert session.context.auto_compact is False
+    assert session.context.reserve_tokens == 4096
+    assert session.context.keep_recent_turns == 4
+
+
+def test_manual_compact_summarizes_old_history_and_preserves_recent_turns() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="Old decisions and paths."),
+                        finish_reason="stop",
+                    )
+                ]
+            )
+        ]
+    )
+    session = MistralSession(
+        client=fake_client,
+        context=ContextConfig(keep_recent_turns=1),
+        stdout=output,
+    )
+    session.messages = [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": "old user"},
+        {"role": "assistant", "content": "old assistant"},
+        {"role": "user", "content": "recent user"},
+        {"role": "assistant", "content": "recent assistant"},
+    ]
+
+    result = session.compact_context()
+
+    assert result.changed is True
+    assert fake_client.chat.complete_calls[0]["max_tokens"] == 2048
+    assert "[Compacted previous context]" in session.messages[1]["content"]
+    assert "Old decisions and paths." in session.messages[1]["content"]
+    assert session.messages[-2:] == [
+        {"role": "user", "content": "recent user"},
+        {"role": "assistant", "content": "recent assistant"},
+    ]
+
+
+def test_auto_compact_runs_before_over_threshold_turn() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(
+        complete_responses=[
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="Short summary."),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="final answer"),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
+        ]
+    )
+    session = MistralSession(
+        client=fake_client,
+        context=ContextConfig(
+            threshold=0.1,
+            reserve_tokens=0,
+            local_window_tokens=10_000,
+            keep_recent_turns=1,
+        ),
+        stdout=output,
+    )
+    session.messages = [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": "old " * 3000},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "recent user"},
+        {"role": "assistant", "content": "recent assistant"},
+    ]
+
+    result = session.send("continue", stream=False)
+
+    assert result.content == "final answer"
+    assert len(fake_client.chat.complete_calls) == 2
+    final_messages = fake_client.chat.complete_calls[1]["messages"]
+    assert "[Compacted previous context]" in final_messages[1]["content"]
+    assert final_messages[-2] == {"role": "user", "content": "continue"}
+    assert "[compact] estimated context" in output.getvalue()
+
+
+def test_context_overflow_blocks_turn_when_auto_compact_is_off() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient()
+    session = MistralSession(
+        client=fake_client,
+        context=ContextConfig(
+            auto_compact=False,
+            threshold=0.5,
+            reserve_tokens=0,
+            local_window_tokens=1200,
+        ),
+        stdout=output,
+    )
+
+    result = session.send("x" * 10_000, stream=False)
+
+    assert result.finish_reason == "context_overflow"
+    assert fake_client.chat.complete_calls == []
+    assert "exceeds the configured context window" in output.getvalue()
+    assert session.messages == [{"role": "system", "content": session.system_prompt}]
+
+
+def test_non_conversations_store_off_still_sends_tools() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient()
+    session = MistralSession(
+        client=fake_client,
+        conversations=ConversationConfig(enabled=False, store=False),
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+
+    result = session.send("search", stream=False)
+
+    assert result.content == "ok"
+    assert fake_client.chat.complete_calls
+    assert fake_client.chat.complete_calls[0]["tools"][0]["function"]["name"] == (
+        "web_search"
     )
 
 

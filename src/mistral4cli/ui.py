@@ -14,6 +14,7 @@ from typing import TextIO
 from mistral4cli.local_mistral import (
     REMOTE_SERVER_LABEL,
     BackendKind,
+    ContextConfig,
     ConversationConfig,
     LocalGenerationConfig,
 )
@@ -525,6 +526,7 @@ def render_runtime_summary(
     stream_enabled: bool,
     reasoning_visible: bool,
     conversations: ConversationConfig,
+    context: ContextConfig,
     conversation_id: str | None,
     tool_summary: str,
     logging_summary: str,
@@ -541,6 +543,8 @@ def render_runtime_summary(
     conversation_mode = "on" if conversations.enabled else "off"
     conversation_store = "on" if conversations.store else "off"
     active_conversation = conversation_id or "not started"
+    context_auto = "on" if context.auto_compact else "off"
+    context_threshold = round(context.threshold * 100)
     rows = [
         ("Backend", backend_kind.value),
         ("Server", server_url or REMOTE_SERVER_LABEL),
@@ -563,6 +567,17 @@ def render_runtime_summary(
                 f"mode={conversation_mode} "
                 f"store={conversation_store} "
                 f"id={active_conversation}"
+            ),
+        ),
+        (
+            "Context",
+            (
+                f"auto_compact={context_auto} "
+                f"threshold={context_threshold}% "
+                f"reserve={context.reserve_tokens} "
+                f"local_window={context.local_window_tokens} "
+                f"remote_window={context.remote_window_tokens} "
+                f"keep_turns={context.keep_recent_turns}"
             ),
         ),
         ("Tools", tool_summary),
@@ -630,6 +645,7 @@ def render_help_screen(
         "/dropdoc     Clear active and staged document attachments.",
         "/remote      Show, enable, or disable the Mistral cloud backend.",
         "/conv        Show or manage Mistral Cloud Conversations mode.",
+        "/compact     Show, tune, or run context compaction.",
         "/timeout     Show or set the active request timeout.",
         "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
         "/reset       Clear the conversation but keep the system prompt.",
@@ -680,6 +696,8 @@ def render_help_screen(
         '  - "/remote on"',
         '  - "/conv on"',
         '  - "/conv new"',
+        '  - "/compact"',
+        '  - "/compact threshold 85"',
         '  - "/timeout 300000"',
         '  - "/reasoning off"',
         '  - "/reasoning toggle"',

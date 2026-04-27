@@ -38,6 +38,7 @@ from mistral4cli.local_mistral import (
     DEFAULT_TOP_P,
     REMOTE_MODEL_ID,
     BackendKind,
+    ContextConfig,
     ConversationConfig,
     LocalGenerationConfig,
     LocalMistralConfig,
@@ -362,6 +363,55 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist Mistral Conversations server-side (default: on).",
     )
     parser.add_argument(
+        "--no-auto-compact",
+        dest="auto_compact",
+        action="store_false",
+        default=None,
+        help="Disable automatic context compaction before overflowing the window.",
+    )
+    parser.add_argument(
+        "--auto-compact",
+        dest="auto_compact",
+        action="store_true",
+        help="Enable automatic context compaction.",
+    )
+    parser.add_argument(
+        "--compact-threshold",
+        type=float,
+        default=None,
+        help="Context compaction threshold as 0-1 or percent (default: 90).",
+    )
+    parser.add_argument(
+        "--context-reserve-tokens",
+        type=int,
+        default=None,
+        help="Tokens reserved for the model response during context checks.",
+    )
+    parser.add_argument(
+        "--context-local-window-tokens",
+        type=int,
+        default=None,
+        help="Configured local context window tokens (default: 262144).",
+    )
+    parser.add_argument(
+        "--context-remote-window-tokens",
+        type=int,
+        default=None,
+        help="Fallback remote context window tokens (default: 256000).",
+    )
+    parser.add_argument(
+        "--context-keep-turns",
+        type=int,
+        default=None,
+        help="Recent user turns preserved when compacting context (default: 6).",
+    )
+    parser.add_argument(
+        "--context-summary-max-tokens",
+        type=int,
+        default=None,
+        help="Maximum generated tokens for compact summaries (default: 2048).",
+    )
+    parser.add_argument(
         "--system-prompt",
         default=None,
         help="Override the default assistant system prompt.",
@@ -462,6 +512,48 @@ def _resolve_conversation_config(args: argparse.Namespace) -> ConversationConfig
     if args.conversation_store is not None:
         store = args.conversation_store == "on"
     return ConversationConfig(enabled=enabled, store=store)
+
+
+def _resolve_context_config(args: argparse.Namespace) -> ContextConfig:
+    config = ContextConfig.from_env()
+    return replace(
+        config,
+        auto_compact=(
+            config.auto_compact
+            if args.auto_compact is None
+            else bool(args.auto_compact)
+        ),
+        threshold=(
+            config.threshold
+            if args.compact_threshold is None
+            else args.compact_threshold
+        ),
+        reserve_tokens=(
+            config.reserve_tokens
+            if args.context_reserve_tokens is None
+            else args.context_reserve_tokens
+        ),
+        local_window_tokens=(
+            config.local_window_tokens
+            if args.context_local_window_tokens is None
+            else args.context_local_window_tokens
+        ),
+        remote_window_tokens=(
+            config.remote_window_tokens
+            if args.context_remote_window_tokens is None
+            else args.context_remote_window_tokens
+        ),
+        keep_recent_turns=(
+            config.keep_recent_turns
+            if args.context_keep_turns is None
+            else args.context_keep_turns
+        ),
+        summary_max_tokens=(
+            config.summary_max_tokens
+            if args.context_summary_max_tokens is None
+            else args.context_summary_max_tokens
+        ),
+    ).normalized()
 
 
 def _resolve_remote_mcp_bridge(
@@ -1092,6 +1184,8 @@ def _run_command(
             client_factory=client_factory,
             stdin=stdin,
         )
+    if command == "compact":
+        return _run_compact_command(argument, session, stdout)
     if command == "remote":
         return _run_remote_command(
             argument,
@@ -1353,6 +1447,80 @@ def _run_conversations_command(
     stdout.write(
         "Usage: /conversations "
         "[on|off|new|store on|store off|id|history|messages|delete]\n"
+    )
+    stdout.flush()
+    return False
+
+
+def _run_compact_command(
+    argument: str,
+    session: MistralSession,
+    stdout: TextIO,
+) -> bool:
+    tokens = shlex.split(argument)
+    action = tokens[0].lower() if tokens else "now"
+    if action in {"now", "run"}:
+        try:
+            stdout.write(session.compact_context().summary() + "\n")
+        except Exception as exc:
+            stdout.write(f"[compact] failed: {exc}\n")
+        stdout.flush()
+        return False
+    if action in {"status", "show"}:
+        stdout.write(session.context_status_text() + "\n")
+        stdout.flush()
+        return False
+    if action == "auto":
+        value = tokens[1].lower() if len(tokens) > 1 else ""
+        if value not in {"on", "off"}:
+            stdout.write("Usage: /compact auto [on|off]\n")
+        else:
+            session.configure_context(auto_compact=value == "on")
+            stdout.write(f"Auto compact set to {value}.\n")
+        stdout.flush()
+        return False
+    if action == "threshold":
+        value = tokens[1] if len(tokens) > 1 else ""
+        try:
+            threshold = float(value.rstrip("%"))
+        except ValueError:
+            stdout.write("Usage: /compact threshold [0.1-0.99|10-99]\n")
+        else:
+            session.configure_context(threshold=threshold)
+            stdout.write(
+                f"Compact threshold set to {round(session.context.threshold * 100)}%.\n"
+            )
+        stdout.flush()
+        return False
+    if action == "reserve":
+        value = tokens[1] if len(tokens) > 1 else ""
+        try:
+            reserve_tokens = int(value)
+        except ValueError:
+            stdout.write("Usage: /compact reserve [TOKENS]\n")
+        else:
+            session.configure_context(reserve_tokens=reserve_tokens)
+            stdout.write(
+                f"Context reserve set to {session.context.reserve_tokens} tokens.\n"
+            )
+        stdout.flush()
+        return False
+    if action in {"keep", "keep-turns"}:
+        value = tokens[1] if len(tokens) > 1 else ""
+        try:
+            keep_turns = int(value)
+        except ValueError:
+            stdout.write("Usage: /compact keep [TURNS]\n")
+        else:
+            session.configure_context(keep_recent_turns=keep_turns)
+            stdout.write(
+                f"Compact keep turns set to {session.context.keep_recent_turns}.\n"
+            )
+        stdout.flush()
+        return False
+
+    stdout.write(
+        "Usage: /compact [status|now|auto on|auto off|threshold N|reserve N|keep N]\n"
     )
     stdout.flush()
     return False
@@ -1620,6 +1788,7 @@ def _build_session(
     stream: bool,
     logging_summary: str,
     conversations: ConversationConfig,
+    context: ContextConfig,
 ) -> MistralSession:
     logger.debug(
         "Building session backend=%s model=%s stream=%s",
@@ -1638,6 +1807,7 @@ def _build_session(
         stdout=stdout,
         stream_enabled=stream,
         logging_summary=logging_summary,
+        context=context,
     )
     if conversations.enabled:
         remote_config = RemoteMistralConfig.from_env(timeout_ms=config.timeout_ms)
@@ -1678,6 +1848,7 @@ def main(
     )
     config, generation, system_prompt = _resolve_local_configs(args)
     conversations = _resolve_conversation_config(args)
+    context = _resolve_context_config(args)
     tool_bridge = _build_tool_bridge(args, stderr)
     logging_summary = render_logging_summary(logging_config)
 
@@ -1699,6 +1870,7 @@ def main(
                 stream_enabled=not args.no_stream,
                 reasoning_visible=True,
                 conversations=conversations,
+                context=context,
                 tool_summary=tool_bridge.runtime_summary(),
                 logging_summary=logging_summary,
                 stream=stdout,
@@ -1722,6 +1894,7 @@ def main(
             stream=stream,
             logging_summary=logging_summary,
             conversations=conversations,
+            context=context,
         )
         session.send(args.once, stream=stream)
         return 0
@@ -1739,6 +1912,7 @@ def main(
                 stream=stream,
                 logging_summary=logging_summary,
                 conversations=conversations,
+                context=context,
             )
             session.send(piped_prompt, stream=stream)
         return 0
@@ -1753,6 +1927,7 @@ def main(
         stream=stream,
         logging_summary=logging_summary,
         conversations=conversations,
+        context=context,
     )
     return _run_repl(
         session,
