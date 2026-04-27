@@ -16,6 +16,7 @@ from mistral4cli.local_mistral import (
     DEFAULT_MODEL_ID,
     DEFAULT_SERVER_URL,
     BackendKind,
+    ConversationConfig,
     LocalGenerationConfig,
     get_client_timeout_ms,
     set_client_timeout_ms,
@@ -130,6 +131,8 @@ def render_defaults_summary(
     generation: LocalGenerationConfig,
     stream_enabled: bool,
     reasoning_visible: bool,
+    conversations: ConversationConfig | None = None,
+    conversation_id: str | None = None,
     tool_summary: str,
     logging_summary: str,
     stream: TextIO,
@@ -144,6 +147,8 @@ def render_defaults_summary(
         generation=generation,
         stream_enabled=stream_enabled,
         reasoning_visible=reasoning_visible,
+        conversations=conversations or ConversationConfig(),
+        conversation_id=conversation_id,
         tool_summary=tool_summary,
         logging_summary=logging_summary,
         stream=stream,
@@ -214,6 +219,14 @@ class _ModelTurn:
     tool_calls: list[dict[str, Any]] = field(default_factory=list)
     cancelled: bool = False
     error: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _BackendState:
+    client: Mistral
+    backend_kind: BackendKind
+    model_id: str
+    server_url: str | None
 
 
 @dataclass(slots=True)
@@ -388,6 +401,41 @@ class _ToolCallState:
 
 
 @dataclass(slots=True)
+class _ConversationToolCallState:
+    """Accumulator for Conversations API function-call events."""
+
+    index: int
+    call_id: str = ""
+    name: str = ""
+    arguments_parts: list[str] = field(default_factory=list)
+
+    def update(self, event_data: Any) -> None:
+        call_id = _field(event_data, "tool_call_id") or _field(event_data, "id")
+        if call_id:
+            self.call_id = str(call_id)
+        name = _field(event_data, "name")
+        if name:
+            self.name = str(name)
+        arguments = _field(event_data, "arguments")
+        if arguments is None:
+            return
+        if isinstance(arguments, str):
+            self.arguments_parts.append(arguments)
+        else:
+            self.arguments_parts.append(json.dumps(arguments, ensure_ascii=False))
+
+    def to_tool_call(self) -> dict[str, Any]:
+        return {
+            "id": self.call_id or f"tool_call_{self.index}",
+            "type": "function",
+            "function": {
+                "name": self.name or f"tool_{self.index}",
+                "arguments": "".join(self.arguments_parts).strip() or "{}",
+            },
+        }
+
+
+@dataclass(slots=True)
 class MistralSession:
     """Stateful conversation helper for the Mistral Small 4 CLI."""
 
@@ -401,6 +449,7 @@ class MistralSession:
     stdout: TextIO | None = None
     stream_enabled: bool = True
     show_reasoning: bool = True
+    conversations: ConversationConfig = field(default_factory=ConversationConfig)
     logging_summary: str = "debug=on level=DEBUG rotate=daily retention=2d"
     max_tool_rounds: int = 20
     answer_writer: Callable[[str], None] | None = None
@@ -421,6 +470,12 @@ class MistralSession:
         repr=False,
         default=None,
     )
+    conversation_id: str | None = field(init=False, repr=False, default=None)
+    _previous_backend_state: _BackendState | None = field(
+        init=False,
+        repr=False,
+        default=None,
+    )
 
     def __post_init__(self) -> None:
         """Normalize the session state after dataclass initialization."""
@@ -431,22 +486,27 @@ class MistralSession:
             self.stdout = sys.stdout
         self.system_prompt = self.system_prompt.strip() or DEFAULT_SYSTEM_PROMPT
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        if self.conversations.enabled and self.backend_kind is not BackendKind.REMOTE:
+            self.conversations = ConversationConfig(enabled=False, store=True)
         logger.debug(
-            "Session initialized backend=%s model=%s tools=%s",
+            "Session initialized backend=%s model=%s tools=%s conversations=%s",
             self.backend_kind.value,
             self.model_id,
             self.tool_bridge is not None,
+            self.conversations.enabled,
         )
 
     def reset(self) -> None:
         """Reset the conversation to the system prompt."""
 
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        self.conversation_id = None
         self._set_status("idle")
         logger.info(
-            "Conversation reset backend=%s model=%s",
+            "Conversation reset backend=%s model=%s conversations=%s",
             self.backend_kind.value,
             self.model_id,
+            self.conversations.enabled,
         )
 
     def set_system_prompt(self, system_prompt: str) -> None:
@@ -481,6 +541,8 @@ class MistralSession:
             generation=self._display_generation(),
             stream_enabled=self.stream_enabled,
             reasoning_visible=self.show_reasoning,
+            conversations=self.conversations,
+            conversation_id=self.conversation_id,
             tool_summary=self.describe_tool_status(),
             logging_summary=self.logging_summary,
             stream=self.stdout,
@@ -500,6 +562,9 @@ class MistralSession:
         self.backend_kind = backend_kind
         self.model_id = model_id
         self.server_url = server_url
+        self.conversations = ConversationConfig(enabled=False, store=True)
+        self.conversation_id = None
+        self._previous_backend_state = None
         logger.info(
             "Backend switched backend=%s model=%s server=%s",
             backend_kind.value,
@@ -507,6 +572,103 @@ class MistralSession:
             server_url,
         )
         self.reset()
+
+    def enable_conversations(
+        self,
+        *,
+        client: Mistral,
+        model_id: str,
+        store: bool,
+        server_url: str | None = None,
+    ) -> None:
+        """Enable Mistral Cloud Conversations mode and reset the active chat."""
+
+        if not self.conversations.enabled:
+            self._previous_backend_state = _BackendState(
+                client=self.client,
+                backend_kind=self.backend_kind,
+                model_id=self.model_id,
+                server_url=self.server_url,
+            )
+        self.client = client
+        self.backend_kind = BackendKind.REMOTE
+        self.model_id = model_id
+        self.server_url = server_url
+        self.conversations = ConversationConfig(enabled=True, store=store)
+        logger.info("Conversations enabled model=%s store=%s", model_id, store)
+        self.reset()
+
+    def disable_conversations(self) -> None:
+        """Disable Conversations mode and restore the previous backend if known."""
+
+        previous = self._previous_backend_state
+        self.conversations = ConversationConfig(enabled=False, store=True)
+        self.conversation_id = None
+        self._previous_backend_state = None
+        if previous is not None:
+            self.client = previous.client
+            self.backend_kind = previous.backend_kind
+            self.model_id = previous.model_id
+            self.server_url = previous.server_url
+        logger.info("Conversations disabled backend=%s", self.backend_kind.value)
+        self.reset()
+
+    def set_conversation_store(self, store: bool) -> None:
+        """Update Conversations storage policy and start a fresh conversation."""
+
+        self.conversations = ConversationConfig(
+            enabled=self.conversations.enabled,
+            store=store,
+        )
+        self.reset()
+
+    def conversations_status_text(self) -> str:
+        """Return a user-facing Conversations status summary."""
+
+        state = "on" if self.conversations.enabled else "off"
+        store = "on" if self.conversations.store else "off"
+        conversation_id = self.conversation_id or "not started"
+        return f"Conversations: {state} store={store} conversation_id={conversation_id}"
+
+    def conversation_history_text(self, *, messages_only: bool = False) -> str:
+        """Fetch and render the active remote Conversation history."""
+
+        if not self.conversations.enabled:
+            return "Conversations mode is off."
+        if not self.conversation_id:
+            return "No active conversation id yet."
+        conversations = self.client.beta.conversations
+        payload = (
+            conversations.get_messages(conversation_id=self.conversation_id)
+            if messages_only
+            else conversations.get_history(conversation_id=self.conversation_id)
+        )
+        entries = _field(payload, "messages" if messages_only else "entries", []) or []
+        if not entries:
+            return "No conversation entries."
+        lines = [f"Conversation {self.conversation_id}:"]
+        for index, entry in enumerate(entries, start=1):
+            entry_type = str(_field(entry, "type", "entry"))
+            role = _field(entry, "role")
+            label = f"{index}. {entry_type}"
+            if role:
+                label = f"{label} {role}"
+            text = _summarize_conversation_entry(entry)
+            lines.append(f"{label}: {text}" if text else label)
+        return "\n".join(lines)
+
+    def delete_active_conversation(self) -> str:
+        """Delete the active remote Conversation and clear local state."""
+
+        if not self.conversations.enabled:
+            return "Conversations mode is off."
+        if not self.conversation_id:
+            return "No active conversation id yet."
+        conversation_id = self.conversation_id
+        self.client.beta.conversations.delete(conversation_id=conversation_id)
+        self.conversation_id = None
+        self.messages = [{"role": "system", "content": self.system_prompt}]
+        return f"Deleted conversation {conversation_id}."
 
     @property
     def timeout_ms(self) -> int:
@@ -588,6 +750,13 @@ class MistralSession:
             self._has_attachment_blocks(normalized),
             self._content_summary(normalized),
         )
+        if self.conversations.enabled:
+            return self._send_conversation_content(
+                normalized,
+                stream=stream,
+                disable_tools=disable_tools,
+            )
+
         message_start = len(self.messages)
         self.messages.append({"role": "user", "content": normalized})
         self._last_usage = None
@@ -596,7 +765,11 @@ class MistralSession:
         try:
             seen_tool_calls: set[str] = set()
             tool_rounds_executed = 0
-            tools = [] if disable_tools else self._resolve_tools()
+            tools = (
+                []
+                if disable_tools or not self.conversations.store
+                else self._resolve_tools()
+            )
             if not tools:
                 turn = self._send_single_turn(stream=stream, tools=None)
                 if turn.cancelled or turn.error:
@@ -767,6 +940,385 @@ class MistralSession:
         """Send one text user turn and update the conversation history."""
 
         return self.send_content(user_text, stream=stream)
+
+    def _send_conversation_content(
+        self,
+        content: str | list[dict[str, Any]],
+        *,
+        stream: bool,
+        disable_tools: bool,
+    ) -> TurnResult:
+        message_start = len(self.messages)
+        self.messages.append({"role": "user", "content": content})
+        self._last_usage = None
+        self._turn_usage_accumulator = None
+        self._set_status("thinking")
+        try:
+            seen_tool_calls: set[str] = set()
+            inputs = self._conversation_user_inputs(content)
+            tools = [] if disable_tools else self._resolve_tools()
+            for _ in range(self.max_tool_rounds + 1):
+                turn = self._send_conversation_turn(
+                    inputs=inputs,
+                    stream=stream,
+                    tools=tools,
+                )
+                if turn.cancelled or turn.error:
+                    self._rollback_to(message_start)
+                    self._turn_usage_accumulator = None
+                    self._set_status("interrupted" if turn.cancelled else "error")
+                    return TurnResult(
+                        content=turn.content,
+                        finish_reason=turn.finish_reason,
+                        reasoning=turn.reasoning,
+                        cancelled=turn.cancelled,
+                    )
+                if turn.finish_reason != "tool_calls" or not turn.tool_calls:
+                    self._commit_assistant_message(turn)
+                    self._commit_turn_usage()
+                    self._set_status("done")
+                    return TurnResult(
+                        content=turn.content,
+                        finish_reason=turn.finish_reason,
+                        reasoning=turn.reasoning,
+                        cancelled=False,
+                    )
+
+                self._commit_assistant_message(turn)
+                tool_inputs: list[dict[str, Any]] = []
+                for call in turn.tool_calls:
+                    function = call["function"]
+                    name = str(function["name"])
+                    try:
+                        arguments = self._parse_tool_arguments(
+                            function.get("arguments")
+                        )
+                    except Exception as exc:
+                        result = MCPToolResult(
+                            text=f"[tool-error] invalid arguments for {name}: {exc}",
+                            is_error=True,
+                        )
+                    else:
+                        signature = self._tool_call_signature(name, arguments)
+                        if signature in seen_tool_calls:
+                            result = MCPToolResult(
+                                text=(
+                                    "[tool-error] repeated identical tool call "
+                                    "blocked; use the prior tool result"
+                                ),
+                                is_error=True,
+                                structured_content={
+                                    "status": "error",
+                                    "tool": name,
+                                    "code": "repeated_identical_tool_call",
+                                    "arguments": arguments,
+                                },
+                            )
+                            self.messages.append(
+                                self._tool_message(call=call, result=result)
+                            )
+                            self._print(
+                                "[error] repeated identical tool call blocked\n"
+                            )
+                            self._turn_usage_accumulator = None
+                            self._set_status("error")
+                            return TurnResult(
+                                content="",
+                                finish_reason="error",
+                                cancelled=False,
+                            )
+                        seen_tool_calls.add(signature)
+                        self._set_status("tool", detail=name)
+                        result = self._call_tool_bridge(name, arguments)
+                        self._set_status("thinking")
+                    self.messages.append(self._tool_message(call=call, result=result))
+                    tool_inputs.append(
+                        {
+                            "type": "function.result",
+                            "tool_call_id": call["id"],
+                            "result": self._render_tool_result(result),
+                        }
+                    )
+                inputs = tool_inputs
+
+            self._rollback_to(message_start)
+            self._turn_usage_accumulator = None
+            self._print("[error] tool loop limit reached\n")
+            self._set_status("error")
+            return TurnResult(content="", finish_reason="error", cancelled=False)
+        except KeyboardInterrupt:
+            self._rollback_to(message_start)
+            self._turn_usage_accumulator = None
+            self._print("\n[interrupted]\n")
+            self._set_status("interrupted")
+            return TurnResult(content="", finish_reason="cancelled", cancelled=True)
+
+    def _send_conversation_turn(
+        self,
+        *,
+        inputs: str | list[dict[str, Any]] | None,
+        stream: bool,
+        tools: list[dict[str, Any]] | None,
+    ) -> _ModelTurn:
+        if stream:
+            return self._send_conversation_streaming(inputs=inputs, tools=tools)
+        return self._send_conversation_non_streaming(inputs=inputs, tools=tools)
+
+    def _conversation_user_inputs(
+        self, content: str | list[dict[str, Any]]
+    ) -> str | list[dict[str, Any]]:
+        if isinstance(content, str):
+            return content
+        return [{"type": "message.input", "role": "user", "content": content}]
+
+    def _conversation_completion_args(self) -> dict[str, Any]:
+        args: dict[str, Any] = {
+            "temperature": self.generation.temperature,
+            "top_p": self.generation.top_p,
+            "response_format": {"type": "text"},
+            "reasoning_effort": "high" if self.show_reasoning else "none",
+        }
+        if self.generation.max_tokens is not None:
+            args["max_tokens"] = self.generation.max_tokens
+        return args
+
+    def _conversation_start_kwargs(
+        self,
+        *,
+        inputs: str | list[dict[str, Any]],
+        stream: bool,
+        tools: list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "inputs": inputs,
+            "model": self.model_id,
+            "instructions": self.system_prompt,
+            "store": self.conversations.store,
+            "completion_args": self._conversation_completion_args(),
+        }
+        if tools:
+            kwargs["tools"] = tools
+        return kwargs
+
+    def _conversation_append_kwargs(
+        self,
+        *,
+        inputs: str | list[dict[str, Any]] | None,
+    ) -> dict[str, Any]:
+        if self.conversation_id is None:
+            raise RuntimeError("Conversation append requires a conversation id.")
+        return {
+            "conversation_id": self.conversation_id,
+            "inputs": inputs,
+            "store": self.conversations.store,
+            "completion_args": self._conversation_completion_args(),
+        }
+
+    def _send_conversation_non_streaming(
+        self,
+        *,
+        inputs: str | list[dict[str, Any]] | None,
+        tools: list[dict[str, Any]] | None,
+    ) -> _ModelTurn:
+        try:
+            conversations = self.client.beta.conversations
+            if self.conversation_id is None:
+                if inputs is None:
+                    raise RuntimeError("Conversation start requires inputs.")
+                response = conversations.start(
+                    **self._conversation_start_kwargs(
+                        inputs=inputs,
+                        stream=False,
+                        tools=tools,
+                    )
+                )
+            else:
+                response = conversations.append(
+                    **self._conversation_append_kwargs(inputs=inputs)
+                )
+        except KeyboardInterrupt:
+            self._print("\n[interrupted]\n")
+            return _ModelTurn(content="", finish_reason="cancelled", cancelled=True)
+        except Exception as exc:
+            self._print(f"[error] {exc}\n")
+            return _ModelTurn(content="", finish_reason="error", error=True)
+
+        return self._handle_conversation_response(response)
+
+    def _send_conversation_streaming(
+        self,
+        *,
+        inputs: str | list[dict[str, Any]] | None,
+        tools: list[dict[str, Any]] | None,
+    ) -> _ModelTurn:
+        parser = _ReasoningParser()
+        answer_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        tool_states: dict[str, _ConversationToolCallState] = {}
+        printed_anything = False
+        reasoning_printed = False
+        answer_started = False
+        usage_snapshot: Any = None
+        error_message: str | None = None
+
+        try:
+            conversations = self.client.beta.conversations
+            if self.conversation_id is None:
+                if inputs is None:
+                    raise RuntimeError("Conversation start requires inputs.")
+                stream = conversations.start_stream(
+                    **self._conversation_start_kwargs(
+                        inputs=inputs,
+                        stream=True,
+                        tools=tools,
+                    )
+                )
+            else:
+                stream = conversations.append_stream(
+                    **self._conversation_append_kwargs(inputs=inputs)
+                )
+            with stream as active_stream:
+                for event in active_stream:
+                    event_name = str(_field(event, "event", ""))
+                    data = _field(event, "data")
+                    if event_name == "conversation.response.started":
+                        conversation_id = _field(data, "conversation_id")
+                        if conversation_id and self.conversations.store:
+                            self.conversation_id = str(conversation_id)
+                        continue
+                    if event_name == "conversation.response.done":
+                        usage_snapshot = _field(data, "usage", usage_snapshot)
+                        continue
+                    if event_name == "conversation.response.error":
+                        error_message = str(
+                            _field(data, "message", "conversation error")
+                        )
+                        continue
+                    if event_name == "function.call.delta":
+                        call_id = str(_field(data, "tool_call_id", "") or "")
+                        if not call_id:
+                            call_id = str(_field(data, "id", len(tool_states)) or "")
+                        state = tool_states.setdefault(
+                            call_id,
+                            _ConversationToolCallState(index=len(tool_states)),
+                        )
+                        state.update(data)
+                        continue
+                    if event_name != "message.output.delta":
+                        continue
+                    for segment in _conversation_content_segments(
+                        _field(data, "content")
+                    ):
+                        if segment.kind == "reasoning":
+                            self._set_status("answering")
+                            self._print_reasoning(segment.text)
+                            reasoning_parts.append(segment.text)
+                            reasoning_printed = True
+                        else:
+                            for parsed in parser.feed(segment.text):
+                                if parsed.kind == "reasoning":
+                                    self._set_status("answering")
+                                    self._print_reasoning(parsed.text)
+                                    reasoning_parts.append(parsed.text)
+                                    reasoning_printed = True
+                                else:
+                                    self._set_status("answering")
+                                    answer_parts.append(parsed.text)
+                                    answer_started = self._print_answer_separator(
+                                        reasoning_printed=reasoning_printed,
+                                        answer_started=answer_started,
+                                    )
+                                    self._print(parsed.text)
+                        printed_anything = True
+        except KeyboardInterrupt:
+            self._print("\n[interrupted]\n")
+            return _ModelTurn(
+                content="".join(answer_parts).strip() or parser.answer,
+                reasoning="".join(reasoning_parts).strip() or parser.reasoning,
+                finish_reason="cancelled",
+                cancelled=True,
+            )
+        except Exception as exc:
+            self._print(f"\n[error] {exc}\n")
+            return _ModelTurn(content="", finish_reason="error", error=True)
+
+        if error_message:
+            self._print(f"\n[error] {error_message}\n")
+            return _ModelTurn(content="", finish_reason="error", error=True)
+
+        self._record_usage(usage_snapshot)
+        for segment in parser.finish():
+            if segment.kind == "reasoning":
+                self._set_status("answering")
+                self._print_reasoning(segment.text)
+                reasoning_parts.append(segment.text)
+                reasoning_printed = True
+            else:
+                self._set_status("answering")
+                answer_parts.append(segment.text)
+                answer_started = self._print_answer_separator(
+                    reasoning_printed=reasoning_printed,
+                    answer_started=answer_started,
+                )
+                self._print(segment.text)
+                printed_anything = True
+
+        content = "".join(answer_parts).strip()
+        reasoning = "".join(reasoning_parts).strip()
+        tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
+        if printed_anything and content and not content.endswith("\n"):
+            self._print("\n")
+        return _ModelTurn(
+            content=content,
+            finish_reason="tool_calls" if tool_calls else "stop",
+            reasoning=reasoning,
+            tool_calls=tool_calls,
+        )
+
+    def _handle_conversation_response(self, response: Any) -> _ModelTurn:
+        conversation_id = _field(response, "conversation_id")
+        if conversation_id and self.conversations.store:
+            self.conversation_id = str(conversation_id)
+        self._record_usage(_field(response, "usage"))
+        outputs = _field(response, "outputs", []) or []
+        segments: list[_RenderedSegment] = []
+        tool_calls: list[dict[str, Any]] = []
+        for output in outputs:
+            output_type = _field(output, "type")
+            if output_type == "message.output":
+                segments.extend(
+                    _conversation_content_segments(_field(output, "content"))
+                )
+            elif output_type == "function.call":
+                tool_calls.append(_conversation_tool_call(output, len(tool_calls)))
+
+        content = _join_segments(segments, kind="answer")
+        reasoning = _join_segments(segments, kind="reasoning")
+        if tool_calls:
+            return _ModelTurn(
+                content=content,
+                finish_reason="tool_calls",
+                reasoning=reasoning,
+                tool_calls=tool_calls,
+            )
+
+        reasoning_printed = False
+        answer_started = False
+        for segment in segments:
+            if segment.kind == "reasoning":
+                self._set_status("answering")
+                self._print_reasoning(segment.text)
+                reasoning_printed = True
+            else:
+                self._set_status("answering")
+                answer_started = self._print_answer_separator(
+                    reasoning_printed=reasoning_printed,
+                    answer_started=answer_started,
+                )
+                self._print(segment.text)
+        if segments and content and not content.endswith("\n"):
+            self._print("\n")
+        return _ModelTurn(content=content, finish_reason="stop", reasoning=reasoning)
 
     def _request_kwargs(
         self,
@@ -1592,6 +2144,57 @@ def _content_segments_from_value(content: Any) -> list[_RenderedSegment]:
                 if isinstance(text, str) and text:
                     segments.append(_RenderedSegment(kind="reasoning", text=text))
     return segments
+
+
+def _conversation_content_segments(content: Any) -> list[_RenderedSegment]:
+    if isinstance(content, dict):
+        return _content_segments_from_value([content])
+    return _content_segments_from_value(content)
+
+
+def _conversation_tool_call(output: Any, index: int) -> dict[str, Any]:
+    arguments = _field(output, "arguments", "{}")
+    if not isinstance(arguments, str):
+        arguments = json.dumps(arguments, ensure_ascii=False)
+    return {
+        "id": str(_field(output, "tool_call_id", f"tool_call_{index}")),
+        "type": "function",
+        "function": {
+            "name": str(_field(output, "name", f"tool_{index}")),
+            "arguments": arguments or "{}",
+        },
+    }
+
+
+def _summarize_conversation_entry(entry: Any) -> str:
+    content = _field(entry, "content")
+    if content is None:
+        content = _field(entry, "result")
+    if content is None:
+        content = _field(entry, "arguments")
+    if isinstance(content, str):
+        text = content
+    elif content is None:
+        text = ""
+    else:
+        text = json.dumps(_jsonable(content), ensure_ascii=False)
+    text = " ".join(text.split())
+    if len(text) > 180:
+        return f"{text[:177]}..."
+    return text
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, str | int | float | bool) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    model_dump = getattr(value, "model_dump", None)
+    if callable(model_dump):
+        return model_dump(mode="json")
+    return str(value)
 
 
 def _join_segments(segments: list[_RenderedSegment], *, kind: str) -> str:

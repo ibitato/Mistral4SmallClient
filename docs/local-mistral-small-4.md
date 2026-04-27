@@ -74,6 +74,7 @@ an actionable help system:
 - `/defaults` prints the active runtime defaults
 - `/timeout [value]` shows or updates the active request timeout
 - `/remote on|off` switches between local `llama.cpp` and Mistral cloud
+- `/conv on|off|new|id|history|messages|delete` manages optional Mistral Cloud Conversations mode
 - `/tools` shows the loaded local and FireCrawl MCP tool catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
@@ -165,6 +166,7 @@ Runtime defaults:
 - timeout: `300000 ms` (`5m`)
 - max tokens: unset, so the server can decide
 - streaming: on
+- Conversations: off by default; `store=on` when enabled
 - MCP: FireCrawl auto-tools on when `mcp.json` is present
 
 Remote mode:
@@ -176,11 +178,22 @@ Remote mode:
 - uses `reasoning_effort=high` when visible reasoning is enabled
 - uses `reasoning_effort=none` when visible reasoning is disabled
 
+Conversations mode:
+
+- is optional and uses `client.beta.conversations` against Mistral Cloud
+- can start with `--conversations` or inside the REPL with `/conv on`
+- requires `MISTRAL_API_KEY`
+- resets the current chat when enabled, disabled, or restarted with `/conv new`
+- uses `store=on` by default and can switch with `/conv store on|off`
+- with `store=off`, each user turn is stateless and no `conversation_id` is kept
+- supports `/conv id`, `/conv history`, `/conv messages`, and `/conv delete`
+
 Session commands:
 
 - `/help`
 - `/defaults`
 - `/remote [on|off]`
+- `/conv [on|off|new|store on|store off|id|history|messages|delete]`
 - `/reset`
 - `/system <text>`
 - `/exit` or `/quit`

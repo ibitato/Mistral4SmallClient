@@ -68,7 +68,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.2.0` also trigger a GitHub Actions release build that
+Version tags such as `v1.3.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -104,6 +104,7 @@ Inside the REPL:
 - `/image` to pick and analyze images in the terminal
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
+- `/conv on|off|new|id|history|messages|delete` to use Mistral Cloud Conversations
 - `/reset`, `/system ...`, `/exit`
 
 Interactive TTY behavior:
@@ -151,6 +152,11 @@ Remote mode requirements:
 - export `MISTRAL_API_KEY` in your shell
 - remote mode uses `mistral-small-latest`
 - backend switching resets the active conversation
+- optional Conversations mode uses `client.beta.conversations` and is off by default
+- `--conversations` starts in Conversations mode; `--conversation-store on|off`
+  controls server-side persistence and defaults to `on`
+- `store=off` runs stateless one-shot Conversation calls, so it does not preserve
+  `conversation_id` across turns
 - the default request timeout is `300000 ms` (5 minutes)
 
 Typical environment setup:
@@ -194,12 +200,17 @@ Recommended runtime defaults used by the CLI:
 - `timeout_ms=300000`
 - streaming on by default
 - `max_tokens` unset unless you override it
+- Conversations mode off by default; `store=on` when enabled
 
 Remote mode keeps the same sampling defaults, but it does not send
 `prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for
 `mistral-small-latest`, so the CLI uses the official SDK with
 `reasoning_effort=high` when visible reasoning is enabled, and
 `reasoning_effort=none` when it is disabled.
+
+Conversations mode is an optional Mistral Cloud path. It resets the current chat
+when enabled, starts a fresh remote `conversation_id` on the next user turn, and
+keeps the normal chat-completions path as the default.
 
 Attachment handling is backend-aware:
 

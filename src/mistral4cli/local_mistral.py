@@ -32,6 +32,8 @@ ENV_TOP_P = "MISTRAL_LOCAL_TOP_P"
 ENV_PROMPT_MODE = "MISTRAL_LOCAL_PROMPT_MODE"
 ENV_MAX_TOKENS = "MISTRAL_LOCAL_MAX_TOKENS"
 ENV_REMOTE_API_KEY = "MISTRAL_API_KEY"
+ENV_CONVERSATIONS = "MISTRAL_CONVERSATIONS"
+ENV_CONVERSATION_STORE = "MISTRAL_CONVERSATION_STORE"
 
 
 class BackendKind(str, Enum):
@@ -124,7 +126,36 @@ class LocalGenerationConfig:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ConversationConfig:
+    """Runtime defaults for Mistral Cloud Conversations mode."""
+
+    enabled: bool = False
+    store: bool = True
+
+    @classmethod
+    def from_env(cls) -> ConversationConfig:
+        """Build conversation defaults from environment variables."""
+
+        return cls(
+            enabled=_env_bool(ENV_CONVERSATIONS, default=False),
+            store=_env_bool(ENV_CONVERSATION_STORE, default=True),
+        )
+
+
 MistralConfig = LocalMistralConfig | RemoteMistralConfig
+
+
+def _env_bool(name: str, *, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 def get_client_timeout_ms(client: Mistral, default: int = DEFAULT_TIMEOUT_MS) -> int:

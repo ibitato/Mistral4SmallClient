@@ -70,6 +70,16 @@ Configuration and client helpers for local and remote Mistral backends.
 
 Runtime backend modes supported by the CLI.
 
+### Class `ConversationConfig`
+
+Runtime defaults for Mistral Cloud Conversations mode.
+
+#### Methods
+
+  #### `from_env(cls) -> 'ConversationConfig'`
+
+  Build conversation defaults from environment variables.
+
 ### Class `LocalGenerationConfig`
 
 Sampling defaults for the local Mistral Small 4 deployment.
@@ -248,6 +258,18 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Execute a tool through the active bridge.
 
+  #### `conversation_history_text(self, messages_only: 'bool' = False) -> 'str'`
+
+  Fetch and render the active remote Conversation history.
+
+  #### `conversations_status_text(self) -> 'str'`
+
+  Return a user-facing Conversations status summary.
+
+  #### `delete_active_conversation(self) -> 'str'`
+
+  Delete the active remote Conversation and clear local state.
+
   #### `describe_defaults(self) -> 'str'`
 
   Render the active runtime defaults as human-readable text.
@@ -259,6 +281,14 @@ Stateful conversation helper for the Mistral Small 4 CLI.
   #### `describe_tools(self) -> 'str'`
 
   Return a live tool catalog summary.
+
+  #### `disable_conversations(self) -> 'None'`
+
+  Disable Conversations mode and restore the previous backend if known.
+
+  #### `enable_conversations(self, client: 'Mistral', model_id: 'str', store: 'bool', server_url: 'str | None' = None) -> 'None'`
+
+  Enable Mistral Cloud Conversations mode and reset the active chat.
 
   #### `reasoning_status_text(self) -> 'str'`
 
@@ -275,6 +305,10 @@ Stateful conversation helper for the Mistral Small 4 CLI.
   #### `send_content(self, content: 'str | list[dict[str, Any]]', stream: 'bool' = True, disable_tools: 'bool' = False) -> 'TurnResult'`
 
   Send a text or multimodal user turn and update the conversation.
+
+  #### `set_conversation_store(self, store: 'bool') -> 'None'`
+
+  Update Conversations storage policy and start a fresh conversation.
 
   #### `set_reasoning_visibility(self, visible: 'bool') -> 'None'`
 
@@ -330,7 +364,7 @@ Normalized token usage metadata for one turn or a session.
 
   Return the cumulative sum of this usage and another snapshot.
 
-#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig | None' = None, conversation_id: 'str | None' = None, tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -458,7 +492,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render a formatted runtime summary.
 

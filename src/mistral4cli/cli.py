@@ -36,7 +36,9 @@ from mistral4cli.local_mistral import (
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_MS,
     DEFAULT_TOP_P,
+    REMOTE_MODEL_ID,
     BackendKind,
+    ConversationConfig,
     LocalGenerationConfig,
     LocalMistralConfig,
     MistralConfig,
@@ -217,7 +219,10 @@ def _repl_status_line(session: MistralSession, repl_state: _ReplState) -> str:
         session.backend_kind.value,
         session.model_id,
         f"reasoning:{'on' if session.show_reasoning else 'off'}",
+        f"conv:{'on' if session.conversations.enabled else 'off'}",
     ]
+    if session.conversations.enabled and session.conversation_id:
+        parts.append(f"cid:{session.conversation_id[:8]}")
     if repl_state.pending_attachment is not None:
         parts.append(f"stage:{repl_state.pending_attachment.kind}")
     if repl_state.active_images:
@@ -338,6 +343,25 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--conversations",
+        dest="conversations",
+        action="store_true",
+        default=None,
+        help="Start in Mistral Cloud Conversations mode.",
+    )
+    parser.add_argument(
+        "--no-conversations",
+        dest="conversations",
+        action="store_false",
+        help="Disable Conversations mode even if enabled by environment.",
+    )
+    parser.add_argument(
+        "--conversation-store",
+        choices=("on", "off"),
+        default=None,
+        help="Persist Mistral Conversations server-side (default: on).",
+    )
+    parser.add_argument(
         "--system-prompt",
         default=None,
         help="Override the default assistant system prompt.",
@@ -429,6 +453,15 @@ def _resolve_local_configs(
     )
     system_prompt = args.system_prompt or DEFAULT_SYSTEM_PROMPT
     return resolved_config, resolved_generation, system_prompt
+
+
+def _resolve_conversation_config(args: argparse.Namespace) -> ConversationConfig:
+    config = ConversationConfig.from_env()
+    enabled = config.enabled if args.conversations is None else bool(args.conversations)
+    store = config.store
+    if args.conversation_store is not None:
+        store = args.conversation_store == "on"
+    return ConversationConfig(enabled=enabled, store=store)
 
 
 def _resolve_remote_mcp_bridge(
@@ -1049,6 +1082,16 @@ def _run_command(
             prompt_label="tools",
         )
         return False
+    if command in {"conversations", "conv"}:
+        return _run_conversations_command(
+            argument,
+            session,
+            stdout,
+            repl_state=repl_state,
+            local_config=local_config,
+            client_factory=client_factory,
+            stdin=stdin,
+        )
     if command == "remote":
         return _run_remote_command(
             argument,
@@ -1196,6 +1239,123 @@ def _parse_command(line: str) -> tuple[str, str] | None:
         return None
     command, _, argument = command_body.partition(" ")
     return command.lower(), argument.strip()
+
+
+def _run_conversations_command(
+    argument: str,
+    session: MistralSession,
+    stdout: TextIO,
+    *,
+    repl_state: _ReplState,
+    local_config: LocalMistralConfig | None,
+    client_factory: Callable[[MistralConfig], Mistral],
+    stdin: TextIO,
+) -> bool:
+    tokens = shlex.split(argument)
+    action = tokens[0].lower() if tokens else ""
+    if not action:
+        stdout.write(session.conversations_status_text() + "\n")
+        stdout.flush()
+        return False
+
+    if action == "on":
+        try:
+            remote_config = RemoteMistralConfig.from_env(
+                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS)
+            )
+        except RemoteAPIKeyError as exc:
+            stdout.write(f"[conversations] {exc}\n")
+            stdout.flush()
+            return False
+        session.enable_conversations(
+            client=client_factory(remote_config),
+            model_id=remote_config.model_id,
+            store=session.conversations.store,
+        )
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        _refresh_repl_screen(stdout, session, startup=False)
+        stdout.write("Conversations enabled. Conversation reset.\n")
+        stdout.flush()
+        return False
+
+    if action == "off":
+        session.disable_conversations()
+        if (
+            local_config is not None
+            and session.backend_kind is BackendKind.LOCAL
+            and session.server_url == local_config.server_url
+        ):
+            session.client = client_factory(local_config)
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        _refresh_repl_screen(stdout, session, startup=False)
+        stdout.write("Conversations disabled. Conversation reset.\n")
+        stdout.flush()
+        return False
+
+    if action == "new":
+        if not session.conversations.enabled:
+            stdout.write("Conversations mode is off.\n")
+        else:
+            session.reset()
+            _clear_attachments(
+                repl_state,
+                clear_images=True,
+                clear_documents=True,
+                clear_pending=True,
+            )
+            _refresh_repl_screen(stdout, session, startup=False)
+            stdout.write("New Conversation will start on the next turn.\n")
+        stdout.flush()
+        return False
+
+    if action == "store":
+        value = tokens[1].lower() if len(tokens) > 1 else ""
+        if value not in {"on", "off"}:
+            stdout.write("Usage: /conversations store [on|off]\n")
+        else:
+            session.set_conversation_store(value == "on")
+            stdout.write(f"Conversation store set to {value}. Conversation reset.\n")
+        stdout.flush()
+        return False
+
+    if action == "id":
+        stdout.write(f"{session.conversation_id or 'No active conversation id yet.'}\n")
+        stdout.flush()
+        return False
+
+    if action in {"history", "messages"}:
+        _print_paginated_text(
+            text=session.conversation_history_text(messages_only=action == "messages"),
+            stdout=stdout,
+            stdin=stdin,
+            prompt_label=f"conversations {action}",
+        )
+        return False
+
+    if action == "delete":
+        try:
+            stdout.write(session.delete_active_conversation() + "\n")
+        except Exception as exc:
+            stdout.write(f"[conversations] delete failed: {exc}\n")
+        stdout.flush()
+        return False
+
+    stdout.write(
+        "Usage: /conversations "
+        "[on|off|new|store on|store off|id|history|messages|delete]\n"
+    )
+    stdout.flush()
+    return False
 
 
 def _run_remote_command(
@@ -1459,6 +1619,7 @@ def _build_session(
     stdout: TextIO,
     stream: bool,
     logging_summary: str,
+    conversations: ConversationConfig,
 ) -> MistralSession:
     logger.debug(
         "Building session backend=%s model=%s stream=%s",
@@ -1466,7 +1627,7 @@ def _build_session(
         config.model_id,
         stream,
     )
-    return MistralSession(
+    session = MistralSession(
         client=client_factory(config),
         backend_kind=BackendKind.LOCAL,
         model_id=config.model_id,
@@ -1478,6 +1639,16 @@ def _build_session(
         stream_enabled=stream,
         logging_summary=logging_summary,
     )
+    if conversations.enabled:
+        remote_config = RemoteMistralConfig.from_env(timeout_ms=config.timeout_ms)
+        session.enable_conversations(
+            client=client_factory(remote_config),
+            model_id=remote_config.model_id,
+            store=conversations.store,
+        )
+    else:
+        session.conversations = conversations
+    return session
 
 
 def main(
@@ -1506,19 +1677,28 @@ def main(
         stdin.isatty(),
     )
     config, generation, system_prompt = _resolve_local_configs(args)
+    conversations = _resolve_conversation_config(args)
     tool_bridge = _build_tool_bridge(args, stderr)
     logging_summary = render_logging_summary(logging_config)
 
     if args.print_defaults:
+        defaults_backend = BackendKind.LOCAL
+        defaults_model = config.model_id
+        defaults_server: str | None = config.server_url
+        if conversations.enabled:
+            defaults_backend = BackendKind.REMOTE
+            defaults_model = REMOTE_MODEL_ID
+            defaults_server = None
         stdout.write(
             render_defaults_summary(
-                backend_kind=BackendKind.LOCAL,
-                model_id=config.model_id,
-                server_url=config.server_url,
+                backend_kind=defaults_backend,
+                model_id=defaults_model,
+                server_url=defaults_server,
                 timeout_ms=config.timeout_ms,
                 generation=generation,
                 stream_enabled=not args.no_stream,
                 reasoning_visible=True,
+                conversations=conversations,
                 tool_summary=tool_bridge.runtime_summary(),
                 logging_summary=logging_summary,
                 stream=stdout,
@@ -1541,6 +1721,7 @@ def main(
             stdout=stdout,
             stream=stream,
             logging_summary=logging_summary,
+            conversations=conversations,
         )
         session.send(args.once, stream=stream)
         return 0
@@ -1557,6 +1738,7 @@ def main(
                 stdout=stdout,
                 stream=stream,
                 logging_summary=logging_summary,
+                conversations=conversations,
             )
             session.send(piped_prompt, stream=stream)
         return 0
@@ -1570,6 +1752,7 @@ def main(
         stdout=stdout,
         stream=stream,
         logging_summary=logging_summary,
+        conversations=conversations,
     )
     return _run_repl(
         session,
