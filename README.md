@@ -59,6 +59,13 @@ Useful one-shot smoke test:
 uv run python -m mistral4cli --once "Return only the word ok." --no-stream
 ```
 
+Reasoning can be requested or disabled at startup:
+
+```bash
+uv run python -m mistral4cli --reasoning
+uv run python -m mistral4cli --no-reasoning
+```
+
 ## Install without cloning the repo
 
 Build distributable artifacts on one machine:
@@ -109,6 +116,7 @@ Inside the REPL:
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
 - `/conv on|off|new|id|history|messages|delete` to use Mistral Cloud Conversations
+- `/reasoning [on|off|toggle]` to request or suppress visible reasoning
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` to manage context
 - `/reset`, `/system ...`, `/exit`
 
@@ -160,6 +168,7 @@ Remote mode requirements:
 - optional Conversations mode uses `client.beta.conversations` and is off by default
 - `--conversations` starts in Conversations mode; `--conversation-store on|off`
   controls server-side persistence and defaults to `on`
+- `--reasoning` and `--no-reasoning` control whether visible reasoning is requested
 - `store=off` runs stateless one-shot Conversation calls, so it does not preserve
   `conversation_id` across turns
 - the default request timeout is `300000 ms` (5 minutes)
@@ -232,7 +241,9 @@ Remote mode keeps the same sampling defaults, but it does not send
 
 Conversations mode is an optional Mistral Cloud path. It resets the current chat
 when enabled, starts a fresh remote `conversation_id` on the next user turn, and
-keeps the normal chat-completions path as the default.
+keeps the normal chat-completions path as the default. When visible reasoning is
+enabled, the CLI requests thinking traces for Conversations too, but the backend
+may still omit them on some turns; the CLI now reports that explicitly.
 
 Attachment handling is backend-aware:
 

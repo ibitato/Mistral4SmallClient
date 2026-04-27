@@ -507,6 +507,11 @@ class MistralSession:
         repr=False,
         default=None,
     )
+    _missing_reasoning_notice_shown: bool = field(
+        init=False,
+        repr=False,
+        default=False,
+    )
     conversation_id: str | None = field(init=False, repr=False, default=None)
     _previous_backend_state: _BackendState | None = field(
         init=False,
@@ -539,6 +544,7 @@ class MistralSession:
 
         self.messages = [{"role": "system", "content": self.system_prompt}]
         self.conversation_id = None
+        self._missing_reasoning_notice_shown = False
         self._set_status("idle")
         logger.info(
             "Conversation reset backend=%s model=%s conversations=%s",
@@ -644,6 +650,7 @@ class MistralSession:
         self.conversations = ConversationConfig(enabled=False, store=True)
         self.conversation_id = None
         self._previous_backend_state = None
+        self._missing_reasoning_notice_shown = False
         if previous is not None:
             self.client = previous.client
             self.backend_kind = previous.backend_kind
@@ -867,6 +874,11 @@ class MistralSession:
 
         state = "on" if self.show_reasoning else "off"
         if self.backend_kind is BackendKind.REMOTE:
+            if self.conversations.enabled:
+                return (
+                    "Visible reasoning: "
+                    f"{state} (remote Conversations, requested best-effort)"
+                )
             return f"Visible reasoning: {state} (remote SDK)"
         return f"Visible reasoning: {state} (local raw endpoint)"
 
@@ -874,11 +886,13 @@ class MistralSession:
         """Enable or disable visible reasoning output."""
 
         self.show_reasoning = visible
+        self._missing_reasoning_notice_shown = False
 
     def toggle_reasoning_visibility(self) -> bool:
         """Toggle visible reasoning output and return the new state."""
 
         self.show_reasoning = not self.show_reasoning
+        self._missing_reasoning_notice_shown = False
         return self.show_reasoning
 
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
@@ -1441,6 +1455,11 @@ class MistralSession:
         content = "".join(answer_parts).strip()
         reasoning = "".join(reasoning_parts).strip()
         tool_calls = [state.to_tool_call() for _, state in sorted(tool_states.items())]
+        self._finalize_remote_reasoning(
+            reasoning=reasoning,
+            finish_reason="tool_calls" if tool_calls else "stop",
+            has_answer_text=bool(content),
+        )
         if printed_anything and content and not content.endswith("\n"):
             self._print("\n")
         return _ModelTurn(
@@ -1491,6 +1510,11 @@ class MistralSession:
                     answer_started=answer_started,
                 )
                 self._print(segment.text)
+        self._finalize_remote_reasoning(
+            reasoning=reasoning,
+            finish_reason="stop",
+            has_answer_text=bool(content),
+        )
         if segments and content and not content.endswith("\n"):
             self._print("\n")
         return _ModelTurn(content=content, finish_reason="stop", reasoning=reasoning)
@@ -1573,6 +1597,46 @@ class MistralSession:
         assert self.stdout is not None
         self.stdout.write(render_reasoning_chunk(text, stream=self.stdout))
         self.stdout.flush()
+
+    def _finalize_remote_reasoning(
+        self,
+        *,
+        reasoning: str,
+        finish_reason: str,
+        has_answer_text: bool,
+    ) -> None:
+        if self.backend_kind is not BackendKind.REMOTE:
+            return
+        if reasoning.strip():
+            self._missing_reasoning_notice_shown = False
+            return
+        if not self.show_reasoning or finish_reason in {
+            "tool_calls",
+            "cancelled",
+            "error",
+        }:
+            return
+        if not has_answer_text or self._missing_reasoning_notice_shown:
+            return
+        if self.conversations.enabled:
+            message = (
+                "[reasoning] Visible reasoning was requested, but Mistral "
+                "Conversations returned no thinking blocks for this turn.\n"
+            )
+        else:
+            message = (
+                "[reasoning] Visible reasoning was requested, but the remote "
+                "backend returned no thinking blocks for this turn.\n"
+            )
+        if has_answer_text:
+            message = "\n" + message
+        self._print(message)
+        logger.warning(
+            "Visible reasoning requested but not returned backend=%s conversations=%s",
+            self.backend_kind.value,
+            self.conversations.enabled,
+        )
+        self._missing_reasoning_notice_shown = True
 
     def _print_answer_separator(
         self, *, reasoning_printed: bool, answer_started: bool
@@ -2119,6 +2183,11 @@ class MistralSession:
             self._print("\n")
         elif finish_reason == "length":
             self._print("[truncated response without text]\n")
+        self._finalize_remote_reasoning(
+            reasoning=reasoning,
+            finish_reason=finish_reason,
+            has_answer_text=bool(content),
+        )
 
         return _ModelTurn(
             content=content,
@@ -2253,6 +2322,11 @@ class MistralSession:
             self._print("\n")
         if finish_reason == "length" and not content:
             self._print("[truncated response without text]\n")
+        self._finalize_remote_reasoning(
+            reasoning="".join(reasoning_parts).strip(),
+            finish_reason=finish_reason or "stop",
+            has_answer_text=bool(content),
+        )
 
         return _ModelTurn(
             content=content,

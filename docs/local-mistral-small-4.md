@@ -77,6 +77,8 @@ an actionable help system:
 - `/conv on|off|new|id|history|messages|delete` manages optional Mistral Cloud Conversations mode
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` manages
   chat-completions context compaction
+- `--reasoning` and `--no-reasoning` control whether visible reasoning is
+  requested at startup
 - `/tools` shows the loaded local and FireCrawl MCP tool catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
@@ -189,6 +191,8 @@ Conversations mode:
 - uses `store=on` by default and can switch with `/conv store on|off`
 - with `store=off`, each user turn is stateless and no `conversation_id` is kept
 - supports `/conv id`, `/conv history`, `/conv messages`, and `/conv delete`
+- visible reasoning remains best-effort in Conversations mode; when requested
+  but omitted by the backend, the CLI reports that explicitly
 
 Context management:
 

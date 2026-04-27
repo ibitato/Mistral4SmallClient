@@ -2,6 +2,24 @@
 
 All notable changes to this project are documented here.
 
+## Unreleased
+
+### Added
+
+- CLI flags `--reasoning` and `--no-reasoning` to control visible reasoning at
+  startup for local, remote chat-completions, and Conversations runs.
+- Coverage for Conversations reasoning requests, disabled reasoning, and
+  best-effort reasoning notices.
+
+### Changed
+
+- Remote Conversations now report visible reasoning as a best-effort request in
+  user-facing status text.
+- When reasoning is requested but Mistral Conversations returns no `thinking`
+  blocks, the CLI prints an explicit notice instead of failing silently.
+- Updated README, local runtime notes, and the user guide for reasoning flags
+  and Conversations reasoning behavior.
+
 ## 1.4.0 - 2026-04-27
 
 ### Added

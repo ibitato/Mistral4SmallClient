@@ -612,6 +612,21 @@ def test_print_defaults_applies_context_cli_options() -> None:
     assert "keep_turns=4" in rendered
 
 
+def test_print_defaults_applies_reasoning_cli_option() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        ["--print-defaults", "--no-mcp", "--no-reasoning"],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert exit_code == 0
+    rendered = output.getvalue()
+    assert "reasoning=off" in rendered
+
+
 def test_once_uses_effective_defaults_and_prints_answer() -> None:
     output = io.StringIO()
     fake_client = FakeClient(complete_text="ok")
@@ -646,7 +661,8 @@ def test_once_can_start_in_conversations_mode(monkeypatch: Any) -> None:
     )
 
     assert exit_code == 0
-    assert output.getvalue() == "ok\n"
+    assert "ok\n" in output.getvalue()
+    assert "Mistral Conversations returned no thinking blocks" in output.getvalue()
     assert len(fake_client.beta.conversations.start_calls) == 1
     call = fake_client.beta.conversations.start_calls[0]
     assert call["inputs"] == "Return only ok."
@@ -654,6 +670,32 @@ def test_once_can_start_in_conversations_mode(monkeypatch: Any) -> None:
     assert call["store"] is True
     assert call["completion_args"]["reasoning_effort"] == "high"
     assert fake_client.chat.complete_calls == []
+
+
+def test_once_can_start_in_conversations_mode_with_reasoning_disabled(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    fake_client = FakeConversationClient()
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    exit_code = main(
+        [
+            "--conversations",
+            "--no-reasoning",
+            "--once",
+            "Return only ok.",
+            "--no-stream",
+            "--no-mcp",
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: fake_client,
+    )
+
+    assert exit_code == 0
+    call = fake_client.beta.conversations.start_calls[0]
+    assert call["completion_args"]["reasoning_effort"] == "none"
 
 
 def test_main_creates_debug_log_file_by_default(tmp_path: Path) -> None:
@@ -2339,7 +2381,8 @@ def test_conversations_streaming_records_usage_and_text() -> None:
     result = session.send("hello", stream=True)
 
     assert result.content == "ok"
-    assert output.getvalue() == "ok\n"
+    assert "ok\n" in output.getvalue()
+    assert "Mistral Conversations returned no thinking blocks" in output.getvalue()
     assert session.conversation_id == "conv_stream"
     assert session.status_snapshot().last_usage is not None
     assert session.status_snapshot().last_usage.total_tokens == 12
@@ -3272,6 +3315,29 @@ def test_remote_reasoning_command_reports_remote_backend() -> None:
     assert "Visible reasoning: on (remote SDK)" in output.getvalue()
 
 
+def test_remote_conversations_reasoning_command_reports_best_effort() -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeConversationClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    assert _run_command("reasoning", "", session, output) is False
+    assert (
+        "Visible reasoning: on (remote Conversations, requested best-effort)"
+        in output.getvalue()
+    )
+
+
 def test_remote_structured_reasoning_is_rendered_and_committed_cleanly() -> None:
     output = io.StringIO()
     fake_client = FakeClient(
@@ -3394,6 +3460,97 @@ def test_remote_stream_reasoning_is_rendered_and_committed_cleanly() -> None:
     assert result.content == "ok"
     assert output.getvalue() == "plan first\n\nok\n"
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
+
+
+def test_conversations_structured_reasoning_is_rendered_and_committed_cleanly() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_reasoning",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[
+                            {
+                                "type": "thinking",
+                                "thinking": [{"type": "text", "text": "plan first"}],
+                            },
+                            {"type": "text", "text": "ok"},
+                        ],
+                    )
+                ],
+            )
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    result = session.send("Return ok.", stream=False)
+
+    assert result.reasoning == "plan first"
+    assert result.content == "ok"
+    assert output.getvalue() == "plan first\n\nok\n"
+
+
+def test_conversations_missing_reasoning_prints_best_effort_notice_once() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_missing_1",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "first"}],
+                    )
+                ],
+            ),
+            FakeConversationResponse(
+                conversation_id="conv_missing_2",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "second"}],
+                    )
+                ],
+            ),
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    first = session.send("one", stream=False)
+    second = session.send("two", stream=False)
+
+    assert first.reasoning == ""
+    assert second.reasoning == ""
+    assert (
+        output.getvalue().count("Mistral Conversations returned no thinking blocks")
+        == 1
+    )
 
 
 def test_image_shortcut_reports_invalid_selection_without_crashing(

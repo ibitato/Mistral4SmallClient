@@ -60,6 +60,13 @@ One-shot smoke test:
 uv run python -m mistral4cli --once "Return only the word ok." --no-stream
 ```
 
+Reasoning flags:
+
+```bash
+uv run python -m mistral4cli --reasoning
+uv run python -m mistral4cli --no-reasoning
+```
+
 If visible reasoning is enabled, the local backend may print reasoning before
 the final answer. Disable reasoning when you want cleaner smoke output:
 
@@ -237,8 +244,13 @@ Important behavior:
 - `/conv new` starts a fresh Conversation on the next user turn
 - `store=on` keeps a server-side `conversation_id`
 - `store=off` is stateless and does not preserve a `conversation_id`
+- `/reasoning on|off|toggle` still applies in Conversations mode and controls
+  whether the CLI requests visible reasoning
 - local `/compact` does not compact Conversations mode; Mistral handles that
   context server-side
+- if Mistral Conversations does not return any `thinking` blocks for a turn, the
+  CLI prints a one-line best-effort notice instead of silently pretending
+  reasoning was unavailable locally
 
 ## Context Management And Compacting
 
@@ -507,4 +519,3 @@ If `MISTRAL_API_KEY` is available, also test:
 /conv off
 /remote off
 ```
-

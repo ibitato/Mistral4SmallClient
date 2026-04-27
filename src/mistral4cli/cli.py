@@ -440,6 +440,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Disable token streaming and wait for the full response.",
     )
     parser.add_argument(
+        "--reasoning",
+        dest="reasoning",
+        action="store_true",
+        default=None,
+        help="Request visible reasoning when the backend supports it.",
+    )
+    parser.add_argument(
+        "--no-reasoning",
+        dest="reasoning",
+        action="store_false",
+        help="Do not request visible reasoning from the backend.",
+    )
+    parser.add_argument(
         "--print-defaults",
         action="store_true",
         help="Print the effective defaults and exit.",
@@ -554,6 +567,10 @@ def _resolve_context_config(args: argparse.Namespace) -> ContextConfig:
             else args.context_summary_max_tokens
         ),
     ).normalized()
+
+
+def _resolve_reasoning_visibility(args: argparse.Namespace) -> bool:
+    return True if args.reasoning is None else bool(args.reasoning)
 
 
 def _resolve_remote_mcp_bridge(
@@ -1786,6 +1803,7 @@ def _build_session(
     tool_bridge: ToolBridge,
     stdout: TextIO,
     stream: bool,
+    reasoning_visible: bool,
     logging_summary: str,
     conversations: ConversationConfig,
     context: ContextConfig,
@@ -1806,6 +1824,7 @@ def _build_session(
         tool_bridge=tool_bridge,
         stdout=stdout,
         stream_enabled=stream,
+        show_reasoning=reasoning_visible,
         logging_summary=logging_summary,
         context=context,
     )
@@ -1849,6 +1868,7 @@ def main(
     config, generation, system_prompt = _resolve_local_configs(args)
     conversations = _resolve_conversation_config(args)
     context = _resolve_context_config(args)
+    reasoning_visible = _resolve_reasoning_visibility(args)
     tool_bridge = _build_tool_bridge(args, stderr)
     logging_summary = render_logging_summary(logging_config)
 
@@ -1868,7 +1888,7 @@ def main(
                 timeout_ms=config.timeout_ms,
                 generation=generation,
                 stream_enabled=not args.no_stream,
-                reasoning_visible=True,
+                reasoning_visible=reasoning_visible,
                 conversations=conversations,
                 context=context,
                 tool_summary=tool_bridge.runtime_summary(),
@@ -1892,6 +1912,7 @@ def main(
             tool_bridge=tool_bridge,
             stdout=stdout,
             stream=stream,
+            reasoning_visible=reasoning_visible,
             logging_summary=logging_summary,
             conversations=conversations,
             context=context,
@@ -1910,6 +1931,7 @@ def main(
                 tool_bridge=tool_bridge,
                 stdout=stdout,
                 stream=stream,
+                reasoning_visible=reasoning_visible,
                 logging_summary=logging_summary,
                 conversations=conversations,
                 context=context,
@@ -1925,6 +1947,7 @@ def main(
         tool_bridge=tool_bridge,
         stdout=stdout,
         stream=stream,
+        reasoning_visible=reasoning_visible,
         logging_summary=logging_summary,
         conversations=conversations,
         context=context,
