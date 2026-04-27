@@ -39,6 +39,9 @@ make sync
 uv run python -m mistral4cli
 ```
 
+For a complete command-by-command walkthrough, see the
+[user guide](docs/user-guide.md).
+
 ## Requirements
 
 - Python `3.10`
@@ -247,6 +250,7 @@ template.
 
 For the detailed local runbook, see
 [docs/local-mistral-small-4.md](docs/local-mistral-small-4.md).
+For day-to-day CLI usage, see [docs/user-guide.md](docs/user-guide.md).
 
 ## Testing
 
@@ -286,6 +290,7 @@ actions so the app stays pinned to the top of the terminal.
 
 - `src/mistral4cli/` - CLI, session, tools and attachment handling
 - `tests/` - unit and integration tests
+- `docs/user-guide.md` - practical end-user guide for the CLI
 - `docs/local-mistral-small-4.md` - detailed local deployment notes
 - `docs/reference.md` - generated API reference from public docstrings
 - `mistral-small-4-reasoning.jinja` - versioned llama.cpp reasoning template
