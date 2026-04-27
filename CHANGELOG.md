@@ -4,6 +4,8 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.4.1 - 2026-04-27
+
 ### Added
 
 - CLI flags `--reasoning` and `--no-reasoning` to control visible reasoning at
@@ -13,6 +15,7 @@ All notable changes to this project are documented here.
 
 ### Changed
 
+- Bumped package version to `1.4.1`.
 - Remote Conversations now report visible reasoning as a best-effort request in
   user-facing status text.
 - When reasoning is requested but Mistral Conversations returns no `thinking`
