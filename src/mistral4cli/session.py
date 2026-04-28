@@ -874,10 +874,31 @@ class MistralSession:
         list_kwargs: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
-            "metadata": metadata if metadata else {},
+            "metadata": {},
         }
         payload = self.client.beta.conversations.list(**list_kwargs)
         conversations = list(payload or [])
+        if metadata:
+            filtered: list[Any] = []
+            for conversation in conversations:
+                conversation_id = str(_field(conversation, "id", "") or "")
+                if not conversation_id:
+                    continue
+                detailed = self.client.beta.conversations.get(
+                    conversation_id=conversation_id
+                )
+                self._update_registry_from_remote_payload(conversation_id, detailed)
+                effective_metadata = _field(detailed, "metadata", None)
+                if (
+                    effective_metadata is None
+                    and self.conversation_registry is not None
+                ):
+                    local_record = self.conversation_registry.get(conversation_id)
+                    if local_record is not None and local_record.remote_metadata:
+                        effective_metadata = local_record.remote_metadata
+                if _metadata_matches(effective_metadata, metadata):
+                    filtered.append(detailed)
+            conversations = filtered
         if not conversations:
             return "No remote conversations found."
         lines = [
@@ -975,6 +996,7 @@ class MistralSession:
         response = self.client.beta.conversations.restart(
             conversation_id=target_id,
             from_entry_id=from_entry_id.strip(),
+            inputs="",
             store=self.conversations.store,
             completion_args=cast(Any, self._conversation_completion_args()),
             metadata=cast(
@@ -983,7 +1005,6 @@ class MistralSession:
                 if self.pending_conversation.metadata
                 else None,
             ),
-            inputs=None,
         )
         new_id = str(_field(response, "conversation_id", "") or "")
         if not new_id:
@@ -1826,7 +1847,16 @@ class MistralSession:
     def _handle_conversation_response(self, response: Any) -> _ModelTurn:
         conversation_id = _field(response, "conversation_id")
         if conversation_id and self.conversations.store:
-            self._sync_conversation_id(str(conversation_id), source="response")
+            self._sync_conversation_id(
+                str(conversation_id),
+                source="response",
+                payload=response,
+                fallback_metadata=(
+                    self.pending_conversation.metadata
+                    if self.pending_conversation.metadata
+                    else None
+                ),
+            )
         self._record_usage(_field(response, "usage"))
         outputs = _field(response, "outputs", []) or []
         segments: list[_RenderedSegment] = []
@@ -2035,6 +2065,7 @@ class MistralSession:
         source: str,
         payload: Any | None = None,
         parent_conversation_id: str | None = None,
+        fallback_metadata: dict[str, Any] | None = None,
     ) -> None:
         """Update the active conversation id and synchronize the local registry."""
 
@@ -2051,7 +2082,11 @@ class MistralSession:
                 previous_id, normalized_id
             )
         if payload is not None:
-            self._update_registry_from_remote_payload(normalized_id, payload)
+            self._update_registry_from_remote_payload(
+                normalized_id,
+                payload,
+                fallback_metadata=fallback_metadata,
+            )
         else:
             self.conversation_registry.update_remote_snapshot(
                 normalized_id,
@@ -2074,16 +2109,20 @@ class MistralSession:
         payload: Any,
         *,
         parent_conversation_id: str | None = None,
+        fallback_metadata: dict[str, Any] | None = None,
     ) -> None:
         """Persist remote conversation metadata into the local registry."""
 
         if self.conversation_registry is None or not conversation_id.strip():
             return
+        metadata = _field(payload, "metadata", None)
+        if metadata is None and fallback_metadata:
+            metadata = fallback_metadata
         self.conversation_registry.update_remote_snapshot(
             conversation_id,
             remote_name=_field(payload, "name", None),
             remote_description=_field(payload, "description", None),
-            remote_metadata=_field(payload, "metadata", None),
+            remote_metadata=metadata,
             remote_kind=("agent" if _field(payload, "agent_id") else "model"),
             remote_model=_field(payload, "model", None),
             remote_agent_id=_field(payload, "agent_id", None),
@@ -2163,6 +2202,12 @@ class MistralSession:
             parts.append(f"note={record.note}")
         if record.remote_name:
             parts.append(f"remote_name={record.remote_name}")
+        if record.remote_metadata:
+            metadata = ",".join(
+                f"{key}={value}"
+                for key, value in sorted(record.remote_metadata.items())
+            )
+            parts.append(f"metadata={metadata}")
         if record.parent_conversation_id:
             parts.append(f"parent={record.parent_conversation_id}")
         if record.deleted:
@@ -3048,6 +3093,19 @@ def _field(value: Any, name: str, default: Any = None) -> Any:
     if isinstance(value, dict):
         return value.get(name, default)
     return getattr(value, name, default)
+
+
+def _metadata_matches(raw_metadata: Any, expected: dict[str, str]) -> bool:
+    """Return whether remote metadata contains the expected key/value pairs."""
+
+    if not expected:
+        return True
+    if not isinstance(raw_metadata, dict):
+        return False
+    for key, value in expected.items():
+        if str(raw_metadata.get(key, "")).strip() != value:
+            return False
+    return True
 
 
 def _split_possible_tag_suffix(text: str, tags: list[str]) -> tuple[str, str]:

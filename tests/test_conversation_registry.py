@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 from mistral4cli.conversation_registry import (
@@ -56,3 +57,22 @@ def test_registry_migrates_ids_and_keeps_parent_links(tmp_path: Path) -> None:
     assert registry.get("conv_new") is not None
     assert registry.get("conv_child").parent_conversation_id == "conv_new"
     assert registry.last_active_conversation_id == "conv_new"
+
+
+def test_registry_normalizes_datetime_timestamps(tmp_path: Path) -> None:
+    path = tmp_path / "conversations.json"
+    registry = ConversationRegistry.load(path)
+    created_at = datetime(2026, 4, 28, 9, 30, tzinfo=timezone.utc)
+    updated_at = datetime(2026, 4, 28, 10, 15, tzinfo=timezone.utc)
+
+    registry.update_remote_snapshot(
+        "conv_1",
+        remote_name="Primary",
+        created_at=created_at,
+        updated_at=updated_at,
+    )
+
+    record = registry.get("conv_1")
+    assert record is not None
+    assert record.created_at == created_at.isoformat()
+    assert record.updated_at == updated_at.isoformat()

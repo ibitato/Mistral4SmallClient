@@ -4,6 +4,28 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.4 - 2026-04-28
+
+### Fixed
+
+- Conversations registry now normalizes remote `datetime` timestamps returned by
+  the SDK instead of assuming plain strings.
+- `/conv restart` now sends an empty `inputs` field because the live Mistral
+  Conversations API rejects restart requests with `inputs=None`.
+- `/conv list --meta ...` no longer depends on unreliable backend metadata
+  filtering. The CLI enriches listed conversations with `get()` details and
+  falls back to its local registry metadata cache for conversations created from
+  this CLI.
+
+### Added
+
+- Local regression coverage for timestamp normalization, status/id/store/new,
+  `note`, `tag remove`, `unset`, `forget`, metadata-filtered listing, and other
+  Conversations management commands.
+- A broader remote Conversations smoke test that exercises start, list, filtered
+  list, show, history, messages, restart, and delete through the same session
+  management path used by the CLI.
+
 ## 1.5.3 - 2026-04-28
 
 ### Fixed

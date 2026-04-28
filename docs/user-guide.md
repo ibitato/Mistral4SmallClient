@@ -252,6 +252,8 @@ Conversations persistence model:
   follows that id automatically and migrates its local bookmark metadata
 - local aliases, tags, notes, and bookmarks are **not** stored on Mistral; they
   live in the local registry file
+- Mistral model Conversations currently keep `name` and `description`, but may
+  not return custom `metadata` on later `get/list` calls
 
 Local registry:
 
@@ -315,6 +317,9 @@ How to think about those settings:
   name/description/metadata, so the CLI cannot retroactively edit those fields
 - local aliases and notes are the CLI-side workaround for post-creation
   organization
+- when the backend does not return custom metadata later, the CLI preserves the
+  metadata requested at creation time in the local registry and reuses it for
+  `/conv list --meta ...` filtering
 
 Important behavior:
 
@@ -328,6 +333,9 @@ Important behavior:
   to branch from a specific point
 - `/conv restart <entry_id>` creates a new remote conversation and switches the
   session to that branch
+- the current API requires a follow-up `inputs` field on restart; the CLI sends
+  an empty input automatically so `/conv restart <entry_id>` works without
+  extra arguments
 - `/reasoning on|off|toggle` still applies in Conversations mode and controls
   whether the CLI requests visible reasoning
 - local `/compact` does not compact Conversations mode; Mistral handles that

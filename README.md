@@ -80,7 +80,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.5.3` also trigger a GitHub Actions release build that
+Version tags such as `v1.5.4` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -187,7 +187,9 @@ Conversations management:
 
 - `/conv on` enables Conversations mode and resumes the last stored conversation
   when the resume policy is `last`
-- `/conv list --page 0 --size 20 --meta owner=dlopez` lists remote conversations
+- `/conv list --page 0 --size 20 --meta owner=dlopez` lists remote conversations;
+  metadata filters are applied by the CLI using remote details plus its local
+  registry cache
 - `/conv show <id>` inspects remote metadata for one conversation
 - `/conv use <id>` reattaches the current session to an existing remote conversation
 - `/conv history [id]` and `/conv messages [id]` inspect remote history
@@ -197,6 +199,10 @@ Conversations management:
   manage the CLI-side local overlay
 - Mistral does not expose a remote update API for existing conversation
   `name`/`metadata`, so aliases and bookmarks are stored locally by the CLI
+- Mistral model Conversations currently preserve `name` and `description`, but
+  may not return custom `metadata` in `get/list`; when a conversation is created
+  from this CLI, the requested metadata is preserved in the local registry so
+  `/conv list --meta ...` remains useful for those sessions
 
 Context management:
 

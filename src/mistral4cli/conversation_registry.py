@@ -16,6 +16,16 @@ def _timestamp_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _normalize_text(value: Any) -> str:
+    """Normalize SDK and JSON scalar values into stored text."""
+
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value).strip()
+
+
 def default_registry_path() -> Path:
     """Return the default persistent registry path."""
 
@@ -198,23 +208,23 @@ class ConversationRegistry:
 
         record = self.ensure_record(conversation_id)
         if remote_name is not None:
-            record.remote_name = remote_name.strip()
+            record.remote_name = _normalize_text(remote_name)
         if remote_description is not None:
-            record.remote_description = remote_description.strip()
+            record.remote_description = _normalize_text(remote_description)
         if remote_metadata is not None:
             record.remote_metadata = dict(remote_metadata)
         if remote_kind is not None:
-            record.remote_kind = remote_kind.strip() or "model"
+            record.remote_kind = _normalize_text(remote_kind) or "model"
         if remote_model is not None:
-            record.remote_model = remote_model.strip()
+            record.remote_model = _normalize_text(remote_model)
         if remote_agent_id is not None:
-            record.remote_agent_id = remote_agent_id.strip()
+            record.remote_agent_id = _normalize_text(remote_agent_id)
         if created_at is not None:
-            record.created_at = created_at.strip()
+            record.created_at = _normalize_text(created_at)
         if updated_at is not None:
-            record.updated_at = updated_at.strip()
+            record.updated_at = _normalize_text(updated_at)
         if parent_conversation_id is not None:
-            record.parent_conversation_id = parent_conversation_id.strip()
+            record.parent_conversation_id = _normalize_text(parent_conversation_id)
         if mark_deleted is not None:
             record.deleted = mark_deleted
         self.save()

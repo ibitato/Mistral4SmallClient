@@ -207,6 +207,9 @@ Conversations mode:
   but omitted by the backend, the CLI reports that explicitly
 - remote `name`/`description`/`metadata` are creation-time fields only; the
   CLI cannot update them after creation because Mistral exposes no update API
+- on the current model Conversations path, Mistral may not return custom
+  `metadata` on later `get/list` calls; the CLI keeps the requested metadata in
+  its local registry and uses that cache for `/conv list --meta ...`
 
 Context management:
 
