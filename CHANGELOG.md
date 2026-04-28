@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## 2.0.2 - 2026-04-28
+
+### Fixed
+
+- Normalized FireCrawl MCP `firecrawl_search.sources` arguments when the model
+  emits a legacy list of strings instead of the current object-based schema,
+  restoring searches such as PDF lookups through the installed CLI.
+- Preserved nested MCP validation errors in user-facing tool failures so schema
+  mismatches no longer look like generic MCP connection problems.
+
 ## 2.0.1 - 2026-04-28
 
 ### Changed

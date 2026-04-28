@@ -14,6 +14,7 @@ import anyio
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
+from mcp.shared.exceptions import McpError
 from mcp.types import CallToolResult, ListToolsResult
 
 ENV_MCP_CONFIG = "MISTRAL_LOCAL_MCP_CONFIG"
@@ -186,6 +187,41 @@ def _tool_to_public_name(
     return candidate
 
 
+def _extract_mcp_error_message(exc: BaseException) -> str | None:
+    """Return the first nested MCP validation error message, if any."""
+
+    if isinstance(exc, McpError):
+        return exc.error.message
+    nested = getattr(exc, "exceptions", None)
+    if not isinstance(nested, tuple):
+        return None
+    for item in nested:
+        if not isinstance(item, BaseException):
+            continue
+        message = _extract_mcp_error_message(item)
+        if message:
+            return message
+    return None
+
+
+def _normalize_firecrawl_arguments(
+    remote_name: str, arguments: dict[str, Any]
+) -> dict[str, Any]:
+    """Normalize common FireCrawl argument shapes emitted by the model."""
+
+    if not remote_name.startswith("firecrawl_"):
+        return arguments
+    normalized = dict(arguments)
+    raw_sources = normalized.get("sources")
+    if (
+        isinstance(raw_sources, list)
+        and raw_sources
+        and all(isinstance(item, str) for item in raw_sources)
+    ):
+        normalized["sources"] = [{"type": item} for item in raw_sources]
+    return normalized
+
+
 @dataclass(slots=True)
 class MCPToolBridge:
     """Sync wrapper around one or more MCP SSE servers."""
@@ -294,6 +330,9 @@ class MCPToolBridge:
         try:
             result = anyio.run(self._call_tool_async, spec, arguments)
         except Exception as exc:  # pragma: no cover - surfaced in CLI smoke
+            message = _extract_mcp_error_message(exc)
+            if message:
+                raise MCPBridgeError(f"Tool {public_name!r} failed: {message}") from exc
             raise MCPBridgeError(f"Tool {public_name!r} failed: {exc}") from exc
 
         return result
@@ -318,13 +357,20 @@ class MCPToolBridge:
     async def _call_tool_async(
         self, spec: MCPToolSpec, arguments: dict[str, Any]
     ) -> MCPToolResult:
+        normalized_arguments = _normalize_firecrawl_arguments(
+            spec.remote_name,
+            arguments,
+        )
         server = self._server_by_name(spec.server_name)
         async with (
             self._open_server_streams(server) as streams,
             ClientSession(*streams) as session,
         ):
             await session.initialize()
-            result = await session.call_tool(spec.remote_name, arguments=arguments)
+            result = await session.call_tool(
+                spec.remote_name,
+                arguments=normalized_arguments,
+            )
             return self._normalize_tool_result(result)
 
     def _server_by_name(self, server_name: str) -> MCPServerConfig:
@@ -374,6 +420,8 @@ class MCPToolBridge:
             async with sse_client(server.url) as streams:
                 yield streams
         except Exception as exc:  # pragma: no cover - surfaced in CLI smoke
+            if _extract_mcp_error_message(exc):
+                raise
             raise MCPBridgeError(
                 f"Could not connect to MCP server {server.name!r} at {server.url}: "
                 f"{self._friendly_transport_error(server, exc)}"

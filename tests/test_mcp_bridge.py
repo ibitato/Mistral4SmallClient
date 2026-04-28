@@ -3,9 +3,20 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import anyio
 import pytest
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData
 
-from mistral4cli.mcp_bridge import MCPConfig, MCPToolBridge, discover_mcp_config_path
+from mistral4cli.mcp_bridge import (
+    MCPBridgeError,
+    MCPConfig,
+    MCPServerConfig,
+    MCPToolBridge,
+    MCPToolSpec,
+    _normalize_firecrawl_arguments,
+    discover_mcp_config_path,
+)
 
 
 def test_load_mcp_config_parses_firecrawl_server(tmp_path: Path) -> None:
@@ -128,3 +139,66 @@ def test_bridge_autodetects_streamable_http_for_v2_mcp(tmp_path: Path) -> None:
     bridge = MCPToolBridge(MCPConfig.load(config_path))
 
     assert bridge._transport_for_server(bridge.config.servers[0]) == "streamable-http"
+
+
+def test_normalize_firecrawl_arguments_wraps_string_sources() -> None:
+    normalized = _normalize_firecrawl_arguments(
+        "firecrawl_search",
+        {
+            "query": "pruebas filetype:pdf",
+            "sources": ["web", "images"],
+        },
+    )
+
+    assert normalized["sources"] == [{"type": "web"}, {"type": "images"}]
+
+
+def test_call_tool_surfaces_nested_mcp_validation_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bridge = MCPToolBridge(
+        MCPConfig(
+            path=Path("mcp.json"),
+            servers=(
+                MCPServerConfig(
+                    name="FireCrawl", type="streamable-http", url="https://example.test"
+                ),
+            ),
+        )
+    )
+    spec = MCPToolSpec(
+        public_name="firecrawl_search",
+        server_name="FireCrawl",
+        remote_name="firecrawl_search",
+        description="Search the web",
+        input_schema={"type": "object"},
+    )
+    bridge._tools_loaded = True
+    bridge._tool_lookup = {spec.public_name: spec}
+
+    class NestedToolError(Exception):
+        def __init__(self, error: BaseException) -> None:
+            super().__init__("nested")
+            self.exceptions = (error,)
+
+    def fake_run(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise NestedToolError(
+            McpError(
+                ErrorData(
+                    code=-32602,
+                    message=(
+                        "Tool 'firecrawl_search' parameter validation failed: "
+                        "sources.0: Invalid input: expected object, received string."
+                    ),
+                )
+            )
+        )
+
+    monkeypatch.setattr(anyio, "run", fake_run)
+
+    with pytest.raises(MCPBridgeError, match="parameter validation failed"):
+        bridge.call_tool(
+            "firecrawl_search",
+            {"query": "pruebas filetype:pdf", "sources": ["web"]},
+        )
