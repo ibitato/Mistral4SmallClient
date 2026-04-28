@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## 2.0.1 - 2026-04-28
+
+### Changed
+
+- Added `pyright` as a second static type checker alongside `mypy`, wired both
+  into `make typecheck`, and extended static type validation to cover the test
+  suite with documented integration-test exceptions.
+- Introduced a structural Mistral client typing boundary so the CLI keeps using
+  lightweight test doubles without accidentally switching runtime transport
+  paths.
+- Improved the terminal-native `/image` and `/doc` picker flow so directory
+  navigation stays usable with long paths, including explicit parent-directory
+  traversal and current-directory selection.
+- Added `docs/project-tree.md` and updated repository instructions so the
+  checked-in project tree stays aligned with future layout changes.
+
 ## 2.0.0 - 2026-04-28
 
 ### Changed
