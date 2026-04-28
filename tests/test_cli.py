@@ -2839,7 +2839,7 @@ def test_conversations_command_list_without_metadata_omits_filter(
         )
         is False
     )
-    assert conversations.list_calls == [{"page": 0, "page_size": 20}]
+    assert conversations.list_calls == [{"page": 0, "page_size": 20, "metadata": {}}]
     assert "Remote conversations page=0 size=20:" in output.getvalue()
 
 

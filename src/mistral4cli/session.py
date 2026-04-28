@@ -874,9 +874,8 @@ class MistralSession:
         list_kwargs: dict[str, Any] = {
             "page": page,
             "page_size": page_size,
+            "metadata": metadata if metadata else {},
         }
-        if metadata:
-            list_kwargs["metadata"] = metadata
         payload = self.client.beta.conversations.list(**list_kwargs)
         conversations = list(payload or [])
         if not conversations:

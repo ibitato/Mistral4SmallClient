@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.3 - 2026-04-28
+
+### Fixed
+
+- `/conv list` now sends `metadata={}` when no metadata filter is requested.
+  This works around the current `mistralai` SDK serialization bug where an
+  unset `metadata` query field is sent as the SDK sentinel and rejected by the
+  Mistral API with `3001 invalid_request_error`.
+
 ## 1.5.2 - 2026-04-28
 
 ### Fixed
