@@ -80,7 +80,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.5.9` also trigger a GitHub Actions release build that
+Version tags such as `v2.0.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -95,6 +95,24 @@ Then run:
 mistral4cli --version
 mistral4cli
 ```
+
+## Code layout
+
+The public CLI behavior stays centered around `mistral4cli`, but the internal
+implementation is now split into smaller domain modules:
+
+- `src/mistral4cli/session.py` is the thin `MistralSession` facade
+- `session_runtime.py`, `session_transport.py`, `session_conversations.py`,
+  `session_tools.py`, `session_context.py`, and `session_primitives.py` own the
+  main session domains
+- `src/mistral4cli/cli.py` is the thin CLI entrypoint facade
+- `cli_config.py`, `cli_repl.py`, `cli_commands.py`, `cli_shortcuts.py`, and
+  `cli_state.py` own CLI-specific runtime responsibilities
+- `tests/cli_support.py` contains shared CLI fixtures and fakes, while the CLI
+  behavior tests are split by domain under `tests/test_cli_*.py`
+
+This keeps individual Python units easier to navigate without changing the
+user-facing command surface.
 
 If you prefer an isolated virtual environment instead of a tool install:
 

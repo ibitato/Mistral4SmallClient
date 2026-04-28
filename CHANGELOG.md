@@ -2,6 +2,31 @@
 
 All notable changes to this project are documented here.
 
+## 2.0.0 - 2026-04-28
+
+### Changed
+
+- Refactored the session layer into domain-focused modules for runtime state,
+  local and SDK transports, Conversations handling, tool execution, context
+  management, and shared parsing primitives while keeping the public
+  `MistralSession` facade stable.
+- Refactored the CLI layer into smaller modules for parser/config resolution,
+  REPL orchestration, slash-command handling, shortcuts, and session state
+  rendering while keeping `mistral4cli.cli:main` and the existing REPL UX
+  intact.
+- Split the previous monolithic CLI test suite into focused test files by
+  domain, with shared fixtures and fakes moved into `tests/cli_support.py`.
+- Regenerated the checked-in API reference and aligned the user-facing
+  documentation with the refactored code layout and maintained CLI behavior.
+
+### Added
+
+- Module docstrings and targeted inline comments across the new session and CLI
+  modules so the refactored code remains navigable without reintroducing
+  monolithic files.
+- A brief architecture overview in the README describing the new internal code
+  layout for contributors.
+
 ## 1.5.14 - 2026-04-28
 
 ### Added
