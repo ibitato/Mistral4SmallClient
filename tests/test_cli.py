@@ -44,6 +44,7 @@ from mistral4cli.local_mistral import (
     LocalGenerationConfig,
     LocalMistralConfig,
     RemoteMistralConfig,
+    build_client,
 )
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.logging_config import DEFAULT_LOG_RETENTION_DAYS
@@ -59,6 +60,7 @@ from mistral4cli.ui import (
     CYAN,
     GREEN,
     ORANGE,
+    RED,
     RESET,
     InteractiveTTYRenderer,
     SmartOutputWriter,
@@ -1918,6 +1920,23 @@ def test_status_command_shows_dynamic_session_snapshot() -> None:
     assert "Conversations: mode=on store=on resume=last id=conv_123" in rendered
     assert "Context: est:backend last:321/256000 usage:654" in rendered
     assert "Attachments: images=1 documents=1" in rendered
+
+
+def test_status_command_renders_in_red_on_tty(monkeypatch: Any) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("status", "", session, output, repl_state=_ReplState()) is False
+
+    rendered = output.getvalue()
+    assert RED in rendered
+    assert "Session status:" in ANSI_ESCAPE_RE.sub("", rendered)
 
 
 def test_manual_compact_summarizes_old_history_and_preserves_recent_turns() -> None:
@@ -4355,6 +4374,25 @@ def test_thinking_display_can_be_hidden_without_disabling_reasoning() -> None:
     assert result.content == "ok"
     assert "hidden" not in output.getvalue()
     assert output.getvalue().endswith("ok\n")
+
+
+def test_local_reasoning_keeps_raw_transport_when_thinking_is_hidden() -> None:
+    session = MistralSession(
+        client=build_client(
+            LocalMistralConfig(
+                api_key="local",
+                model_id="unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL",
+                server_url="http://127.0.0.1:8080",
+                timeout_ms=DEFAULT_TIMEOUT_MS,
+            )
+        ),
+        generation=LocalGenerationConfig(),
+        stdout=io.StringIO(),
+        show_reasoning=True,
+        show_thinking=False,
+    )
+
+    assert session._should_use_raw_chat() is True
 
 
 def test_doc_shortcut_uses_picker_and_document_payload(

@@ -642,6 +642,10 @@ Render one visible reasoning fragment for the terminal.
 
 Render a formatted runtime summary.
 
+#### `render_status_snapshot(text: 'str', stream: 'TextIO') -> 'str'`
+
+Render the `/status` snapshot with the dedicated terminal accent.
+
 #### `render_tools_screen(tool_lines: 'Sequence[str]', stream: 'TextIO') -> 'str'`
 
 Render a detailed tool status screen.

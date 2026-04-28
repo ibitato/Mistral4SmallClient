@@ -1999,7 +1999,6 @@ class MistralSession:
         return (
             self.backend_kind is BackendKind.LOCAL
             and self.show_reasoning
-            and self.show_thinking
             and isinstance(self.client, Mistral)
         )
 

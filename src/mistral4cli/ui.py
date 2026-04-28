@@ -22,6 +22,7 @@ from mistral4cli.local_mistral import (
 GREEN = "\x1b[38;5;82m"
 ORANGE = "\x1b[38;5;208m"
 CYAN = "\x1b[38;5;117m"
+RED = "\x1b[38;5;196m"
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
 DIM = "\x1b[2m"
@@ -120,6 +121,12 @@ def _paint_multiline(
     return "\n".join(
         _paint(line, color, stream, bold=bold) for line in text.splitlines()
     )
+
+
+def render_status_snapshot(text: str, *, stream: TextIO) -> str:
+    """Render the `/status` snapshot with the dedicated terminal accent."""
+
+    return _paint_multiline(text, RED, stream, bold=True)
 
 
 def _terminal_width(stream: TextIO, *, minimum: int = 72) -> int:

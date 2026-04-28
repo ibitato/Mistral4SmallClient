@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented here.
 
+## 1.5.14 - 2026-04-28
+
+### Added
+
+- `/status` now renders in a dedicated red TTY accent so live session snapshots
+  stand out from normal assistant output.
+- Regression coverage for local `reasoning=on` with `thinking=off` to ensure
+  the CLI keeps the local raw transport selected.
+
+### Fixed
+
+- Local `llama.cpp` sessions now keep the raw chat transport enabled when
+  backend reasoning is still requested but `/thinking off` hides terminal
+  thinking output. This avoids SDK streaming tool-call unmarshalling failures
+  on the local backend.
+
 ## 1.5.13 - 2026-04-28
 
 ### Added

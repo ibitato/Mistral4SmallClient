@@ -76,6 +76,7 @@ from mistral4cli.ui import (
     CLEAR_SCREEN,
     InteractiveTTYRenderer,
     render_help_screen,
+    render_status_snapshot,
     render_welcome_banner,
     supports_full_terminal_ui,
     terminal_recommendation,
@@ -1346,7 +1347,13 @@ def _run_command(
         )
         return False
     if command == "status":
-        stdout.write(_render_session_status(session, repl_state) + "\n")
+        stdout.write(
+            render_status_snapshot(
+                _render_session_status(session, repl_state),
+                stream=stdout,
+            )
+            + "\n"
+        )
         stdout.flush()
         return False
     if command in {"conversations", "conv"}:
