@@ -43,6 +43,7 @@ From a source checkout:
 
 ```bash
 make sync
+uv run python -m mistral4cli --version
 uv run python -m mistral4cli --print-defaults
 uv run python -m mistral4cli
 ```
@@ -50,6 +51,7 @@ uv run python -m mistral4cli
 Installed as a tool:
 
 ```bash
+mistral4cli --version
 mistral4cli --print-defaults
 mistral4cli
 ```
@@ -81,6 +83,9 @@ Then inside the REPL:
 /defaults
 /tools
 ```
+
+Use `--version` or `-v` whenever you want to confirm which installed build you
+are testing before running a smoke check or switching servers.
 
 ## Reading The Startup Summary
 

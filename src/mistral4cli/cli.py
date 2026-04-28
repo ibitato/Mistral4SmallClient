@@ -15,6 +15,7 @@ from typing import Any, TextIO
 
 from mistralai.client import Mistral
 
+from mistral4cli import __version__
 from mistral4cli.attachments import (
     DOCUMENT_FILETYPES,
     DOCUMENT_SUFFIXES,
@@ -296,6 +297,12 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Interactive multimodal CLI for Mistral Small 4 local and remote backends."
         ),
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="store_true",
+        help="Print the installed CLI version and exit.",
     )
     parser.add_argument(
         "--server-url",
@@ -2262,6 +2269,10 @@ def main(
 
     parser = build_parser()
     args = parser.parse_args(argv)
+    if args.version:
+        stdout.write(f"mistral4cli {__version__}\n")
+        stdout.flush()
+        return 0
     if not _ensure_supported_platform(stderr):
         return 1
     logging_config = _resolve_logging_config(args)

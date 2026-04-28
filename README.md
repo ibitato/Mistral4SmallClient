@@ -56,6 +56,7 @@ For a complete command-by-command walkthrough, see the
 Useful one-shot smoke test:
 
 ```bash
+uv run python -m mistral4cli --version
 uv run python -m mistral4cli --once "Return only the word ok." --no-stream
 ```
 
@@ -79,7 +80,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.5.0` also trigger a GitHub Actions release build that
+Version tags such as `v1.5.1` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -91,6 +92,7 @@ uv tool install ./mistral4cli-<version>-py3-none-any.whl
 Then run:
 
 ```bash
+mistral4cli --version
 mistral4cli
 ```
 
@@ -106,6 +108,7 @@ Inside the REPL:
 
 - `/help` for actionable usage
 - `/defaults` to inspect runtime parameters
+- `--version` or `-v` to print the installed CLI version
 - `/tools` to inspect loaded tools
 - `/timeout [VALUE]` to inspect or change the active request timeout
 - `/run -- ...` to execute a shell command

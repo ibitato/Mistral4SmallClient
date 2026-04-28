@@ -70,6 +70,7 @@ remote backend at runtime.
 The REPL has a retro green/orange presentation, an ASCII welcome banner, and
 an actionable help system:
 
+- `--version` or `-v` prints the installed CLI version and exits
 - `/help` shows commands, examples, and MCP status
 - `/defaults` prints the active runtime defaults
 - `/timeout [value]` shows or updates the active request timeout

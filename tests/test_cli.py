@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from mistral4cli import __version__
 from mistral4cli.attachments import (
     build_image_message,
     build_remote_document_message,
@@ -525,6 +526,34 @@ def test_main_returns_zero_without_interactive_input() -> None:
 
     assert exit_code == 0
     assert output.getvalue() == ""
+
+
+def test_version_flag_prints_package_version() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        ["--version"],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert exit_code == 0
+    assert output.getvalue() == f"mistral4cli {__version__}\n"
+
+
+def test_short_version_flag_prints_package_version() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        ["-v"],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeClient(),
+    )
+
+    assert exit_code == 0
+    assert output.getvalue() == f"mistral4cli {__version__}\n"
 
 
 def test_main_rejects_non_linux_before_print_defaults(monkeypatch: Any) -> None:

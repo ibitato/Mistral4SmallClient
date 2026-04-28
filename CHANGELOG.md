@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.1 - 2026-04-28
+
+### Added
+
+- Standard CLI version flags `--version` and `-v`.
+- Package-level `mistral4cli.__version__` export for CLI and test coverage.
+
+### Changed
+
+- Bumped package version to `1.5.1`.
+- Updated README and user-facing runtime guides to document version checks
+  before smoke-testing or remote installs.
+
 ## 1.5.0 - 2026-04-28
 
 ### Added

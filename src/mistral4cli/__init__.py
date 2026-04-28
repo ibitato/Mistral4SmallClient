@@ -1,5 +1,12 @@
 """mistral4cli package."""
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("mistral4cli")
+except PackageNotFoundError:
+    __version__ = "0.0.0"
+
 from .cli import main
 from .conversation_registry import ConversationRegistry
 from .local_mistral import (
@@ -31,6 +38,7 @@ __all__ = [
     "MistralSession",
     "PendingConversationSettings",
     "RemoteMistralConfig",
+    "__version__",
     "build_client",
     "get_health",
     "list_models",
