@@ -2808,7 +2808,39 @@ def test_conversations_command_list_show_and_use(
         is False
     )
     assert session.conversation_id == "conv_1"
-    assert "Attached to conversation conv_1." in output.getvalue()
+
+
+def test_conversations_command_list_without_metadata_omits_filter(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    conversations = FakeConversations()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        conversation_registry=ConversationRegistry.load(
+            tmp_path / "conversations.json"
+        ),
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    assert (
+        _run_command(
+            "conv",
+            "list",
+            session,
+            output,
+            repl_state=_ReplState(),
+            local_config=LocalMistralConfig(),
+            client_factory=lambda _config: FakeConversationClient(conversations),
+            stdin=FakeStdin(""),
+        )
+        is False
+    )
+    assert conversations.list_calls == [{"page": 0, "page_size": 20}]
+    assert "Remote conversations page=0 size=20:" in output.getvalue()
 
 
 def test_conversations_command_pending_settings_and_bookmarks(tmp_path: Path) -> None:

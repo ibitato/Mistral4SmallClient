@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.2 - 2026-04-28
+
+### Fixed
+
+- `/conv list` in Conversations mode now omits the `metadata` query argument
+  entirely when no metadata filter is requested, which fixes Mistral API error
+  `3001 invalid_request_error` for the default listing path.
+
 ## 1.5.1 - 2026-04-28
 
 ### Added

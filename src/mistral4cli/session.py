@@ -871,11 +871,13 @@ class MistralSession:
                 )
             return "\n".join(lines)
 
-        payload = self.client.beta.conversations.list(
-            page=page,
-            page_size=page_size,
-            metadata=metadata if metadata else None,
-        )
+        list_kwargs: dict[str, Any] = {
+            "page": page,
+            "page_size": page_size,
+        }
+        if metadata:
+            list_kwargs["metadata"] = metadata
+        payload = self.client.beta.conversations.list(**list_kwargs)
         conversations = list(payload or [])
         if not conversations:
             return "No remote conversations found."
