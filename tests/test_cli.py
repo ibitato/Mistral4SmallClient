@@ -2596,6 +2596,49 @@ def test_remote_request_disables_reasoning_effort_when_hidden() -> None:
     assert fake_client.chat.complete_calls[0]["reasoning_effort"] == "none"
 
 
+def test_remote_stream_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(stream_chunks=["ok"])
+    session = MistralSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    result = session.send("Return only ok.", stream=True)
+
+    assert result.content == "ok"
+    assert len(fake_client.chat.stream_calls) == 1
+    call = fake_client.chat.stream_calls[0]
+    assert "prompt_mode" not in call
+    assert call["reasoning_effort"] == "high"
+
+
+def test_remote_stream_request_disables_reasoning_effort_when_hidden() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(stream_chunks=["ok"])
+    session = MistralSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        show_reasoning=False,
+    )
+
+    result = session.send("Return only ok.", stream=True)
+
+    assert result.content == "ok"
+    assert len(fake_client.chat.stream_calls) == 1
+    call = fake_client.chat.stream_calls[0]
+    assert "prompt_mode" not in call
+    assert call["reasoning_effort"] == "none"
+
+
 def test_conversations_session_starts_then_appends() -> None:
     output = io.StringIO()
     conversations = FakeConversations(
@@ -2640,8 +2683,62 @@ def test_conversations_session_starts_then_appends() -> None:
     assert second.content == "second"
     assert session.conversation_id == "conv_1"
     assert conversations.start_calls[0]["inputs"] == "hello"
+    assert conversations.start_calls[0]["completion_args"]["reasoning_effort"] == "high"
     assert conversations.append_calls[0]["conversation_id"] == "conv_1"
     assert conversations.append_calls[0]["inputs"] == "again"
+    assert (
+        conversations.append_calls[0]["completion_args"]["reasoning_effort"] == "high"
+    )
+
+
+def test_conversations_session_start_and_append_disable_reasoning_effort() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_1",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "first"}],
+                    )
+                ],
+            ),
+            FakeConversationResponse(
+                conversation_id="conv_1",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "second"}],
+                    )
+                ],
+            ),
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        show_reasoning=False,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+    session.set_reasoning_visibility(False)
+
+    first = session.send("hello", stream=False)
+    second = session.send("again", stream=False)
+
+    assert first.content == "first"
+    assert second.content == "second"
+    assert conversations.start_calls[0]["completion_args"]["reasoning_effort"] == "none"
+    assert (
+        conversations.append_calls[0]["completion_args"]["reasoning_effort"] == "none"
+    )
 
 
 def test_conversations_streaming_records_usage_and_text() -> None:
@@ -2689,8 +2786,60 @@ def test_conversations_streaming_records_usage_and_text() -> None:
     assert "ok\n" in output.getvalue()
     assert "Mistral Conversations returned no thinking blocks" in output.getvalue()
     assert session.conversation_id == "conv_stream"
+    assert (
+        conversations.start_stream_calls[0]["completion_args"]["reasoning_effort"]
+        == "high"
+    )
     assert session.status_snapshot().last_usage is not None
     assert session.status_snapshot().last_usage.total_tokens == 12
+
+
+def test_conversations_append_stream_disables_reasoning_effort_when_hidden() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        stream_events=[
+            FakeConversationEvent(
+                event="message.output.delta",
+                data=FakeConversationMessageDelta(
+                    content={"type": "text", "text": "ok"}
+                ),
+            ),
+            FakeConversationEvent(
+                event="conversation.response.done",
+                data=FakeConversationDone(
+                    usage=FakeUsage(
+                        prompt_tokens=8,
+                        completion_tokens=2,
+                        total_tokens=10,
+                    )
+                ),
+            ),
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        show_reasoning=False,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+    session.set_reasoning_visibility(False)
+    session.conversation_id = "conv_stream"
+
+    result = session.send("hello", stream=True)
+
+    assert result.content == "ok"
+    assert conversations.append_stream_calls[0]["conversation_id"] == "conv_stream"
+    assert (
+        conversations.append_stream_calls[0]["completion_args"]["reasoning_effort"]
+        == "none"
+    )
 
 
 def test_conversations_tool_call_executes_bridge_and_appends_result() -> None:

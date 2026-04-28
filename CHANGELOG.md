@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.9 - 2026-04-28
+
+### Changed
+
+- Updated the pinned `mistralai` dependency floor to `2.4.3` to keep the CLI
+  aligned with the current official SDK surface for beta Conversations.
+
+### Added
+
+- Local regression coverage for remote reasoning request wiring across remote
+  chat completions and beta Conversations in `complete`, `stream`, `start`,
+  `append`, `start_stream`, and `append_stream` paths.
+- Remote smoke coverage for `reasoning_effort=\"none\"` in chat completions and
+  beta Conversations so the live API behavior stays checked against the current
+  SDK.
+
 ## 1.5.8 - 2026-04-28
 
 ### Added
