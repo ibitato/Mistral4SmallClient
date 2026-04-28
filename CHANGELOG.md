@@ -2,7 +2,22 @@
 
 All notable changes to this project are documented here.
 
-## Unreleased
+## 1.5.13 - 2026-04-28
+
+### Added
+
+- New `/thinking on|off|toggle` command plus `--thinking` and `--no-thinking`
+  startup flags to control whether returned `thinking` blocks are rendered in
+  the terminal independently from backend reasoning requests.
+
+### Changed
+
+- `/reasoning` now controls backend reasoning requests only, while `/thinking`
+  controls local rendering. This keeps `reasoning_effort` enabled for remote
+  chat completions and Conversations even when terminal thinking display is
+  hidden.
+- Updated README, user guide, and local runtime notes to distinguish backend
+  reasoning requests from local thinking display.
 
 ## 1.5.12 - 2026-04-28
 

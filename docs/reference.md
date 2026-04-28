@@ -380,7 +380,7 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   #### `reasoning_status_text(self) -> 'str'`
 
-  Return a user-facing visible-reasoning status string.
+  Return a user-facing reasoning-request status string.
 
   #### `remove_local_conversation_tag(self, reference: 'str', tag: 'str') -> 'str'`
 
@@ -432,11 +432,15 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   #### `set_reasoning_visibility(self, visible: 'bool') -> 'None'`
 
-  Enable or disable visible reasoning output.
+  Enable or disable reasoning requests to the backend.
 
   #### `set_system_prompt(self, system_prompt: 'str') -> 'None'`
 
   Replace the active system prompt and reset the conversation.
+
+  #### `set_thinking_visibility(self, visible: 'bool') -> 'None'`
+
+  Enable or disable local rendering of thinking blocks.
 
   #### `set_timeout_ms(self, timeout_ms: 'int') -> 'None'`
 
@@ -454,13 +458,21 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Swap the active model backend and reset the conversation.
 
+  #### `thinking_status_text(self) -> 'str'`
+
+  Return a user-facing thinking-render status string.
+
   #### `timeout_ms(self) -> 'int'`
 
   Return the active request timeout in milliseconds.
 
   #### `toggle_reasoning_visibility(self) -> 'bool'`
 
-  Toggle visible reasoning output and return the new state.
+  Toggle backend reasoning requests and return the new state.
+
+  #### `toggle_thinking_visibility(self) -> 'bool'`
+
+  Toggle local thinking rendering and return the new state.
 
   #### `visible_reasoning_supported(self) -> 'bool'`
 
@@ -498,7 +510,7 @@ Normalized token usage metadata for one turn or a session.
 
   Return the cumulative sum of this usage and another snapshot.
 
-#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig | None' = None, context: 'ContextConfig | None' = None, conversation_id: 'str | None' = None, tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_defaults_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_enabled: 'bool', thinking_visible: 'bool', conversations: 'ConversationConfig | None' = None, context: 'ContextConfig | None' = None, conversation_id: 'str | None' = None, tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render the active runtime defaults as human-readable text.
 
@@ -626,7 +638,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_visible: 'bool', conversations: 'ConversationConfig', context: 'ContextConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_enabled: 'bool', thinking_visible: 'bool', conversations: 'ConversationConfig', context: 'ContextConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
 
 Render a formatted runtime summary.
 

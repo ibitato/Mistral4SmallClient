@@ -569,7 +569,8 @@ def render_runtime_summary(
     timeout_ms: int,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
-    reasoning_visible: bool,
+    reasoning_enabled: bool,
+    thinking_visible: bool,
     conversations: ConversationConfig,
     context: ContextConfig,
     conversation_id: str | None,
@@ -584,7 +585,8 @@ def render_runtime_summary(
     )
     prompt_mode = generation.prompt_mode or "unset"
     stream_mode = "on" if stream_enabled else "off"
-    reasoning_mode = "on" if reasoning_visible else "off"
+    reasoning_mode = "on" if reasoning_enabled else "off"
+    thinking_mode = "on" if thinking_visible else "off"
     conversation_mode = "on" if conversations.enabled else "off"
     conversation_store = "on" if conversations.store else "off"
     conversation_resume = conversations.resume_policy
@@ -604,7 +606,8 @@ def render_runtime_summary(
                 f"prompt_mode={prompt_mode} "
                 f"max_tokens={max_tokens} "
                 f"stream={stream_mode} "
-                f"reasoning={reasoning_mode}"
+                f"reasoning={reasoning_mode} "
+                f"thinking={thinking_mode}"
             ),
         ),
         (
@@ -695,7 +698,8 @@ def render_help_screen(
         "/conv        Show or manage Mistral Cloud Conversations mode.",
         "/compact     Show, tune, or run context compaction.",
         "/timeout     Show or set the active request timeout.",
-        "/reasoning   Show, enable, disable, or toggle visible reasoning output.",
+        "/reasoning   Show, enable, disable, or toggle backend reasoning requests.",
+        "/thinking    Show, enable, disable, or toggle local thinking display.",
         "/reset       Clear the conversation but keep the system prompt.",
         "/system TXT  Replace the system prompt and reset the chat.",
         "/exit        Leave the REPL.",
@@ -722,7 +726,7 @@ def render_help_screen(
             "In attachment pickers, Enter selects the highlighted file and [..] "
             "goes to the parent directory."
         ),
-        "Visible reasoning is rendered in dim italic text when the backend emits it.",
+        "Thinking blocks are rendered in dim italic text when display is enabled.",
     ]
     examples_section = [
         _paint("Examples", ORANGE, stream, bold=True),
@@ -757,6 +761,8 @@ def render_help_screen(
         '  - "/timeout 300000"',
         '  - "/reasoning off"',
         '  - "/reasoning toggle"',
+        '  - "/thinking off"',
+        '  - "/thinking toggle"',
         '  - "Use shell to inspect /tmp and summarize what changed today."',
         '  - "Read README.md and summarize the main capabilities."',
         '  - "Search official documentation about X and summarize the API."',

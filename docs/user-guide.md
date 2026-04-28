@@ -69,11 +69,12 @@ uv run python -m mistral4cli --reasoning
 uv run python -m mistral4cli --no-reasoning
 ```
 
-If visible reasoning is enabled, the local backend may print reasoning before
-the final answer. Disable reasoning when you want cleaner smoke output:
+If thinking display is enabled, the local backend may print reasoning before
+the final answer. Disable display when you want cleaner smoke output without
+changing backend reasoning requests:
 
 ```bash
-uv run python -m mistral4cli --once "Return only ok." --no-stream --system-prompt "Answer exactly as requested."
+uv run python -m mistral4cli --once "Return only ok." --no-stream --no-thinking --system-prompt "Answer exactly as requested."
 ```
 
 Then inside the REPL:
@@ -162,6 +163,9 @@ Backend and runtime commands:
 /reasoning
 /reasoning off
 /reasoning on
+/thinking
+/thinking off
+/thinking on
 ```
 
 Attachment commands:
@@ -197,12 +201,15 @@ Useful REPL checks:
 /find --path docs -- mistral
 ```
 
-The local setup uses `prompt_mode=reasoning` by default. Visible reasoning is
-rendered when the backend emits it. Toggle display with:
+The local setup uses `prompt_mode=reasoning` by default. `/reasoning` controls
+whether the CLI requests backend reasoning. `/thinking` controls whether any
+returned thinking is rendered in the terminal:
 
 ```text
 /reasoning off
 /reasoning on
+/thinking off
+/thinking on
 ```
 
 ## Remote Chat Completions
@@ -231,8 +238,9 @@ interactive session. Backend switching resets the active conversation.
 Remote mode uses:
 
 - model `mistral-small-latest`
-- `reasoning_effort=high` when visible reasoning is on
-- `reasoning_effort=none` when visible reasoning is off
+- `reasoning_effort=high` when reasoning is on
+- `reasoning_effort=none` when reasoning is off
+- `/thinking` only affects local rendering of returned `thinking` blocks
 - no local `prompt_mode=reasoning`, because Mistral Cloud rejects that setting
 
 ## Conversations Mode
@@ -366,7 +374,9 @@ Important behavior:
   an empty input automatically so `/conv restart <entry_id>` works without
   extra arguments
 - `/reasoning on|off|toggle` still applies in Conversations mode and controls
-  whether the CLI requests visible reasoning
+  whether the CLI requests reasoning from the backend
+- `/thinking on|off|toggle` only controls whether returned `thinking` blocks
+  are rendered locally
 - local `/compact` does not compact Conversations mode; Mistral handles that
   context server-side
 - if Mistral Conversations does not return any `thinking` blocks for a turn, the
@@ -611,10 +621,10 @@ Attachment picker cannot run:
 - ensure the file exists and is readable
 - when the picker fallback appears, paste the absolute path manually
 
-Reasoning output is noisy:
+Thinking output is noisy:
 
 ```text
-/reasoning off
+/thinking off
 ```
 
 Terminal colors look wrong:

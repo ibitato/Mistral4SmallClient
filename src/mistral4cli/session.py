@@ -132,7 +132,8 @@ def render_defaults_summary(
     timeout_ms: int,
     generation: LocalGenerationConfig,
     stream_enabled: bool,
-    reasoning_visible: bool,
+    reasoning_enabled: bool,
+    thinking_visible: bool,
     conversations: ConversationConfig | None = None,
     context: ContextConfig | None = None,
     conversation_id: str | None = None,
@@ -149,7 +150,8 @@ def render_defaults_summary(
         timeout_ms=timeout_ms,
         generation=generation,
         stream_enabled=stream_enabled,
-        reasoning_visible=reasoning_visible,
+        reasoning_enabled=reasoning_enabled,
+        thinking_visible=thinking_visible,
         conversations=conversations or ConversationConfig(),
         context=context or ContextConfig(),
         conversation_id=conversation_id,
@@ -501,6 +503,7 @@ class MistralSession:
     stdout: TextIO | None = None
     stream_enabled: bool = True
     show_reasoning: bool = True
+    show_thinking: bool = True
     conversations: ConversationConfig = field(default_factory=ConversationConfig)
     context: ContextConfig = field(default_factory=ContextConfig)
     logging_summary: str = "debug=on level=DEBUG rotate=daily retention=2d"
@@ -615,7 +618,8 @@ class MistralSession:
             timeout_ms=self.timeout_ms,
             generation=self._display_generation(),
             stream_enabled=self.stream_enabled,
-            reasoning_visible=self.show_reasoning,
+            reasoning_enabled=self.show_reasoning,
+            thinking_visible=self.show_thinking,
             conversations=self.conversations,
             context=self.context,
             conversation_id=self.conversation_id,
@@ -1254,30 +1258,49 @@ class MistralSession:
         return True
 
     def reasoning_status_text(self) -> str:
-        """Return a user-facing visible-reasoning status string."""
+        """Return a user-facing reasoning-request status string."""
 
         state = "on" if self.show_reasoning else "off"
         if self.backend_kind is BackendKind.REMOTE:
             if self.conversations.enabled:
                 return (
-                    "Visible reasoning: "
+                    "Reasoning request: "
                     f"{state} (remote Conversations, requested best-effort)"
                 )
-            return f"Visible reasoning: {state} (remote SDK)"
-        return f"Visible reasoning: {state} (local raw endpoint)"
+            return f"Reasoning request: {state} (remote SDK)"
+        return f"Reasoning request: {state} (local backend)"
+
+    def thinking_status_text(self) -> str:
+        """Return a user-facing thinking-render status string."""
+
+        state = "on" if self.show_thinking else "off"
+        return f"Thinking display: {state}"
 
     def set_reasoning_visibility(self, visible: bool) -> None:
-        """Enable or disable visible reasoning output."""
+        """Enable or disable reasoning requests to the backend."""
 
         self.show_reasoning = visible
         self._missing_reasoning_notice_shown = False
 
     def toggle_reasoning_visibility(self) -> bool:
-        """Toggle visible reasoning output and return the new state."""
+        """Toggle backend reasoning requests and return the new state."""
 
         self.show_reasoning = not self.show_reasoning
         self._missing_reasoning_notice_shown = False
         return self.show_reasoning
+
+    def set_thinking_visibility(self, visible: bool) -> None:
+        """Enable or disable local rendering of thinking blocks."""
+
+        self.show_thinking = visible
+        self._missing_reasoning_notice_shown = False
+
+    def toggle_thinking_visibility(self) -> bool:
+        """Toggle local thinking rendering and return the new state."""
+
+        self.show_thinking = not self.show_thinking
+        self._missing_reasoning_notice_shown = False
+        return self.show_thinking
 
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
         """Execute a tool through the active bridge."""
@@ -1976,6 +1999,7 @@ class MistralSession:
         return (
             self.backend_kind is BackendKind.LOCAL
             and self.show_reasoning
+            and self.show_thinking
             and isinstance(self.client, Mistral)
         )
 
@@ -2014,7 +2038,7 @@ class MistralSession:
         self.stdout.flush()
 
     def _print_reasoning(self, text: str) -> None:
-        if not text or not self.show_reasoning:
+        if not text or not self.show_thinking:
             return
         if self.reasoning_writer is not None:
             self.reasoning_writer(text)
@@ -2035,29 +2059,34 @@ class MistralSession:
         if reasoning.strip():
             self._missing_reasoning_notice_shown = False
             return
-        if not self.show_reasoning or finish_reason in {
-            "tool_calls",
-            "cancelled",
-            "error",
-        }:
+        if (
+            not self.show_reasoning
+            or not self.show_thinking
+            or finish_reason
+            in {
+                "tool_calls",
+                "cancelled",
+                "error",
+            }
+        ):
             return
         if not has_answer_text or self._missing_reasoning_notice_shown:
             return
         if self.conversations.enabled:
             message = (
-                "[reasoning] Visible reasoning was requested, but Mistral "
+                "[reasoning] Reasoning was requested, but Mistral "
                 "Conversations returned no thinking blocks for this turn.\n"
             )
         else:
             message = (
-                "[reasoning] Visible reasoning was requested, but the remote "
+                "[reasoning] Reasoning was requested, but the remote "
                 "backend returned no thinking blocks for this turn.\n"
             )
         if has_answer_text:
             message = "\n" + message
         self._print(message)
         logger.warning(
-            "Visible reasoning requested but not returned backend=%s conversations=%s",
+            "Reasoning requested but not returned backend=%s conversations=%s",
             self.backend_kind.value,
             self.conversations.enabled,
         )
@@ -2997,6 +3026,8 @@ class MistralSession:
 
     def _effective_prompt_mode(self) -> str | None:
         if self.backend_kind is BackendKind.REMOTE:
+            return None
+        if not self.show_reasoning:
             return None
         return self.generation.prompt_mode
 

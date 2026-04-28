@@ -732,6 +732,7 @@ def test_print_defaults_applies_reasoning_cli_option() -> None:
     assert exit_code == 0
     rendered = output.getvalue()
     assert "reasoning=off" in rendered
+    assert "thinking=on" in rendered
 
 
 def test_once_uses_effective_defaults_and_prints_answer() -> None:
@@ -965,6 +966,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "/compact" in help_text
     assert "/timeout" in help_text
     assert "/reasoning" in help_text
+    assert "/thinking" in help_text
     assert "Search official documentation" in help_text
     assert "Describe this image and list all visible text." in help_text
     assert "Ctrl-C cancels the current response" in help_text
@@ -1840,6 +1842,7 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     assert _parse_command("/status") == ("status", "")
     assert _parse_command("/timeout 5m") == ("timeout", "5m")
     assert _parse_command("/reasoning off") == ("reasoning", "off")
+    assert _parse_command("/thinking off") == ("thinking", "off")
     assert _parse_command("/run --cwd . -- git status") == (
         "run",
         "--cwd . -- git status",
@@ -1911,7 +1914,7 @@ def test_status_command_shows_dynamic_session_snapshot() -> None:
         "Runtime: backend=remote server=Mistral Cloud model=mistral-small-latest"
         in rendered
     )
-    assert "Response: stream=on reasoning=on timeout=300000ms" in rendered
+    assert "Response: stream=on reasoning=on thinking=on timeout=300000ms" in rendered
     assert "Conversations: mode=on store=on resume=last id=conv_123" in rendered
     assert "Context: est:backend last:321/256000 usage:654" in rendered
     assert "Attachments: images=1 documents=1" in rendered
@@ -2356,7 +2359,10 @@ def test_status_bar_leaves_one_column_to_avoid_terminal_autowrap(
     renderer = InteractiveTTYRenderer(
         stream=output,
         status_provider=(
-            lambda: "idle | local | model | reasoning:on | est:- | last:- | usage:-"
+            lambda: (
+                "idle | local | model | reasoning:on | thinking:on | "
+                "est:- | last:- | usage:-"
+            )
         ),
     )
     monkeypatch.setattr(
@@ -2657,6 +2663,26 @@ def test_remote_request_disables_reasoning_effort_when_hidden() -> None:
     assert fake_client.chat.complete_calls[0]["reasoning_effort"] == "none"
 
 
+def test_remote_request_keeps_reasoning_when_thinking_is_hidden() -> None:
+    output = io.StringIO()
+    fake_client = FakeClient(complete_text="ok")
+    session = MistralSession(
+        client=fake_client,
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        show_reasoning=True,
+        show_thinking=False,
+    )
+
+    result = session.send("Return only ok.", stream=False)
+
+    assert result.content == "ok"
+    assert fake_client.chat.complete_calls[0]["reasoning_effort"] == "high"
+
+
 def test_remote_stream_request_uses_reasoning_effort_and_omits_prompt_mode() -> None:
     output = io.StringIO()
     fake_client = FakeClient(stream_chunks=["ok"])
@@ -2800,6 +2826,43 @@ def test_conversations_session_start_and_append_disable_reasoning_effort() -> No
     assert (
         conversations.append_calls[0]["completion_args"]["reasoning_effort"] == "none"
     )
+
+
+def test_conversations_keep_reasoning_effort_when_thinking_is_hidden() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_hidden_thinking",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "ok"}],
+                    )
+                ],
+            )
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        show_reasoning=True,
+        show_thinking=False,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    result = session.send("hello", stream=False)
+
+    assert result.content == "ok"
+    assert conversations.start_calls[0]["completion_args"]["reasoning_effort"] == "high"
+    assert "Mistral Conversations returned no thinking blocks" not in output.getvalue()
 
 
 def test_conversations_streaming_records_usage_and_text() -> None:
@@ -4275,14 +4338,15 @@ def test_raw_stream_reasoning_content_is_rendered_and_committed_cleanly(
     assert session.messages[-1] == {"role": "assistant", "content": "ok"}
 
 
-def test_reasoning_can_be_hidden() -> None:
+def test_thinking_display_can_be_hidden_without_disabling_reasoning() -> None:
     output = io.StringIO()
     fake_client = FakeClient(stream_chunks=["<think>hidden</think>", "ok"])
     session = MistralSession(
         client=fake_client,
         generation=LocalGenerationConfig(),
         stdout=output,
-        show_reasoning=False,
+        show_reasoning=True,
+        show_thinking=False,
     )
 
     result = session.send("Return ok.", stream=True)
@@ -4345,19 +4409,45 @@ def test_reasoning_command_updates_session_state() -> None:
     )
 
     assert _run_command("reasoning", "", session, output) is False
-    assert "Visible reasoning: on (local raw endpoint)" in output.getvalue()
+    assert "Reasoning request: on (local backend)" in output.getvalue()
 
     output.truncate(0)
     output.seek(0)
     assert _run_command("reasoning", "off", session, output) is False
     assert session.show_reasoning is False
-    assert "Visible reasoning disabled." in output.getvalue()
+    assert "Reasoning request disabled." in output.getvalue()
 
     output.truncate(0)
     output.seek(0)
     assert _run_command("reasoning", "toggle", session, output) is False
     assert session.show_reasoning is True
-    assert "Visible reasoning: on (local raw endpoint)" in output.getvalue()
+    assert "Reasoning request: on (local backend)" in output.getvalue()
+
+
+def test_thinking_command_updates_render_state_without_touching_reasoning() -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+
+    assert _run_command("thinking", "", session, output) is False
+    assert "Thinking display: on" in output.getvalue()
+
+    output.truncate(0)
+    output.seek(0)
+    assert _run_command("thinking", "off", session, output) is False
+    assert session.show_thinking is False
+    assert session.show_reasoning is True
+    assert "Thinking display disabled." in output.getvalue()
+
+    output.truncate(0)
+    output.seek(0)
+    assert _run_command("thinking", "toggle", session, output) is False
+    assert session.show_thinking is True
+    assert session.show_reasoning is True
+    assert "Thinking display: on" in output.getvalue()
 
 
 def test_remote_reasoning_command_reports_remote_backend() -> None:
@@ -4372,7 +4462,7 @@ def test_remote_reasoning_command_reports_remote_backend() -> None:
     )
 
     assert _run_command("reasoning", "", session, output) is False
-    assert "Visible reasoning: on (remote SDK)" in output.getvalue()
+    assert "Reasoning request: on (remote SDK)" in output.getvalue()
 
 
 def test_remote_conversations_reasoning_command_reports_best_effort() -> None:
@@ -4393,7 +4483,7 @@ def test_remote_conversations_reasoning_command_reports_best_effort() -> None:
 
     assert _run_command("reasoning", "", session, output) is False
     assert (
-        "Visible reasoning: on (remote Conversations, requested best-effort)"
+        "Reasoning request: on (remote Conversations, requested best-effort)"
         in output.getvalue()
     )
 

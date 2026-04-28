@@ -236,6 +236,7 @@ def _repl_status_line(session: MistralSession, repl_state: _ReplState) -> str:
         session.backend_kind.value,
         session.model_id,
         f"reasoning:{'on' if session.show_reasoning else 'off'}",
+        f"thinking:{'on' if session.show_thinking else 'off'}",
         f"conv:{'on' if session.conversations.enabled else 'off'}",
     ]
     if session.conversations.enabled and session.conversation_id:
@@ -279,6 +280,7 @@ def _render_session_status(
         "Response: "
         f"stream={'on' if session.stream_enabled else 'off'} "
         f"reasoning={'on' if session.show_reasoning else 'off'} "
+        f"thinking={'on' if session.show_thinking else 'off'} "
         f"timeout={session.timeout_ms}ms"
     )
     lines.append(
@@ -552,13 +554,26 @@ def build_parser() -> argparse.ArgumentParser:
         dest="reasoning",
         action="store_true",
         default=None,
-        help="Request visible reasoning when the backend supports it.",
+        help="Request backend reasoning when the backend supports it.",
     )
     parser.add_argument(
         "--no-reasoning",
         dest="reasoning",
         action="store_false",
-        help="Do not request visible reasoning from the backend.",
+        help="Do not request reasoning from the backend.",
+    )
+    parser.add_argument(
+        "--thinking",
+        dest="thinking",
+        action="store_true",
+        default=None,
+        help="Render returned thinking blocks in the terminal.",
+    )
+    parser.add_argument(
+        "--no-thinking",
+        dest="thinking",
+        action="store_false",
+        help="Hide returned thinking blocks without disabling reasoning requests.",
     )
     parser.add_argument(
         "--print-defaults",
@@ -686,6 +701,10 @@ def _resolve_context_config(args: argparse.Namespace) -> ContextConfig:
 
 def _resolve_reasoning_visibility(args: argparse.Namespace) -> bool:
     return True if args.reasoning is None else bool(args.reasoning)
+
+
+def _resolve_thinking_visibility(args: argparse.Namespace) -> bool:
+    return True if args.thinking is None else bool(args.thinking)
 
 
 def _parse_metadata_pairs(values: Sequence[str] | None) -> dict[str, str]:
@@ -1360,15 +1379,32 @@ def _run_command(
             stdout.write(session.reasoning_status_text() + "\n")
         elif normalized in {"on", "true", "1"}:
             session.set_reasoning_visibility(True)
-            stdout.write("Visible reasoning enabled.\n")
+            stdout.write("Reasoning request enabled.\n")
         elif normalized in {"off", "false", "0"}:
             session.set_reasoning_visibility(False)
-            stdout.write("Visible reasoning disabled.\n")
+            stdout.write("Reasoning request disabled.\n")
         elif normalized == "toggle":
             session.toggle_reasoning_visibility()
             stdout.write(session.reasoning_status_text() + "\n")
         else:
             stdout.write("Usage: /reasoning [on|off|toggle]\n")
+        stdout.flush()
+        return False
+    if command == "thinking":
+        normalized = argument.strip().lower()
+        if not normalized:
+            stdout.write(session.thinking_status_text() + "\n")
+        elif normalized in {"on", "true", "1"}:
+            session.set_thinking_visibility(True)
+            stdout.write("Thinking display enabled.\n")
+        elif normalized in {"off", "false", "0"}:
+            session.set_thinking_visibility(False)
+            stdout.write("Thinking display disabled.\n")
+        elif normalized == "toggle":
+            session.toggle_thinking_visibility()
+            stdout.write(session.thinking_status_text() + "\n")
+        else:
+            stdout.write("Usage: /thinking [on|off|toggle]\n")
         stdout.flush()
         return False
     if command == "run":
@@ -2300,7 +2336,8 @@ def _build_session(
     tool_bridge: ToolBridge,
     stdout: TextIO,
     stream: bool,
-    reasoning_visible: bool,
+    reasoning_enabled: bool,
+    thinking_visible: bool,
     logging_summary: str,
     conversations: ConversationConfig,
     context: ContextConfig,
@@ -2323,7 +2360,8 @@ def _build_session(
         tool_bridge=tool_bridge,
         stdout=stdout,
         stream_enabled=stream,
-        show_reasoning=reasoning_visible,
+        show_reasoning=reasoning_enabled,
+        show_thinking=thinking_visible,
         logging_summary=logging_summary,
         context=context,
         conversation_registry=conversation_registry,
@@ -2374,7 +2412,8 @@ def main(
     config, generation, system_prompt = _resolve_local_configs(args)
     conversations = _resolve_conversation_config(args)
     context = _resolve_context_config(args)
-    reasoning_visible = _resolve_reasoning_visibility(args)
+    reasoning_enabled = _resolve_reasoning_visibility(args)
+    thinking_visible = _resolve_thinking_visibility(args)
     try:
         pending_conversation = PendingConversationSettings(
             name=(args.conversation_name or "").strip(),
@@ -2405,7 +2444,8 @@ def main(
                 timeout_ms=config.timeout_ms,
                 generation=generation,
                 stream_enabled=not args.no_stream,
-                reasoning_visible=reasoning_visible,
+                reasoning_enabled=reasoning_enabled,
+                thinking_visible=thinking_visible,
                 conversations=conversations,
                 context=context,
                 tool_summary=tool_bridge.runtime_summary(),
@@ -2429,7 +2469,8 @@ def main(
             tool_bridge=tool_bridge,
             stdout=stdout,
             stream=stream,
-            reasoning_visible=reasoning_visible,
+            reasoning_enabled=reasoning_enabled,
+            thinking_visible=thinking_visible,
             logging_summary=logging_summary,
             conversations=conversations,
             context=context,
@@ -2457,7 +2498,8 @@ def main(
                 tool_bridge=tool_bridge,
                 stdout=stdout,
                 stream=stream,
-                reasoning_visible=reasoning_visible,
+                reasoning_enabled=reasoning_enabled,
+                thinking_visible=thinking_visible,
                 logging_summary=logging_summary,
                 conversations=conversations,
                 context=context,
@@ -2482,7 +2524,8 @@ def main(
         tool_bridge=tool_bridge,
         stdout=stdout,
         stream=stream,
-        reasoning_visible=reasoning_visible,
+        reasoning_enabled=reasoning_enabled,
+        thinking_visible=thinking_visible,
         logging_summary=logging_summary,
         conversations=conversations,
         context=context,

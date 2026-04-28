@@ -80,8 +80,10 @@ an actionable help system:
   aliases, and restart/branching
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` manages
   chat-completions context compaction
-- `--reasoning` and `--no-reasoning` control whether visible reasoning is
-  requested at startup
+- `--reasoning` and `--no-reasoning` control whether reasoning is requested at
+  startup
+- `--thinking` and `--no-thinking` control whether returned thinking is
+  rendered at startup
 - `/tools` shows the loaded local and FireCrawl MCP tool catalog
 - `/run -- ...` runs a shell command through the local shell tool
 - `/ls [PATH]` lists files and directories
@@ -197,8 +199,9 @@ Remote mode:
 - uses `mistral-small-latest`
 - resets the conversation when switching backend
 - stays on the official Python SDK path
-- uses `reasoning_effort=high` when visible reasoning is enabled
-- uses `reasoning_effort=none` when visible reasoning is disabled
+- uses `reasoning_effort=high` when reasoning is enabled
+- uses `reasoning_effort=none` when reasoning is disabled
+- `/thinking` only affects whether returned thinking is rendered locally
 
 Conversations mode:
 
@@ -221,8 +224,8 @@ Conversations mode:
 - accepts pending remote creation metadata with `--conversation-name`,
   `--conversation-description`, `--conversation-meta KEY=VALUE`, and
   `/conv set ...`
-- visible reasoning remains best-effort in Conversations mode; when requested
-  but omitted by the backend, the CLI reports that explicitly
+- thinking display remains best-effort in Conversations mode; when reasoning is
+  requested but the backend omits `thinking`, the CLI reports that explicitly
 - remote `name`/`description`/`metadata` are creation-time fields only; the
   CLI cannot update them after creation because Mistral exposes no update API
 - on the current model Conversations path, Mistral may not return custom
@@ -300,9 +303,12 @@ separate `reasoning_content` field.
 Implications:
 
 - the versioned template is needed so the server enables reasoning by default
-- the CLI uses the raw local chat endpoint when visible reasoning is enabled
-- `/reasoning on|off|toggle` only controls whether the CLI renders that stream;
-  it does not force the model to emit reasoning if the server does not send it
+- the CLI uses the raw local chat endpoint when reasoning is requested and
+  thinking display is enabled
+- `/reasoning on|off|toggle` controls whether the CLI requests backend
+  reasoning
+- `/thinking on|off|toggle` controls whether returned thinking is rendered
+  locally
 - the remote cloud backend does not use this raw fallback; it relies on the
   official SDK structured `thinking` content instead
 

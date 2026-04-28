@@ -120,7 +120,8 @@ Inside the REPL:
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
 - `/conv ...` to manage Mistral Cloud Conversations and local bookmarks
-- `/reasoning [on|off|toggle]` to request or suppress visible reasoning
+- `/reasoning [on|off|toggle]` to request or suppress backend reasoning
+- `/thinking [on|off|toggle]` to show or hide returned thinking blocks
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` to manage context
 - `/reset`, `/system ...`, `/exit`
 
@@ -182,7 +183,8 @@ Remote mode requirements:
 - `--conversation-name`, `--conversation-description`, and repeated
   `--conversation-meta KEY=VALUE` set pending metadata for the next remote
   conversation start
-- `--reasoning` and `--no-reasoning` control whether visible reasoning is requested
+- `--reasoning` and `--no-reasoning` control whether reasoning is requested
+- `--thinking` and `--no-thinking` control whether returned thinking is rendered
 - `store=off` runs stateless one-shot Conversation calls, so it does not preserve
   `conversation_id` across turns
 - the CLI keeps a local registry at `~/.local/state/mistral4cli/conversations.json`
@@ -275,14 +277,15 @@ Recommended runtime defaults used by the CLI:
 Remote mode keeps the same sampling defaults, but it does not send
 `prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for
 `mistral-small-latest`, so the CLI uses the official SDK with
-`reasoning_effort=high` when visible reasoning is enabled, and
-`reasoning_effort=none` when it is disabled.
+`reasoning_effort=high` when reasoning is enabled, and `reasoning_effort=none`
+when it is disabled. `/thinking` only affects terminal rendering.
 
 Conversations mode is an optional Mistral Cloud path. It resets the current chat
 when enabled, starts a fresh remote `conversation_id` on the next user turn, and
-keeps the normal chat-completions path as the default. When visible reasoning is
-enabled, the CLI requests thinking traces for Conversations too, but the backend
-may still omit them on some turns; the CLI now reports that explicitly.
+keeps the normal chat-completions path as the default. When reasoning is
+enabled, the CLI requests thinking traces for Conversations too, but the
+backend may still omit them on some turns; the CLI reports that explicitly
+when thinking display is on.
 
 Attachment handling is backend-aware:
 
@@ -294,7 +297,7 @@ Attachment handling is backend-aware:
 
 The repository now includes the exact reasoning template at
 [`mistral-small-4-reasoning.jinja`](mistral-small-4-reasoning.jinja). In this
-local setup it is effectively required if you want reasoning enabled by
+local setup it is effectively required if you want reasoning requested by
 default, because it sets `reasoning_effort=high` in the llama.cpp chat
 template.
 
