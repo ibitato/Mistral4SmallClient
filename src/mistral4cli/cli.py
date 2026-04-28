@@ -64,6 +64,7 @@ from mistral4cli.mcp_bridge import (
 )
 from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
+    ContextStatus,
     MistralSession,
     PendingConversationSettings,
     SessionStatusSnapshot,
@@ -194,18 +195,30 @@ def _repl_prompt(repl_state: _ReplState) -> str:
     return f"M4S[{','.join(tokens)}]> "
 
 
+def _format_estimated_context_for_status(
+    status: ContextStatus | None,
+    *,
+    conversations_enabled: bool,
+) -> str:
+    if conversations_enabled:
+        return "est:backend"
+    if status is None:
+        return "est:-"
+    return f"est:{status.estimated_tokens}/{status.window_tokens}"
+
+
 def _format_usage_for_status(usage: UsageSnapshot | None) -> str:
     if usage is None or usage.total_tokens is None:
-        return "ctx:-"
+        return "last:-"
     if usage.max_context_tokens is None:
-        return f"ctx:{usage.total_tokens}/?"
-    return f"ctx:{usage.total_tokens}/{usage.max_context_tokens}"
+        return f"last:{usage.total_tokens}/?"
+    return f"last:{usage.total_tokens}/{usage.max_context_tokens}"
 
 
 def _format_session_total_for_status(usage: UsageSnapshot | None) -> str:
     if usage is None or usage.total_tokens is None:
-        return "sum:-"
-    return f"sum:{usage.total_tokens}"
+        return "usage:-"
+    return f"usage:{usage.total_tokens}"
 
 
 def _status_phase_label(snapshot: SessionStatusSnapshot) -> str:
@@ -233,6 +246,12 @@ def _repl_status_line(session: MistralSession, repl_state: _ReplState) -> str:
         parts.append(f"img:{len(repl_state.active_images)}")
     if repl_state.active_documents:
         parts.append(f"doc:{len(repl_state.active_documents)}")
+    parts.append(
+        _format_estimated_context_for_status(
+            snapshot.estimated_context,
+            conversations_enabled=session.conversations.enabled,
+        )
+    )
     parts.append(_format_usage_for_status(snapshot.last_usage))
     parts.append(_format_session_total_for_status(snapshot.cumulative_usage))
     return " | ".join(parts)

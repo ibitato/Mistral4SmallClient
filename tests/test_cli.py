@@ -55,6 +55,7 @@ from mistral4cli.session import (
 )
 from mistral4cli.ui import (
     CLEAR_SCREEN,
+    CYAN,
     GREEN,
     ORANGE,
     RESET,
@@ -2086,6 +2087,90 @@ def test_smart_output_writer_preserves_fenced_code_blocks(monkeypatch: Any) -> N
     assert rendered == "```python\nvery_long_identifier = another_identifier\n```\n"
 
 
+def test_smart_output_writer_colors_fenced_code_blocks_in_tty(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+    writer = SmartOutputWriter(
+        stream=output,
+        literal_style=lambda text, active_stream: f"{CYAN}{text}{RESET}",
+    )
+
+    rendered = writer.feed("```python\nprint('ok')\n```\n")
+
+    assert f"{CYAN}```python{RESET}" in rendered
+    assert f"{CYAN}print('ok'){RESET}" in rendered
+    assert f"{CYAN}```{RESET}" in rendered
+
+
+def test_interactive_tty_renderer_keeps_prose_plain_and_colors_code(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=lambda: "answering | local | model | est:- | last:- | usage:-",
+    )
+
+    renderer.write_answer("Before\n```python\nprint('ok')\n```\nAfter")
+    renderer.finalize_output()
+
+    rendered = output.getvalue()
+    plain = ANSI_ESCAPE_RE.sub("", rendered)
+    assert "Before" in plain
+    assert "After" in plain
+    assert "```python" in plain
+    assert f"{CYAN}```python" in rendered
+    assert f"{CYAN}print('ok')" in rendered
+
+
+def test_smart_output_writer_can_render_markdown_rule_in_tty(
+    monkeypatch: Any,
+) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+    writer = SmartOutputWriter(
+        stream=output,
+        markdown_rule_style=lambda text, active_stream: f"{ORANGE}{text}{RESET}",
+        render_markdown_rules=True,
+    )
+    monkeypatch.setattr(
+        "mistral4cli.ui.shutil.get_terminal_size",
+        lambda: os.terminal_size((20, 24)),
+    )
+
+    rendered = writer.feed("Before\n---\nAfter\n")
+    plain = ANSI_ESCAPE_RE.sub("", rendered)
+
+    assert "Before" in plain
+    assert "After" in plain
+    assert "\n-------------------\n" in plain
+    assert f"{ORANGE}-------------------{RESET}" in rendered
+
+
+def test_markdown_rule_is_not_rendered_inside_fence(monkeypatch: Any) -> None:
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.setenv("TERM", "xterm-256color")
+    output = FakeTTYOutput()
+    writer = SmartOutputWriter(
+        stream=output,
+        literal_style=lambda text, active_stream: f"{CYAN}{text}{RESET}",
+        markdown_rule_style=lambda text, active_stream: f"{ORANGE}{text}{RESET}",
+        render_markdown_rules=True,
+    )
+
+    rendered = writer.feed("```md\n---\n```\n")
+    plain = ANSI_ESCAPE_RE.sub("", rendered)
+
+    assert "---" in plain
+    assert "-------------------" not in plain
+
+
 def test_iter_typewriter_chunks_preserves_ansi_sequences_and_newlines() -> None:
     text = f"{ORANGE}hola{RESET}\nmundo"
 
@@ -2100,7 +2185,9 @@ def test_renderer_typewriter_batches_multichunk_answer(monkeypatch: Any) -> None
     output = FakeTTYOutput()
     renderer = InteractiveTTYRenderer(
         stream=output,
-        status_provider=lambda: "answering | local | model | ctx:- | sum:-",
+        status_provider=(
+            lambda: "answering | local | model | est:- | last:- | usage:-"
+        ),
     )
     pauses: list[float] = []
     monkeypatch.setattr("mistral4cli.ui.ANSWER_TYPEWRITER_VISIBLE_CHARS", 4)
@@ -2118,7 +2205,9 @@ def test_renderer_typewriter_skips_pause_after_newline(monkeypatch: Any) -> None
     output = FakeTTYOutput()
     renderer = InteractiveTTYRenderer(
         stream=output,
-        status_provider=lambda: "answering | local | model | ctx:- | sum:-",
+        status_provider=(
+            lambda: "answering | local | model | est:- | last:- | usage:-"
+        ),
     )
     pauses: list[float] = []
     monkeypatch.setattr("mistral4cli.ui.ANSWER_TYPEWRITER_VISIBLE_CHARS", 4)
@@ -2166,12 +2255,37 @@ def test_repl_status_line_shows_phase_attachments_and_usage() -> None:
 
     session.send("Return only ok.", stream=False)
 
+    context_status = session.context_status()
     rendered = _repl_status_line(session, repl_state)
     assert "done" in rendered
     assert "stage:document" in rendered
     assert "img:1" in rendered
-    assert "ctx:18/256000" in rendered
-    assert "sum:18" in rendered
+    assert (
+        f"est:{context_status.estimated_tokens}/{context_status.window_tokens}"
+        in rendered
+    )
+    assert "last:18/256000" in rendered
+    assert "usage:18" in rendered
+
+
+def test_repl_status_line_marks_conversations_context_as_backend_managed() -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(),
+        conversations=ConversationConfig(enabled=True, store=True),
+        stdout=output,
+    )
+
+    rendered = _repl_status_line(session, _ReplState())
+
+    assert "conv:on" in rendered
+    assert "est:backend" in rendered
+    assert "last:-" in rendered
+    assert "usage:-" in rendered
 
 
 def test_status_bar_leaves_one_column_to_avoid_terminal_autowrap(
@@ -2180,7 +2294,9 @@ def test_status_bar_leaves_one_column_to_avoid_terminal_autowrap(
     output = FakeTTYOutput()
     renderer = InteractiveTTYRenderer(
         stream=output,
-        status_provider=lambda: "idle | local | model | reasoning:on | ctx:- | sum:-",
+        status_provider=(
+            lambda: "idle | local | model | reasoning:on | est:- | last:- | usage:-"
+        ),
     )
     monkeypatch.setattr(
         "mistral4cli.ui.shutil.get_terminal_size",
@@ -2201,7 +2317,9 @@ def test_render_input_omits_status_bar_while_user_is_typing(
     output = FakeTTYOutput()
     renderer = InteractiveTTYRenderer(
         stream=output,
-        status_provider=lambda: "thinking... | local | model | ctx:- | sum:-",
+        status_provider=(
+            lambda: ("thinking... | local | model | est:- | last:- | usage:-")
+        ),
     )
     monkeypatch.setattr(
         "mistral4cli.ui.shutil.get_terminal_size",
@@ -2229,7 +2347,9 @@ def test_renderer_flushes_pending_reasoning_before_answer(
     )
     renderer = InteractiveTTYRenderer(
         stream=output,
-        status_provider=lambda: "answering | local | model | ctx:- | sum:-",
+        status_provider=(
+            lambda: "answering | local | model | est:- | last:- | usage:-"
+        ),
     )
     session.answer_writer = renderer.write_answer
     session.reasoning_writer = renderer.write_reasoning

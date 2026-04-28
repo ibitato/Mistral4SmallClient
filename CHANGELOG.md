@@ -4,6 +4,40 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.8 - 2026-04-28
+
+### Added
+
+- TTY Markdown-lite rendering now converts standalone horizontal rules such as
+  `---`, `***`, and `___` into real terminal divider lines outside fenced code
+  blocks.
+
+## 1.5.7 - 2026-04-28
+
+### Added
+
+- TTY answer rendering now highlights fenced code blocks and other literal code
+  lines in a dedicated cyan code style so source snippets stand out from normal
+  assistant prose.
+
+## 1.5.6 - 2026-04-28
+
+### Changed
+
+- The interactive status line now separates the live client-side context
+  estimate from backend-reported token accounting. `est:` shows the current
+  prompt estimate for non-Conversations chat sessions, `last:` shows the most
+  recent backend `usage.total_tokens`, and `usage:` shows the cumulative
+  backend-reported usage when available.
+- Conversations status lines now mark context estimation as `est:backend`
+  instead of implying that the CLI can measure the remote server-side context.
+
+### Fixed
+
+- Local streaming sessions no longer make the rightmost status counter look
+  frozen when `llama.cpp` skips `usage` updates. The growing context is now
+  visible through the cached `est:` value.
+
 ## 1.5.5 - 2026-04-28
 
 ### Added

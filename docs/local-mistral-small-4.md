@@ -97,10 +97,25 @@ TTY usability details:
 - the prompt is rendered as a retro green `M4S>` composer in TTY sessions
 - long prompts wrap in the interactive composer instead of overflowing one line
 - a bottom status bar appears during active turns and shows phase, backend,
-  attachments, and token usage
+  attachments, the cached context estimate, and backend token accounting
+- fenced code blocks are tinted in a dedicated cyan code style so generated
+  source snippets are easier to scan than surrounding prose
+- standalone Markdown separators such as `---` render as real divider lines
+  outside fenced code blocks
 - assistant reasoning and answer text stream with a fast typewriter-style
   cadence in TTY mode
 - assistant prose wraps cleanly without splitting words in the middle
+
+Status bar token fields:
+
+- `est:` is the CLI's current client-side estimate of the prompt/context size
+- `last:` is the most recent backend `usage.total_tokens`
+- `usage:` is the cumulative backend-reported usage for the session
+
+Because local streaming through `llama.cpp` can skip `usage` in some events,
+`last:` and `usage:` are not guaranteed to move on every turn. `est:` is the
+field to watch when you want to know whether the live local context is still
+growing.
 
 FireCrawl MCP is configured in [`mcp.json`](../mcp.json) and loaded
 automatically when present. The checked-in config expands

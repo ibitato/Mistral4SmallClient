@@ -21,6 +21,7 @@ from mistral4cli.local_mistral import (
 
 GREEN = "\x1b[38;5;82m"
 ORANGE = "\x1b[38;5;208m"
+CYAN = "\x1b[38;5;117m"
 RESET = "\x1b[0m"
 BOLD = "\x1b[1m"
 DIM = "\x1b[2m"
@@ -40,6 +41,7 @@ ASCII_BANNER = (
 )
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+MARKDOWN_RULE_RE = re.compile(r"^(?:-\s*){3,}$|^(?:\*\s*){3,}$|^(?:_\s*){3,}$")
 PROMPT_CONTINUATION_PREFIX = "... "
 ANSWER_TYPEWRITER_VISIBLE_CHARS = 8
 ANSWER_TYPEWRITER_PAUSE_S = 0.018
@@ -94,6 +96,18 @@ def _paint_reasoning(text: str, stream: TextIO) -> str:
     if not _supports_color(stream):
         return text
     return f"{DIM}{ITALIC}{ORANGE}{text}{RESET}"
+
+
+def _paint_code(text: str, stream: TextIO) -> str:
+    if not _supports_color(stream):
+        return text
+    return f"{BOLD}{CYAN}{text}{RESET}"
+
+
+def _paint_divider(text: str, stream: TextIO) -> str:
+    if not _supports_color(stream):
+        return text
+    return f"{DIM}{ORANGE}{text}{RESET}"
 
 
 def _paint_prompt(text: str, stream: TextIO) -> str:
@@ -261,12 +275,19 @@ def _wrap_prose_line(text: str, *, width: int) -> list[str]:
     return wrapped or [text]
 
 
+def _looks_like_markdown_rule(text: str) -> bool:
+    return bool(MARKDOWN_RULE_RE.fullmatch(text.strip()))
+
+
 @dataclass(slots=True)
 class SmartOutputWriter:
     """Incremental terminal writer that wraps normal prose safely."""
 
     stream: TextIO
     style: Callable[[str, TextIO], str] | None = None
+    literal_style: Callable[[str, TextIO], str] | None = None
+    markdown_rule_style: Callable[[str, TextIO], str] | None = None
+    render_markdown_rules: bool = False
     _pending: str = ""
     _in_fence: bool = False
 
@@ -295,6 +316,12 @@ class SmartOutputWriter:
 
     def _render_complete_line(self, line: str) -> list[str]:
         stripped = line.strip()
+        if (
+            self.render_markdown_rules
+            and not self._in_fence
+            and _looks_like_markdown_rule(line)
+        ):
+            return [self._style_markdown_rule()]
         literal = self._in_fence or _looks_like_literal_line(line)
         rendered_lines = (
             [line]
@@ -306,7 +333,7 @@ class SmartOutputWriter:
         )
         if stripped.startswith("```"):
             self._in_fence = not self._in_fence
-        return [self._style_line(item) for item in rendered_lines]
+        return [self._style_line(item, literal=literal) for item in rendered_lines]
 
     def _emit_soft_wraps(self) -> list[str]:
         if (
@@ -337,10 +364,21 @@ class SmartOutputWriter:
             return None
         return whitespace_positions[-1] + 1
 
-    def _style_line(self, text: str) -> str:
-        if self.style is None or not text:
+    def _style_line(self, text: str, *, literal: bool = False) -> str:
+        if not text:
+            return text
+        if literal and self.literal_style is not None:
+            return self.literal_style(text, self.stream)
+        if self.style is None:
             return text
         return self.style(text, self.stream)
+
+    def _style_markdown_rule(self) -> str:
+        width = max(3, _terminal_width(self.stream, minimum=20) - 1)
+        line = "-" * width
+        if self.markdown_rule_style is None:
+            return line
+        return self.markdown_rule_style(line, self.stream)
 
 
 @dataclass(slots=True)
@@ -354,7 +392,14 @@ class InteractiveTTYRenderer:
     _overlay_lines: int = 0
 
     def __post_init__(self) -> None:
-        self.answer_writer = SmartOutputWriter(stream=self.stream)
+        self.answer_writer = SmartOutputWriter(
+            stream=self.stream,
+            literal_style=lambda text, active_stream: _paint_code(text, active_stream),
+            markdown_rule_style=lambda text, active_stream: _paint_divider(
+                text, active_stream
+            ),
+            render_markdown_rules=True,
+        )
         self.reasoning_writer = SmartOutputWriter(
             stream=self.stream,
             style=lambda text, active_stream: _paint_reasoning(text, active_stream),

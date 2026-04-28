@@ -80,7 +80,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.5.5` also trigger a GitHub Actions release build that
+Version tags such as `v1.5.8` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -128,7 +128,11 @@ Interactive TTY behavior:
 - the prompt is rendered as a retro green `M4S>` composer in TTY sessions
 - long prompts wrap in the composer instead of overflowing one raw line
 - a bottom status bar appears during active turns and shows live phase, backend,
-  attachments, and token usage
+  attachments, live context estimate, and backend token accounting
+- fenced code blocks in assistant answers are highlighted in a dedicated cyan
+  code style so snippets stand out from normal prose
+- standalone Markdown separators such as `---` are rendered as terminal divider
+  lines outside code fences
 - assistant reasoning and answer text stream with a fast typewriter-style
   cadence in TTY mode
 - assistant prose wraps cleanly without splitting words in the middle

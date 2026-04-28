@@ -242,6 +242,7 @@ class SessionStatusSnapshot:
 
     phase: str
     detail: str | None
+    estimated_context: ContextStatus | None
     last_usage: UsageSnapshot | None
     cumulative_usage: UsageSnapshot | None
 
@@ -523,6 +524,12 @@ class MistralSession:
         repr=False,
         default=None,
     )
+    _cached_context_status: ContextStatus | None = field(
+        init=False,
+        repr=False,
+        default=None,
+    )
+    _context_status_dirty: bool = field(init=False, repr=False, default=True)
     _missing_reasoning_notice_shown: bool = field(
         init=False,
         repr=False,
@@ -565,6 +572,7 @@ class MistralSession:
         """Reset the conversation to the system prompt."""
 
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        self._mark_context_status_dirty()
         self.conversation_id = None
         self.conversation_resume_source = "new"
         self._missing_reasoning_notice_shown = False
@@ -825,6 +833,7 @@ class MistralSession:
             raise ValueError("Conversation id cannot be empty.")
         payload = self.client.beta.conversations.get(conversation_id=normalized_id)
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        self._mark_context_status_dirty()
         self._sync_conversation_id(
             normalized_id,
             source=source,
@@ -979,6 +988,7 @@ class MistralSession:
             self.conversation_id = None
             self.conversation_resume_source = "new"
             self.messages = [{"role": "system", "content": self.system_prompt}]
+            self._mark_context_status_dirty()
         return f"Deleted conversation {target_id}."
 
     def restart_remote_conversation(
@@ -1010,6 +1020,7 @@ class MistralSession:
         if not new_id:
             raise RuntimeError("Restart returned no conversation id.")
         self.messages = [{"role": "system", "content": self.system_prompt}]
+        self._mark_context_status_dirty()
         self._sync_conversation_id(
             new_id,
             source="restart",
@@ -1085,6 +1096,11 @@ class MistralSession:
     def context_status(self) -> ContextStatus:
         """Return the current estimated context state for chat completions."""
 
+        return self._compute_context_status()
+
+    def _compute_context_status(self) -> ContextStatus:
+        """Compute a fresh client-side estimate for the current chat history."""
+
         window_tokens = self._model_context_window() or self.context.local_window_tokens
         threshold_tokens = int(window_tokens * self.context.threshold)
         reserve_tokens = self._effective_context_reserve()
@@ -1139,6 +1155,7 @@ class MistralSession:
                 else keep_recent_turns
             ),
         ).normalized()
+        self._mark_context_status_dirty()
 
     def estimate_context_tokens(
         self,
@@ -1203,6 +1220,7 @@ class MistralSession:
             },
             *recent_messages,
         ]
+        self._mark_context_status_dirty()
         after_tokens = self.estimate_context_tokens(self.messages)
         logger.info(
             "Context compacted before_tokens=%s after_tokens=%s window=%s",
@@ -1270,6 +1288,7 @@ class MistralSession:
         """Return the current live status for interactive UI rendering."""
 
         max_context_tokens = self._model_context_window()
+        estimated_context = self._status_context_snapshot()
         last_usage = self._with_context_window(self._last_usage, max_context_tokens)
         combined_cumulative = self._cumulative_usage
         if self._turn_usage_accumulator is not None:
@@ -1282,6 +1301,7 @@ class MistralSession:
         return SessionStatusSnapshot(
             phase=self._status_phase,
             detail=self._status_detail,
+            estimated_context=estimated_context,
             last_usage=last_usage,
             cumulative_usage=cumulative_usage,
         )
@@ -1318,6 +1338,7 @@ class MistralSession:
 
         message_start = len(self.messages)
         self.messages.append({"role": "user", "content": normalized})
+        self._mark_context_status_dirty()
         self._last_usage = None
         self._turn_usage_accumulator = None
         self._set_status("thinking")
@@ -1420,6 +1441,7 @@ class MistralSession:
                                     ),
                                 )
                             )
+                            self._mark_context_status_dirty()
                             self._print(
                                 "[error] repeated identical tool call blocked\n"
                             )
@@ -1446,6 +1468,7 @@ class MistralSession:
                             result.structured_content is not None,
                         )
                     self.messages.append(self._tool_message(call=call, result=result))
+                    self._mark_context_status_dirty()
                 tool_rounds_executed += 1
 
             if tool_rounds_executed > 0:
@@ -1505,6 +1528,7 @@ class MistralSession:
     ) -> TurnResult:
         message_start = len(self.messages)
         self.messages.append({"role": "user", "content": content})
+        self._mark_context_status_dirty()
         self._last_usage = None
         self._turn_usage_accumulator = None
         self._set_status("thinking")
@@ -1572,6 +1596,7 @@ class MistralSession:
                             self.messages.append(
                                 self._tool_message(call=call, result=result)
                             )
+                            self._mark_context_status_dirty()
                             self._print(
                                 "[error] repeated identical tool call blocked\n"
                             )
@@ -1587,6 +1612,7 @@ class MistralSession:
                         result = self._call_tool_bridge(name, arguments)
                         self._set_status("thinking")
                     self.messages.append(self._tool_message(call=call, result=result))
+                    self._mark_context_status_dirty()
                     tool_inputs.append(
                         {
                             "type": "function.result",
@@ -2034,6 +2060,7 @@ class MistralSession:
 
     def _rollback_to(self, message_count: int) -> None:
         self.messages = self.messages[:message_count]
+        self._mark_context_status_dirty()
 
     def _commit_assistant_message(self, turn: _ModelTurn) -> None:
         if turn.tool_calls:
@@ -2044,10 +2071,12 @@ class MistralSession:
             if turn.content:
                 assistant_message["content"] = turn.content
             self.messages.append(assistant_message)
+            self._mark_context_status_dirty()
             return
 
         if turn.content:
             self.messages.append({"role": "assistant", "content": turn.content})
+            self._mark_context_status_dirty()
             logger.info(
                 (
                     "Assistant message committed finish_reason=%s "
@@ -2914,6 +2943,17 @@ class MistralSession:
         self._turn_usage_accumulator = usage.merge(self._turn_usage_accumulator)
         if self.status_callback is not None:
             self.status_callback()
+
+    def _mark_context_status_dirty(self) -> None:
+        self._context_status_dirty = True
+
+    def _status_context_snapshot(self) -> ContextStatus | None:
+        if self.conversations.enabled:
+            return None
+        if self._context_status_dirty or self._cached_context_status is None:
+            self._cached_context_status = self._compute_context_status()
+            self._context_status_dirty = False
+        return self._cached_context_status
 
     def _model_context_window(self) -> int | None:
         if self.backend_kind is not BackendKind.REMOTE:

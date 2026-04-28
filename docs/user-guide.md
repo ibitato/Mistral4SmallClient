@@ -103,6 +103,24 @@ configuration:
 
 Use this output first when debugging a surprising runtime behavior.
 
+During active turns, the bottom TTY status bar exposes three different token
+signals:
+
+- `est:` is the CLI's cached estimate of the current prompt/context size for
+  normal chat-completions mode
+- `last:` is the backend-reported `usage.total_tokens` for the most recent turn
+- `usage:` is the cumulative backend-reported usage for the current session
+
+In local streaming mode, `llama.cpp` may omit `usage` on some turns. When that
+happens, `last:` and `usage:` may stay flat while `est:` continues to grow.
+
+TTY rendering also distinguishes source snippets from prose: fenced code blocks
+are shown in a dedicated cyan code style instead of the normal assistant text
+color.
+
+Standalone Markdown separators such as `---`, `***`, and `___` are rendered as
+real terminal divider lines outside fenced code blocks.
+
 ## Basic REPL Commands
 
 Common commands:
