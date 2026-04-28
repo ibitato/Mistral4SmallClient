@@ -79,7 +79,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.4.1` also trigger a GitHub Actions release build that
+Version tags such as `v1.5.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -115,7 +115,7 @@ Inside the REPL:
 - `/image` to pick and analyze images in the terminal
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
-- `/conv on|off|new|id|history|messages|delete` to use Mistral Cloud Conversations
+- `/conv ...` to manage Mistral Cloud Conversations and local bookmarks
 - `/reasoning [on|off|toggle]` to request or suppress visible reasoning
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` to manage context
 - `/reset`, `/system ...`, `/exit`
@@ -168,10 +168,32 @@ Remote mode requirements:
 - optional Conversations mode uses `client.beta.conversations` and is off by default
 - `--conversations` starts in Conversations mode; `--conversation-store on|off`
   controls server-side persistence and defaults to `on`
+- `--conversation-resume {last,new,prompt}` controls whether Conversations mode
+  resumes the last known stored remote conversation; the default is `last`
+- `--conversation-name`, `--conversation-description`, and repeated
+  `--conversation-meta KEY=VALUE` set pending metadata for the next remote
+  conversation start
 - `--reasoning` and `--no-reasoning` control whether visible reasoning is requested
 - `store=off` runs stateless one-shot Conversation calls, so it does not preserve
   `conversation_id` across turns
+- the CLI keeps a local registry at `~/.local/state/mistral4cli/conversations.json`
+  (or `$XDG_STATE_HOME/...`) for aliases, tags, notes, and last-active resume state
 - the default request timeout is `300000 ms` (5 minutes)
+
+Conversations management:
+
+- `/conv on` enables Conversations mode and resumes the last stored conversation
+  when the resume policy is `last`
+- `/conv list --page 0 --size 20 --meta owner=dlopez` lists remote conversations
+- `/conv show <id>` inspects remote metadata for one conversation
+- `/conv use <id>` reattaches the current session to an existing remote conversation
+- `/conv history [id]` and `/conv messages [id]` inspect remote history
+- `/conv restart <entry_id> [id]` branches from a specific remote history entry
+- `/conv delete [id]` deletes a remote conversation
+- `/conv alias`, `/conv note`, `/conv tag`, `/conv bookmarks`, and `/conv forget`
+  manage the CLI-side local overlay
+- Mistral does not expose a remote update API for existing conversation
+  `name`/`metadata`, so aliases and bookmarks are stored locally by the CLI
 
 Context management:
 

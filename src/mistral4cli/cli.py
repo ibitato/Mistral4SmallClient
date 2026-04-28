@@ -28,6 +28,7 @@ from mistral4cli.attachments import (
     choose_paths,
     format_selection_summary,
 )
+from mistral4cli.conversation_registry import ConversationRegistry
 from mistral4cli.local_mistral import (
     DEFAULT_API_KEY,
     DEFAULT_MODEL_ID,
@@ -63,6 +64,7 @@ from mistral4cli.mcp_bridge import (
 from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralSession,
+    PendingConversationSettings,
     SessionStatusSnapshot,
     UsageSnapshot,
     render_defaults_summary,
@@ -363,6 +365,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist Mistral Conversations server-side (default: on).",
     )
     parser.add_argument(
+        "--conversation-resume",
+        choices=("last", "new", "prompt"),
+        default=None,
+        help="How Conversations mode resumes the last known remote conversation.",
+    )
+    parser.add_argument(
+        "--conversation-name",
+        default=None,
+        help="Pending remote conversation name for the next start or restart.",
+    )
+    parser.add_argument(
+        "--conversation-description",
+        default=None,
+        help="Pending remote conversation description for the next start or restart.",
+    )
+    parser.add_argument(
+        "--conversation-meta",
+        action="append",
+        default=None,
+        help="Pending remote conversation metadata pair in KEY=VALUE form.",
+    )
+    parser.add_argument(
+        "--conversation-index",
+        default=None,
+        help="Path to the persistent local conversation registry JSON file.",
+    )
+    parser.add_argument(
         "--no-auto-compact",
         dest="auto_compact",
         action="store_false",
@@ -522,9 +551,16 @@ def _resolve_conversation_config(args: argparse.Namespace) -> ConversationConfig
     config = ConversationConfig.from_env()
     enabled = config.enabled if args.conversations is None else bool(args.conversations)
     store = config.store
+    resume_policy = config.resume_policy
     if args.conversation_store is not None:
         store = args.conversation_store == "on"
-    return ConversationConfig(enabled=enabled, store=store)
+    if args.conversation_resume is not None:
+        resume_policy = args.conversation_resume
+    return ConversationConfig(
+        enabled=enabled,
+        store=store,
+        resume_policy=resume_policy,
+    )
 
 
 def _resolve_context_config(args: argparse.Namespace) -> ContextConfig:
@@ -571,6 +607,26 @@ def _resolve_context_config(args: argparse.Namespace) -> ContextConfig:
 
 def _resolve_reasoning_visibility(args: argparse.Namespace) -> bool:
     return True if args.reasoning is None else bool(args.reasoning)
+
+
+def _parse_metadata_pairs(values: Sequence[str] | None) -> dict[str, str]:
+    """Parse repeated KEY=VALUE CLI entries into a dictionary."""
+
+    parsed: dict[str, str] = {}
+    for raw_value in values or []:
+        key, separator, value = raw_value.partition("=")
+        if not separator or not key.strip():
+            raise ValueError(
+                f"Invalid metadata entry {raw_value!r}; use KEY=VALUE syntax."
+            )
+        parsed[key.strip()] = value.strip()
+    return parsed
+
+
+def _resolve_conversation_registry(args: argparse.Namespace) -> ConversationRegistry:
+    """Load the persistent local conversation registry."""
+
+    return ConversationRegistry.load(args.conversation_index)
 
 
 def _resolve_remote_mcp_bridge(
@@ -1200,6 +1256,7 @@ def _run_command(
             local_config=local_config,
             client_factory=client_factory,
             stdin=stdin,
+            input_func=input_func,
         )
     if command == "compact":
         return _run_compact_command(argument, session, stdout)
@@ -1361,15 +1418,11 @@ def _run_conversations_command(
     local_config: LocalMistralConfig | None,
     client_factory: Callable[[MistralConfig], Mistral],
     stdin: TextIO,
+    input_func: Callable[[str], str],
 ) -> bool:
-    tokens = shlex.split(argument)
-    action = tokens[0].lower() if tokens else ""
-    if not action:
-        stdout.write(session.conversations_status_text() + "\n")
-        stdout.flush()
-        return False
-
-    if action == "on":
+    def ensure_enabled(*, allow_resume: bool) -> bool:
+        if session.conversations.enabled:
+            return True
         try:
             remote_config = RemoteMistralConfig.from_env(
                 timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS)
@@ -1383,6 +1436,52 @@ def _run_conversations_command(
             model_id=remote_config.model_id,
             store=session.conversations.store,
         )
+        if allow_resume:
+            _maybe_resume_conversation(
+                session,
+                stdin=stdin,
+                stdout=stdout,
+                input_func=input_func,
+                interactive=stdin.isatty(),
+            )
+        return True
+
+    def parse_metadata_filters(
+        raw_tokens: list[str],
+    ) -> tuple[int, int, dict[str, str]]:
+        page = 0
+        page_size = 20
+        metadata: dict[str, str] = {}
+        index = 0
+        while index < len(raw_tokens):
+            token = raw_tokens[index]
+            if token == "--page" and index + 1 < len(raw_tokens):
+                page = int(raw_tokens[index + 1])
+                index += 2
+                continue
+            if token in {"--size", "--page-size"} and index + 1 < len(raw_tokens):
+                page_size = int(raw_tokens[index + 1])
+                index += 2
+                continue
+            if token == "--meta" and index + 1 < len(raw_tokens):
+                metadata.update(_parse_metadata_pairs([raw_tokens[index + 1]]))
+                index += 2
+                continue
+            raise ValueError(
+                "Usage: /conversations list [--page N] [--size N] [--meta KEY=VALUE]"
+            )
+        return page, page_size, metadata
+
+    tokens = shlex.split(argument)
+    action = tokens[0].lower() if tokens else ""
+    if not action:
+        stdout.write(session.current_conversation_text() + "\n")
+        stdout.flush()
+        return False
+
+    if action == "on":
+        if not ensure_enabled(allow_resume=True):
+            return False
         _clear_attachments(
             repl_state,
             clear_images=True,
@@ -1390,7 +1489,10 @@ def _run_conversations_command(
             clear_pending=True,
         )
         _refresh_repl_screen(stdout, session, startup=False)
-        stdout.write("Conversations enabled. Conversation reset.\n")
+        if session.conversation_id is not None:
+            stdout.write(f"Conversations enabled. Resumed {session.conversation_id}.\n")
+        else:
+            stdout.write("Conversations enabled. Conversation reset.\n")
         stdout.flush()
         return False
 
@@ -1418,6 +1520,8 @@ def _run_conversations_command(
             stdout.write("Conversations mode is off.\n")
         else:
             session.reset()
+            if session.conversation_registry is not None:
+                session.conversation_registry.clear_last_active()
             _clear_attachments(
                 repl_state,
                 clear_images=True,
@@ -1439,14 +1543,105 @@ def _run_conversations_command(
         stdout.flush()
         return False
 
+    if action in {"current", "status"}:
+        stdout.write(session.current_conversation_text() + "\n")
+        stdout.flush()
+        return False
+
     if action == "id":
         stdout.write(f"{session.conversation_id or 'No active conversation id yet.'}\n")
         stdout.flush()
         return False
 
-    if action in {"history", "messages"}:
+    if action == "list":
+        if not ensure_enabled(allow_resume=False):
+            return False
+        try:
+            page, page_size, metadata = parse_metadata_filters(tokens[1:])
+            text = session.list_remote_conversations(
+                page=page,
+                page_size=page_size,
+                metadata=metadata,
+            )
+        except Exception as exc:
+            stdout.write(f"[conversations] {exc}\n")
+            stdout.flush()
+            return False
         _print_paginated_text(
-            text=session.conversation_history_text(messages_only=action == "messages"),
+            text=text,
+            stdout=stdout,
+            stdin=stdin,
+            prompt_label="conversations list",
+        )
+        return False
+
+    if action == "bookmarks":
+        _print_paginated_text(
+            text=session.list_remote_conversations(bookmarks_only=True),
+            stdout=stdout,
+            stdin=stdin,
+            prompt_label="conversations bookmarks",
+        )
+        return False
+
+    if action == "show":
+        if not ensure_enabled(allow_resume=False):
+            return False
+        try:
+            text = session.show_remote_conversation(
+                tokens[1] if len(tokens) > 1 else None
+            )
+        except Exception as exc:
+            stdout.write(f"[conversations] {exc}\n")
+            stdout.flush()
+            return False
+        _print_paginated_text(
+            text=text,
+            stdout=stdout,
+            stdin=stdin,
+            prompt_label="conversations show",
+        )
+        return False
+
+    if action == "use":
+        reference = tokens[1] if len(tokens) > 1 else ""
+        if not reference:
+            stdout.write("Usage: /conversations use <conversation_id>\n")
+            stdout.flush()
+            return False
+        if not ensure_enabled(allow_resume=False):
+            return False
+        try:
+            rendered = session.attach_remote_conversation(reference, source="manual")
+        except Exception as exc:
+            stdout.write(f"[conversations] {exc}\n")
+            stdout.flush()
+            return False
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        _refresh_repl_screen(stdout, session, startup=False)
+        stdout.write(rendered + "\n")
+        stdout.flush()
+        return False
+
+    if action in {"history", "messages"}:
+        if not ensure_enabled(allow_resume=False):
+            return False
+        try:
+            text = session.conversation_history_text(
+                messages_only=action == "messages",
+                conversation_id=tokens[1] if len(tokens) > 1 else None,
+            )
+        except Exception as exc:
+            stdout.write(f"[conversations] {exc}\n")
+            stdout.flush()
+            return False
+        _print_paginated_text(
+            text=text,
             stdout=stdout,
             stdin=stdin,
             prompt_label=f"conversations {action}",
@@ -1455,18 +1650,226 @@ def _run_conversations_command(
 
     if action == "delete":
         try:
-            stdout.write(session.delete_active_conversation() + "\n")
+            rendered = session.delete_remote_conversation(
+                tokens[1] if len(tokens) > 1 else None
+            )
         except Exception as exc:
             stdout.write(f"[conversations] delete failed: {exc}\n")
+            stdout.flush()
+            return False
+        _refresh_repl_screen(stdout, session, startup=False)
+        stdout.write(rendered + "\n")
+        stdout.flush()
+        return False
+
+    if action == "restart":
+        from_entry_id = tokens[1] if len(tokens) > 1 else ""
+        restart_reference: str | None = tokens[2] if len(tokens) > 2 else None
+        if not from_entry_id:
+            stdout.write("Usage: /conversations restart <entry_id> [conversation_id]\n")
+            stdout.flush()
+            return False
+        if not ensure_enabled(allow_resume=False):
+            return False
+        try:
+            rendered = session.restart_remote_conversation(
+                from_entry_id=from_entry_id,
+                conversation_id=restart_reference,
+            )
+        except Exception as exc:
+            stdout.write(f"[conversations] restart failed: {exc}\n")
+            stdout.flush()
+            return False
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        _refresh_repl_screen(stdout, session, startup=False)
+        stdout.write(rendered + "\n")
+        stdout.flush()
+        return False
+
+    if action == "set":
+        field = tokens[1].lower() if len(tokens) > 1 else ""
+        if field == "name" and len(tokens) > 2:
+            session.set_pending_conversation_name(" ".join(tokens[2:]))
+            stdout.write("Pending conversation name updated.\n")
+        elif field == "description" and len(tokens) > 2:
+            session.set_pending_conversation_description(" ".join(tokens[2:]))
+            stdout.write("Pending conversation description updated.\n")
+        elif field == "meta" and len(tokens) > 2:
+            try:
+                metadata = _parse_metadata_pairs(tokens[2:])
+            except ValueError as exc:
+                stdout.write(f"[conversations] {exc}\n")
+            else:
+                for key, value in metadata.items():
+                    session.set_pending_conversation_metadata(key, value)
+                stdout.write("Pending conversation metadata updated.\n")
+        else:
+            stdout.write(
+                "Usage: /conversations set "
+                "[name TEXT|description TEXT|meta KEY=VALUE ...]\n"
+            )
+        stdout.flush()
+        return False
+
+    if action == "unset":
+        field = tokens[1].lower() if len(tokens) > 1 else ""
+        if field == "name":
+            session.clear_pending_conversation_name()
+            stdout.write("Pending conversation name cleared.\n")
+        elif field == "description":
+            session.clear_pending_conversation_description()
+            stdout.write("Pending conversation description cleared.\n")
+        elif field == "meta":
+            if len(tokens) > 2:
+                session.clear_pending_conversation_metadata(tokens[2])
+                stdout.write(f"Pending conversation metadata {tokens[2]} cleared.\n")
+            else:
+                session.clear_pending_conversation_metadata()
+                stdout.write("Pending conversation metadata cleared.\n")
+        elif field == "all":
+            session.clear_pending_conversation_name()
+            session.clear_pending_conversation_description()
+            session.clear_pending_conversation_metadata()
+            stdout.write("All pending conversation settings cleared.\n")
+        else:
+            stdout.write(
+                "Usage: /conversations unset [name|description|meta <key>|all]\n"
+            )
+        stdout.flush()
+        return False
+
+    if action == "alias":
+        if len(tokens) < 3:
+            stdout.write("Usage: /conversations alias <conversation_id> <text>\n")
+        else:
+            try:
+                stdout.write(
+                    session.set_local_conversation_alias(
+                        tokens[1],
+                        " ".join(tokens[2:]),
+                    )
+                    + "\n"
+                )
+            except Exception as exc:
+                stdout.write(f"[conversations] {exc}\n")
+        stdout.flush()
+        return False
+
+    if action == "note":
+        if len(tokens) < 3:
+            stdout.write("Usage: /conversations note <conversation_id> <text>\n")
+        else:
+            try:
+                stdout.write(
+                    session.set_local_conversation_note(
+                        tokens[1],
+                        " ".join(tokens[2:]),
+                    )
+                    + "\n"
+                )
+            except Exception as exc:
+                stdout.write(f"[conversations] {exc}\n")
+        stdout.flush()
+        return False
+
+    if action == "tag":
+        mode = tokens[1].lower() if len(tokens) > 1 else ""
+        if mode not in {"add", "remove"} or len(tokens) < 4:
+            stdout.write(
+                "Usage: /conversations tag [add|remove] <conversation_id> <tag>\n"
+            )
+            stdout.flush()
+            return False
+        try:
+            if mode == "add":
+                rendered = session.add_local_conversation_tag(tokens[2], tokens[3])
+            else:
+                rendered = session.remove_local_conversation_tag(tokens[2], tokens[3])
+            stdout.write(rendered + "\n")
+        except Exception as exc:
+            stdout.write(f"[conversations] {exc}\n")
+        stdout.flush()
+        return False
+
+    if action == "forget":
+        if len(tokens) < 2:
+            stdout.write("Usage: /conversations forget <conversation_id>\n")
+            stdout.flush()
+            return False
+        try:
+            stdout.write(session.forget_local_conversation(tokens[1]) + "\n")
+        except Exception as exc:
+            stdout.write(f"[conversations] {exc}\n")
         stdout.flush()
         return False
 
     stdout.write(
         "Usage: /conversations "
-        "[on|off|new|store on|store off|id|history|messages|delete]\n"
+        "[on|off|new|store on|store off|current|id|list|bookmarks|show|use|"
+        "history|messages|delete|restart|set|unset|alias|note|tag|forget]\n"
     )
     stdout.flush()
     return False
+
+
+def _maybe_resume_conversation(
+    session: MistralSession,
+    *,
+    stdin: TextIO,
+    stdout: TextIO,
+    input_func: Callable[[str], str],
+    interactive: bool,
+) -> None:
+    """Resume the last known stored conversation when configured to do so."""
+
+    if not session.conversations.enabled or not session.conversations.store:
+        return
+    registry = session.conversation_registry
+    if registry is None or not registry.last_active_conversation_id:
+        return
+    if session.conversation_id:
+        return
+
+    should_resume = False
+    policy = session.conversations.resume_policy
+    if policy == "last":
+        should_resume = True
+    elif policy == "prompt" and interactive:
+        try:
+            answer = input_func(
+                "Resume the last Mistral Conversation "
+                f"({registry.last_active_conversation_id})? [Y/n] "
+            )
+        except EOFError:
+            answer = "n"
+        should_resume = answer.strip().lower() not in {"n", "no"}
+
+    if not should_resume:
+        return
+
+    try:
+        session.attach_remote_conversation(
+            registry.last_active_conversation_id,
+            source="resume",
+        )
+    except Exception as exc:
+        logger.warning(
+            "Could not resume conversation id=%s error=%s",
+            registry.last_active_conversation_id,
+            exc,
+        )
+        registry.clear_last_active(registry.last_active_conversation_id)
+        if interactive:
+            stdout.write(
+                "[conversations] Could not resume the last conversation; "
+                "starting a new one instead.\n"
+            )
+            stdout.flush()
 
 
 def _run_compact_command(
@@ -1807,6 +2210,8 @@ def _build_session(
     logging_summary: str,
     conversations: ConversationConfig,
     context: ContextConfig,
+    conversation_registry: ConversationRegistry,
+    pending_conversation: PendingConversationSettings,
 ) -> MistralSession:
     logger.debug(
         "Building session backend=%s model=%s stream=%s",
@@ -1827,7 +2232,9 @@ def _build_session(
         show_reasoning=reasoning_visible,
         logging_summary=logging_summary,
         context=context,
+        conversation_registry=conversation_registry,
     )
+    session.pending_conversation = pending_conversation
     if conversations.enabled:
         remote_config = RemoteMistralConfig.from_env(timeout_ms=config.timeout_ms)
         session.enable_conversations(
@@ -1835,6 +2242,7 @@ def _build_session(
             model_id=remote_config.model_id,
             store=conversations.store,
         )
+        session.apply_conversation_resume_policy(conversations.resume_policy)
     else:
         session.conversations = conversations
     return session
@@ -1869,6 +2277,17 @@ def main(
     conversations = _resolve_conversation_config(args)
     context = _resolve_context_config(args)
     reasoning_visible = _resolve_reasoning_visibility(args)
+    try:
+        pending_conversation = PendingConversationSettings(
+            name=(args.conversation_name or "").strip(),
+            description=(args.conversation_description or "").strip(),
+            metadata=_parse_metadata_pairs(args.conversation_meta),
+        )
+    except ValueError as exc:
+        stderr.write(f"[conversations] {exc}\n")
+        stderr.flush()
+        return 1
+    conversation_registry = _resolve_conversation_registry(args)
     tool_bridge = _build_tool_bridge(args, stderr)
     logging_summary = render_logging_summary(logging_config)
 
@@ -1916,6 +2335,15 @@ def main(
             logging_summary=logging_summary,
             conversations=conversations,
             context=context,
+            conversation_registry=conversation_registry,
+            pending_conversation=pending_conversation,
+        )
+        _maybe_resume_conversation(
+            session,
+            stdin=stdin,
+            stdout=stdout,
+            input_func=input_func,
+            interactive=False,
         )
         session.send(args.once, stream=stream)
         return 0
@@ -1935,6 +2363,15 @@ def main(
                 logging_summary=logging_summary,
                 conversations=conversations,
                 context=context,
+                conversation_registry=conversation_registry,
+                pending_conversation=pending_conversation,
+            )
+            _maybe_resume_conversation(
+                session,
+                stdin=stdin,
+                stdout=stdout,
+                input_func=input_func,
+                interactive=False,
             )
             session.send(piped_prompt, stream=stream)
         return 0
@@ -1951,6 +2388,15 @@ def main(
         logging_summary=logging_summary,
         conversations=conversations,
         context=context,
+        conversation_registry=conversation_registry,
+        pending_conversation=pending_conversation,
+    )
+    _maybe_resume_conversation(
+        session,
+        stdin=stdin,
+        stdout=stdout,
+        input_func=input_func,
+        interactive=stdin.isatty(),
     )
     return _run_repl(
         session,

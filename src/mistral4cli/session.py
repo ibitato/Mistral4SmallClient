@@ -12,6 +12,7 @@ from urllib.request import Request, urlopen
 
 from mistralai.client import Mistral
 
+from mistral4cli.conversation_registry import ConversationRecord, ConversationRegistry
 from mistral4cli.local_mistral import (
     DEFAULT_MODEL_ID,
     DEFAULT_SERVER_URL,
@@ -243,6 +244,20 @@ class SessionStatusSnapshot:
     detail: str | None
     last_usage: UsageSnapshot | None
     cumulative_usage: UsageSnapshot | None
+
+
+@dataclass(frozen=True, slots=True)
+class PendingConversationSettings:
+    """Pending remote conversation settings for the next start or restart."""
+
+    name: str = ""
+    description: str = ""
+    metadata: dict[str, str] = field(default_factory=dict)
+
+    def active(self) -> bool:
+        """Return whether any pending setting is configured."""
+
+        return bool(self.name or self.description or self.metadata)
 
 
 @dataclass(frozen=True, slots=True)
@@ -489,6 +504,7 @@ class MistralSession:
     context: ContextConfig = field(default_factory=ContextConfig)
     logging_summary: str = "debug=on level=DEBUG rotate=daily retention=2d"
     max_tool_rounds: int = 20
+    conversation_registry: ConversationRegistry | None = None
     answer_writer: Callable[[str], None] | None = None
     reasoning_writer: Callable[[str], None] | None = None
     status_callback: Callable[[], None] | None = None
@@ -513,6 +529,12 @@ class MistralSession:
         default=False,
     )
     conversation_id: str | None = field(init=False, repr=False, default=None)
+    pending_conversation: PendingConversationSettings = field(
+        init=False,
+        repr=False,
+        default_factory=PendingConversationSettings,
+    )
+    conversation_resume_source: str = field(init=False, repr=False, default="new")
     _previous_backend_state: _BackendState | None = field(
         init=False,
         repr=False,
@@ -544,6 +566,7 @@ class MistralSession:
 
         self.messages = [{"role": "system", "content": self.system_prompt}]
         self.conversation_id = None
+        self.conversation_resume_source = "new"
         self._missing_reasoning_notice_shown = False
         self._set_status("idle")
         logger.info(
@@ -639,7 +662,11 @@ class MistralSession:
         self.backend_kind = BackendKind.REMOTE
         self.model_id = model_id
         self.server_url = server_url
-        self.conversations = ConversationConfig(enabled=True, store=store)
+        self.conversations = ConversationConfig(
+            enabled=True,
+            store=store,
+            resume_policy=self.conversations.resume_policy,
+        )
         logger.info("Conversations enabled model=%s store=%s", model_id, store)
         self.reset()
 
@@ -647,7 +674,11 @@ class MistralSession:
         """Disable Conversations mode and restore the previous backend if known."""
 
         previous = self._previous_backend_state
-        self.conversations = ConversationConfig(enabled=False, store=True)
+        self.conversations = ConversationConfig(
+            enabled=False,
+            store=True,
+            resume_policy=self.conversations.resume_policy,
+        )
         self.conversation_id = None
         self._previous_backend_state = None
         self._missing_reasoning_notice_shown = False
@@ -665,6 +696,7 @@ class MistralSession:
         self.conversations = ConversationConfig(
             enabled=self.conversations.enabled,
             store=store,
+            resume_policy=self.conversations.resume_policy,
         )
         self.reset()
 
@@ -673,48 +705,360 @@ class MistralSession:
 
         state = "on" if self.conversations.enabled else "off"
         store = "on" if self.conversations.store else "off"
+        resume = self.conversations.resume_policy
         conversation_id = self.conversation_id or "not started"
-        return f"Conversations: {state} store={store} conversation_id={conversation_id}"
+        source = self.conversation_resume_source
+        return (
+            "Conversations: "
+            f"{state} store={store} resume={resume} "
+            f"source={source} conversation_id={conversation_id}"
+        )
 
-    def conversation_history_text(self, *, messages_only: bool = False) -> str:
+    def current_conversation_text(self) -> str:
+        """Render the current active conversation and pending local state."""
+
+        lines = [self.conversations_status_text()]
+        if self.conversation_registry is not None and self.conversation_id:
+            record = self.conversation_registry.get(self.conversation_id)
+            if record is not None:
+                lines.append(self._format_registry_record(record, include_note=True))
+        pending = self.pending_conversation_text()
+        if pending:
+            lines.append(pending)
+        return "\n".join(lines)
+
+    def pending_conversation_text(self) -> str:
+        """Return a compact summary of pending conversation settings."""
+
+        if not self.pending_conversation.active():
+            return ""
+        parts: list[str] = []
+        if self.pending_conversation.name:
+            parts.append(f"name={self.pending_conversation.name}")
+        if self.pending_conversation.description:
+            parts.append(f"description={self.pending_conversation.description}")
+        if self.pending_conversation.metadata:
+            metadata = ", ".join(
+                f"{key}={value}"
+                for key, value in sorted(self.pending_conversation.metadata.items())
+            )
+            parts.append(f"metadata={metadata}")
+        return "Pending conversation settings: " + " | ".join(parts)
+
+    def set_pending_conversation_name(self, value: str) -> None:
+        """Set the pending remote conversation name."""
+
+        self.pending_conversation = replace(
+            self.pending_conversation,
+            name=value.strip(),
+        )
+
+    def set_pending_conversation_description(self, value: str) -> None:
+        """Set the pending remote conversation description."""
+
+        self.pending_conversation = replace(
+            self.pending_conversation,
+            description=value.strip(),
+        )
+
+    def set_pending_conversation_metadata(self, key: str, value: str) -> None:
+        """Set one pending remote conversation metadata pair."""
+
+        normalized_key = key.strip()
+        if not normalized_key:
+            raise ValueError("Metadata key cannot be empty.")
+        metadata = dict(self.pending_conversation.metadata)
+        metadata[normalized_key] = value.strip()
+        self.pending_conversation = replace(
+            self.pending_conversation,
+            metadata=metadata,
+        )
+
+    def clear_pending_conversation_name(self) -> None:
+        """Clear the pending remote conversation name."""
+
+        self.pending_conversation = replace(self.pending_conversation, name="")
+
+    def clear_pending_conversation_description(self) -> None:
+        """Clear the pending remote conversation description."""
+
+        self.pending_conversation = replace(
+            self.pending_conversation,
+            description="",
+        )
+
+    def clear_pending_conversation_metadata(self, key: str | None = None) -> None:
+        """Clear one or all pending remote conversation metadata fields."""
+
+        if key is None:
+            metadata: dict[str, str] = {}
+        else:
+            metadata = dict(self.pending_conversation.metadata)
+            metadata.pop(key.strip(), None)
+        self.pending_conversation = replace(
+            self.pending_conversation,
+            metadata=metadata,
+        )
+
+    def apply_conversation_resume_policy(self, resume_policy: str) -> None:
+        """Update the configured startup resume policy."""
+
+        normalized = resume_policy.strip().lower()
+        if normalized not in {"last", "new", "prompt"}:
+            raise ValueError("Resume policy must be one of: last, new, prompt.")
+        self.conversations = ConversationConfig(
+            enabled=self.conversations.enabled,
+            store=self.conversations.store,
+            resume_policy=normalized,
+        )
+
+    def attach_remote_conversation(
+        self,
+        conversation_id: str,
+        *,
+        source: str = "manual",
+    ) -> str:
+        """Attach the current session to an existing remote conversation id."""
+
+        normalized_id = conversation_id.strip()
+        if not normalized_id:
+            raise ValueError("Conversation id cannot be empty.")
+        payload = self.client.beta.conversations.get(conversation_id=normalized_id)
+        self.messages = [{"role": "system", "content": self.system_prompt}]
+        self._sync_conversation_id(
+            normalized_id,
+            source=source,
+            payload=payload,
+        )
+        return f"Attached to conversation {normalized_id}."
+
+    def resolve_conversation_reference(self, reference: str | None) -> str:
+        """Resolve a user reference to a concrete remote conversation id."""
+
+        if reference is None or not reference.strip():
+            if self.conversation_id:
+                return self.conversation_id
+            raise ValueError("No active conversation id yet.")
+        normalized = reference.strip()
+        if self.conversation_registry is None:
+            return normalized
+        record = self.conversation_registry.resolve_reference(normalized)
+        if record is not None:
+            return record.conversation_id
+        return normalized
+
+    def list_remote_conversations(
+        self,
+        *,
+        page: int = 0,
+        page_size: int = 20,
+        metadata: dict[str, str] | None = None,
+        bookmarks_only: bool = False,
+    ) -> str:
+        """List remote conversations with local overlay metadata."""
+
+        if bookmarks_only:
+            if self.conversation_registry is None:
+                return "No local conversation registry is configured."
+            records = self.conversation_registry.bookmarks()
+            if not records:
+                return "No bookmarked conversations."
+            lines = ["Bookmarked conversations:"]
+            for index, record in enumerate(records, start=1):
+                lines.append(
+                    f"{index}. "
+                    f"{self._format_registry_record(record, include_note=True)}"
+                )
+            return "\n".join(lines)
+
+        payload = self.client.beta.conversations.list(
+            page=page,
+            page_size=page_size,
+            metadata=metadata if metadata else None,
+        )
+        conversations = list(payload or [])
+        if not conversations:
+            return "No remote conversations found."
+        lines = [
+            f"Remote conversations page={page} size={page_size}:",
+        ]
+        for index, conversation in enumerate(conversations, start=1):
+            conversation_id = str(_field(conversation, "id", "") or "")
+            self._update_registry_from_remote_payload(conversation_id, conversation)
+            label = self._format_remote_conversation_summary(conversation)
+            if self.conversation_id == conversation_id:
+                label = f"{label} [active]"
+            lines.append(f"{index}. {label}")
+        return "\n".join(lines)
+
+    def show_remote_conversation(self, reference: str | None = None) -> str:
+        """Render detailed information for one remote conversation."""
+
+        conversation_id = self.resolve_conversation_reference(reference)
+        payload = self.client.beta.conversations.get(conversation_id=conversation_id)
+        self._update_registry_from_remote_payload(conversation_id, payload)
+        lines = [f"Conversation {conversation_id}:"]
+        lines.extend(self._render_remote_conversation_details(payload))
+        if self.conversation_registry is not None:
+            record = self.conversation_registry.get(conversation_id)
+            if record is not None:
+                lines.append("Local registry:")
+                lines.append(self._format_registry_record(record, include_note=True))
+        return "\n".join(lines)
+
+    def conversation_history_text(
+        self,
+        *,
+        messages_only: bool = False,
+        conversation_id: str | None = None,
+    ) -> str:
         """Fetch and render the active remote Conversation history."""
 
         if not self.conversations.enabled:
             return "Conversations mode is off."
-        if not self.conversation_id:
-            return "No active conversation id yet."
+        target_id = self.resolve_conversation_reference(conversation_id)
         conversations = self.client.beta.conversations
         payload = (
-            conversations.get_messages(conversation_id=self.conversation_id)
+            conversations.get_messages(conversation_id=target_id)
             if messages_only
-            else conversations.get_history(conversation_id=self.conversation_id)
+            else conversations.get_history(conversation_id=target_id)
         )
         entries = _field(payload, "messages" if messages_only else "entries", []) or []
         if not entries:
             return "No conversation entries."
-        lines = [f"Conversation {self.conversation_id}:"]
+        lines = [f"Conversation {target_id}:"]
         for index, entry in enumerate(entries, start=1):
             entry_type = str(_field(entry, "type", "entry"))
             role = _field(entry, "role")
+            entry_id = str(_field(entry, "id", "") or "")
             label = f"{index}. {entry_type}"
             if role:
                 label = f"{label} {role}"
+            if entry_id:
+                label = f"{label} id={entry_id}"
             text = _summarize_conversation_entry(entry)
             lines.append(f"{label}: {text}" if text else label)
+        if not messages_only:
+            lines.append(
+                'Hint: use "/conv restart <entry_id>" to branch from one history entry.'
+            )
         return "\n".join(lines)
 
-    def delete_active_conversation(self) -> str:
-        """Delete the active remote Conversation and clear local state."""
+    def delete_remote_conversation(self, conversation_id: str | None = None) -> str:
+        """Delete a remote Conversation and clear local state when active."""
 
         if not self.conversations.enabled:
             return "Conversations mode is off."
-        if not self.conversation_id:
-            return "No active conversation id yet."
-        conversation_id = self.conversation_id
-        self.client.beta.conversations.delete(conversation_id=conversation_id)
-        self.conversation_id = None
+        target_id = self.resolve_conversation_reference(conversation_id)
+        self.client.beta.conversations.delete(conversation_id=target_id)
+        if self.conversation_registry is not None:
+            self.conversation_registry.mark_deleted(target_id)
+        if self.conversation_id == target_id:
+            self.conversation_id = None
+            self.conversation_resume_source = "new"
+            self.messages = [{"role": "system", "content": self.system_prompt}]
+        return f"Deleted conversation {target_id}."
+
+    def restart_remote_conversation(
+        self,
+        *,
+        from_entry_id: str,
+        conversation_id: str | None = None,
+    ) -> str:
+        """Restart a remote conversation from one entry and switch to the new id."""
+
+        target_id = self.resolve_conversation_reference(conversation_id)
+        if not from_entry_id.strip():
+            raise ValueError("Entry id cannot be empty.")
+        parent_id = target_id
+        response = self.client.beta.conversations.restart(
+            conversation_id=target_id,
+            from_entry_id=from_entry_id.strip(),
+            store=self.conversations.store,
+            completion_args=cast(Any, self._conversation_completion_args()),
+            metadata=cast(
+                Any,
+                self.pending_conversation.metadata
+                if self.pending_conversation.metadata
+                else None,
+            ),
+            inputs=None,
+        )
+        new_id = str(_field(response, "conversation_id", "") or "")
+        if not new_id:
+            raise RuntimeError("Restart returned no conversation id.")
         self.messages = [{"role": "system", "content": self.system_prompt}]
-        return f"Deleted conversation {conversation_id}."
+        self._sync_conversation_id(
+            new_id,
+            source="restart",
+            parent_conversation_id=parent_id,
+        )
+        outputs = _field(response, "outputs", []) or []
+        summary = ""
+        for output in outputs:
+            if _field(output, "type") == "message.output":
+                segments = _conversation_content_segments(_field(output, "content"))
+                answer = _join_segments(segments, kind="answer")
+                if answer:
+                    summary = answer
+                    break
+        if summary:
+            return (
+                f"Restarted from {from_entry_id.strip()}. "
+                f"Active conversation: {new_id}.\nAssistant: {summary}"
+            )
+        return f"Restarted from {from_entry_id.strip()}. Active conversation: {new_id}."
+
+    def forget_local_conversation(self, reference: str) -> str:
+        """Forget one local registry record without touching the remote object."""
+
+        if self.conversation_registry is None:
+            return "No local conversation registry is configured."
+        resolved = self.conversation_registry.resolve_reference(reference.strip())
+        conversation_id = (
+            resolved.conversation_id if resolved is not None else reference.strip()
+        )
+        if not conversation_id:
+            raise ValueError("Conversation id cannot be empty.")
+        if not self.conversation_registry.forget(conversation_id):
+            return f"No local record for conversation {conversation_id}."
+        return f"Forgot local record for conversation {conversation_id}."
+
+    def set_local_conversation_alias(self, reference: str, alias: str) -> str:
+        """Set a local alias for one conversation."""
+
+        if self.conversation_registry is None:
+            return "No local conversation registry is configured."
+        conversation_id = self.resolve_conversation_reference(reference)
+        record = self.conversation_registry.set_alias(conversation_id, alias)
+        return f"Alias for {record.conversation_id} set to {record.alias or '(empty)'}."
+
+    def set_local_conversation_note(self, reference: str, note: str) -> str:
+        """Set a local note for one conversation."""
+
+        if self.conversation_registry is None:
+            return "No local conversation registry is configured."
+        conversation_id = self.resolve_conversation_reference(reference)
+        self.conversation_registry.set_note(conversation_id, note)
+        return f"Note updated for {conversation_id}."
+
+    def add_local_conversation_tag(self, reference: str, tag: str) -> str:
+        """Add one local tag to a conversation."""
+
+        if self.conversation_registry is None:
+            return "No local conversation registry is configured."
+        conversation_id = self.resolve_conversation_reference(reference)
+        record = self.conversation_registry.add_tag(conversation_id, tag)
+        return f"Tags for {conversation_id}: {', '.join(record.tags) or '(none)'}."
+
+    def remove_local_conversation_tag(self, reference: str, tag: str) -> str:
+        """Remove one local tag from a conversation."""
+
+        if self.conversation_registry is None:
+            return "No local conversation registry is configured."
+        conversation_id = self.resolve_conversation_reference(reference)
+        record = self.conversation_registry.remove_tag(conversation_id, tag)
+        return f"Tags for {conversation_id}: {', '.join(record.tags) or '(none)'}."
 
     def context_status(self) -> ContextStatus:
         """Return the current estimated context state for chat completions."""
@@ -1285,6 +1629,12 @@ class MistralSession:
             "store": self.conversations.store,
             "completion_args": self._conversation_completion_args(),
         }
+        if self.pending_conversation.name:
+            kwargs["name"] = self.pending_conversation.name
+        if self.pending_conversation.description:
+            kwargs["description"] = self.pending_conversation.description
+        if self.pending_conversation.metadata:
+            kwargs["metadata"] = self.pending_conversation.metadata
         if tools:
             kwargs["tools"] = tools
         return kwargs
@@ -1373,7 +1723,10 @@ class MistralSession:
                     if event_name == "conversation.response.started":
                         conversation_id = _field(data, "conversation_id")
                         if conversation_id and self.conversations.store:
-                            self.conversation_id = str(conversation_id)
+                            self._sync_conversation_id(
+                                str(conversation_id),
+                                source="stream",
+                            )
                         continue
                     if event_name == "conversation.response.done":
                         usage_snapshot = _field(data, "usage", usage_snapshot)
@@ -1472,7 +1825,7 @@ class MistralSession:
     def _handle_conversation_response(self, response: Any) -> _ModelTurn:
         conversation_id = _field(response, "conversation_id")
         if conversation_id and self.conversations.store:
-            self.conversation_id = str(conversation_id)
+            self._sync_conversation_id(str(conversation_id), source="response")
         self._record_usage(_field(response, "usage"))
         outputs = _field(response, "outputs", []) or []
         segments: list[_RenderedSegment] = []
@@ -1673,6 +2026,147 @@ class MistralSession:
                 len(turn.content),
                 len(turn.reasoning),
             )
+
+    def _sync_conversation_id(
+        self,
+        conversation_id: str,
+        *,
+        source: str,
+        payload: Any | None = None,
+        parent_conversation_id: str | None = None,
+    ) -> None:
+        """Update the active conversation id and synchronize the local registry."""
+
+        normalized_id = conversation_id.strip()
+        if not normalized_id:
+            return
+        previous_id = self.conversation_id
+        self.conversation_id = normalized_id
+        self.conversation_resume_source = source
+        if self.conversation_registry is None:
+            return
+        if previous_id and previous_id != normalized_id:
+            self.conversation_registry.migrate_conversation_id(
+                previous_id, normalized_id
+            )
+        if payload is not None:
+            self._update_registry_from_remote_payload(normalized_id, payload)
+        else:
+            self.conversation_registry.update_remote_snapshot(
+                normalized_id,
+                remote_name=self.pending_conversation.name or None,
+                remote_description=self.pending_conversation.description or None,
+                remote_metadata=(
+                    self.pending_conversation.metadata
+                    if self.pending_conversation.metadata
+                    else None
+                ),
+                remote_kind="model",
+                remote_model=self.model_id,
+                parent_conversation_id=parent_conversation_id,
+            )
+        self.conversation_registry.remember_active(normalized_id)
+
+    def _update_registry_from_remote_payload(
+        self,
+        conversation_id: str,
+        payload: Any,
+        *,
+        parent_conversation_id: str | None = None,
+    ) -> None:
+        """Persist remote conversation metadata into the local registry."""
+
+        if self.conversation_registry is None or not conversation_id.strip():
+            return
+        self.conversation_registry.update_remote_snapshot(
+            conversation_id,
+            remote_name=_field(payload, "name", None),
+            remote_description=_field(payload, "description", None),
+            remote_metadata=_field(payload, "metadata", None),
+            remote_kind=("agent" if _field(payload, "agent_id") else "model"),
+            remote_model=_field(payload, "model", None),
+            remote_agent_id=_field(payload, "agent_id", None),
+            created_at=_field(payload, "created_at", None),
+            updated_at=_field(payload, "updated_at", None),
+            parent_conversation_id=parent_conversation_id,
+        )
+
+    def _format_remote_conversation_summary(self, payload: Any) -> str:
+        """Render a one-line summary for a remote conversation entity."""
+
+        conversation_id = str(_field(payload, "id", "") or "")
+        kind = "agent" if _field(payload, "agent_id") else "model"
+        target = str(
+            _field(payload, "agent_id", "") or _field(payload, "model", "") or "unknown"
+        )
+        name = str(_field(payload, "name", "") or "")
+        description = str(_field(payload, "description", "") or "")
+        created_at = str(_field(payload, "created_at", "") or "")
+        updated_at = str(_field(payload, "updated_at", "") or "")
+        details = [
+            conversation_id,
+            kind,
+            target,
+        ]
+        if name:
+            details.append(f'name="{name}"')
+        if description:
+            details.append(f'description="{description}"')
+        if created_at:
+            details.append(f"created={created_at}")
+        if updated_at:
+            details.append(f"updated={updated_at}")
+        if self.conversation_registry is not None:
+            record = self.conversation_registry.get(conversation_id)
+            if record is not None:
+                overlay = self._format_registry_record(record, include_note=False)
+                if overlay:
+                    details.append(f"local[{overlay}]")
+        return " | ".join(part for part in details if part)
+
+    def _render_remote_conversation_details(self, payload: Any) -> list[str]:
+        """Render a multi-line detail view for one remote conversation."""
+
+        lines = [
+            f"kind: {'agent' if _field(payload, 'agent_id') else 'model'}",
+            f"model: {_field(payload, 'model', '') or '(none)'}",
+            f"agent_id: {_field(payload, 'agent_id', '') or '(none)'}",
+            f"name: {_field(payload, 'name', '') or '(none)'}",
+            f"description: {_field(payload, 'description', '') or '(none)'}",
+            f"created_at: {_field(payload, 'created_at', '') or '(unknown)'}",
+            f"updated_at: {_field(payload, 'updated_at', '') or '(unknown)'}",
+        ]
+        metadata = _field(payload, "metadata", None)
+        if metadata:
+            lines.append(
+                "metadata: " + json.dumps(metadata, ensure_ascii=False, sort_keys=True)
+            )
+        else:
+            lines.append("metadata: (none)")
+        return lines
+
+    def _format_registry_record(
+        self,
+        record: ConversationRecord,
+        *,
+        include_note: bool,
+    ) -> str:
+        """Render the local overlay metadata for one registry entry."""
+
+        parts = [record.conversation_id]
+        if record.alias:
+            parts.append(f"alias={record.alias}")
+        if record.tags:
+            parts.append(f"tags={','.join(record.tags)}")
+        if include_note and record.note:
+            parts.append(f"note={record.note}")
+        if record.remote_name:
+            parts.append(f"remote_name={record.remote_name}")
+        if record.parent_conversation_id:
+            parts.append(f"parent={record.parent_conversation_id}")
+        if record.deleted:
+            parts.append("deleted=yes")
+        return " | ".join(parts)
 
     def _parse_tool_arguments(self, raw_arguments: Any) -> dict[str, Any]:
         if raw_arguments is None:

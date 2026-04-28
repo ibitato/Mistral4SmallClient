@@ -4,6 +4,30 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.0 - 2026-04-28
+
+### Added
+
+- Full remote Conversations manager inside the CLI with `/conv list`, `show`,
+  `use`, `restart`, `current`, `bookmarks`, `alias`, `note`, `tag`, and
+  `forget`.
+- Persistent local conversation registry for aliases, tags, notes, branch
+  lineage, and last-active auto-resume state.
+- Startup flags for Conversations resume policy, pending conversation name,
+  description, metadata, and registry path override.
+- Coverage for auto-resume, pending metadata, restart, local bookmarks, and
+  conversation-id migration.
+
+### Changed
+
+- Bumped package version to `1.5.0`.
+- Conversations mode can now resume the last known stored remote conversation
+  automatically with `resume=last` by default.
+- `/conv history` now prints remote entry ids so restart/branching is usable
+  from the CLI.
+- Documentation was expanded and rewritten around Conversations management,
+  especially the user guide.
+
 ## 1.4.1 - 2026-04-27
 
 ### Added

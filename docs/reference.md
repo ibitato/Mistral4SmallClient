@@ -282,9 +282,33 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
 #### Methods
 
+  #### `add_local_conversation_tag(self, reference: 'str', tag: 'str') -> 'str'`
+
+  Add one local tag to a conversation.
+
+  #### `apply_conversation_resume_policy(self, resume_policy: 'str') -> 'None'`
+
+  Update the configured startup resume policy.
+
+  #### `attach_remote_conversation(self, conversation_id: 'str', source: 'str' = 'manual') -> 'str'`
+
+  Attach the current session to an existing remote conversation id.
+
   #### `call_tool(self, public_name: 'str', arguments: 'dict[str, Any]') -> 'MCPToolResult'`
 
   Execute a tool through the active bridge.
+
+  #### `clear_pending_conversation_description(self) -> 'None'`
+
+  Clear the pending remote conversation description.
+
+  #### `clear_pending_conversation_metadata(self, key: 'str | None' = None) -> 'None'`
+
+  Clear one or all pending remote conversation metadata fields.
+
+  #### `clear_pending_conversation_name(self) -> 'None'`
+
+  Clear the pending remote conversation name.
 
   #### `compact_context(self) -> 'CompactResult'`
 
@@ -302,7 +326,7 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Return a user-facing context policy summary.
 
-  #### `conversation_history_text(self, messages_only: 'bool' = False) -> 'str'`
+  #### `conversation_history_text(self, messages_only: 'bool' = False, conversation_id: 'str | None' = None) -> 'str'`
 
   Fetch and render the active remote Conversation history.
 
@@ -310,9 +334,13 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Return a user-facing Conversations status summary.
 
-  #### `delete_active_conversation(self) -> 'str'`
+  #### `current_conversation_text(self) -> 'str'`
 
-  Delete the active remote Conversation and clear local state.
+  Render the current active conversation and pending local state.
+
+  #### `delete_remote_conversation(self, conversation_id: 'str | None' = None) -> 'str'`
+
+  Delete a remote Conversation and clear local state when active.
 
   #### `describe_defaults(self) -> 'str'`
 
@@ -338,13 +366,37 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Estimate request tokens when backend tokenizers are unavailable.
 
+  #### `forget_local_conversation(self, reference: 'str') -> 'str'`
+
+  Forget one local registry record without touching the remote object.
+
+  #### `list_remote_conversations(self, page: 'int' = 0, page_size: 'int' = 20, metadata: 'dict[str, str] | None' = None, bookmarks_only: 'bool' = False) -> 'str'`
+
+  List remote conversations with local overlay metadata.
+
+  #### `pending_conversation_text(self) -> 'str'`
+
+  Return a compact summary of pending conversation settings.
+
   #### `reasoning_status_text(self) -> 'str'`
 
   Return a user-facing visible-reasoning status string.
 
+  #### `remove_local_conversation_tag(self, reference: 'str', tag: 'str') -> 'str'`
+
+  Remove one local tag from a conversation.
+
   #### `reset(self) -> 'None'`
 
   Reset the conversation to the system prompt.
+
+  #### `resolve_conversation_reference(self, reference: 'str | None') -> 'str'`
+
+  Resolve a user reference to a concrete remote conversation id.
+
+  #### `restart_remote_conversation(self, from_entry_id: 'str', conversation_id: 'str | None' = None) -> 'str'`
+
+  Restart a remote conversation from one entry and switch to the new id.
 
   #### `send(self, user_text: 'str', stream: 'bool' = True) -> 'TurnResult'`
 
@@ -358,6 +410,26 @@ Stateful conversation helper for the Mistral Small 4 CLI.
 
   Update Conversations storage policy and start a fresh conversation.
 
+  #### `set_local_conversation_alias(self, reference: 'str', alias: 'str') -> 'str'`
+
+  Set a local alias for one conversation.
+
+  #### `set_local_conversation_note(self, reference: 'str', note: 'str') -> 'str'`
+
+  Set a local note for one conversation.
+
+  #### `set_pending_conversation_description(self, value: 'str') -> 'None'`
+
+  Set the pending remote conversation description.
+
+  #### `set_pending_conversation_metadata(self, key: 'str', value: 'str') -> 'None'`
+
+  Set one pending remote conversation metadata pair.
+
+  #### `set_pending_conversation_name(self, value: 'str') -> 'None'`
+
+  Set the pending remote conversation name.
+
   #### `set_reasoning_visibility(self, visible: 'bool') -> 'None'`
 
   Enable or disable visible reasoning output.
@@ -369,6 +441,10 @@ Stateful conversation helper for the Mistral Small 4 CLI.
   #### `set_timeout_ms(self, timeout_ms: 'int') -> 'None'`
 
   Update the active request timeout in milliseconds.
+
+  #### `show_remote_conversation(self, reference: 'str | None' = None) -> 'str'`
+
+  Render detailed information for one remote conversation.
 
   #### `status_snapshot(self) -> 'SessionStatusSnapshot'`
 
@@ -389,6 +465,16 @@ Stateful conversation helper for the Mistral Small 4 CLI.
   #### `visible_reasoning_supported(self) -> 'bool'`
 
   Return whether the active backend can render visible reasoning.
+
+### Class `PendingConversationSettings`
+
+Pending remote conversation settings for the next start or restart.
+
+#### Methods
+
+  #### `active(self) -> 'bool'`
+
+  Return whether any pending setting is configured.
 
 ### Class `SessionStatusSnapshot`
 

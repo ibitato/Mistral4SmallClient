@@ -74,7 +74,8 @@ an actionable help system:
 - `/defaults` prints the active runtime defaults
 - `/timeout [value]` shows or updates the active request timeout
 - `/remote on|off` switches between local `llama.cpp` and Mistral cloud
-- `/conv on|off|new|id|history|messages|delete` manages optional Mistral Cloud Conversations mode
+- `/conv ...` manages optional Mistral Cloud Conversations mode, bookmarks,
+  aliases, and restart/branching
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]` manages
   chat-completions context compaction
 - `--reasoning` and `--no-reasoning` control whether visible reasoning is
@@ -189,10 +190,22 @@ Conversations mode:
 - requires `MISTRAL_API_KEY`
 - resets the current chat when enabled, disabled, or restarted with `/conv new`
 - uses `store=on` by default and can switch with `/conv store on|off`
+- uses `resume=last` by default and can switch startup policy with
+  `--conversation-resume last|new|prompt`
 - with `store=off`, each user turn is stateless and no `conversation_id` is kept
-- supports `/conv id`, `/conv history`, `/conv messages`, and `/conv delete`
+- supports `/conv list`, `/conv show`, `/conv use`, `/conv current`,
+  `/conv history`, `/conv messages`, `/conv restart`, and `/conv delete`
+- supports local bookmarks and aliases with `/conv alias`, `/conv note`,
+  `/conv tag`, `/conv bookmarks`, and `/conv forget`
+- keeps a local registry under `~/.local/state/mistral4cli/conversations.json`
+  or `$XDG_STATE_HOME/mistral4cli/conversations.json`
+- accepts pending remote creation metadata with `--conversation-name`,
+  `--conversation-description`, `--conversation-meta KEY=VALUE`, and
+  `/conv set ...`
 - visible reasoning remains best-effort in Conversations mode; when requested
   but omitted by the backend, the CLI reports that explicitly
+- remote `name`/`description`/`metadata` are creation-time fields only; the
+  CLI cannot update them after creation because Mistral exposes no update API
 
 Context management:
 
@@ -217,7 +230,7 @@ Session commands:
 - `/help`
 - `/defaults`
 - `/remote [on|off]`
-- `/conv [on|off|new|store on|store off|id|history|messages|delete]`
+- `/conv [on|off|new|store on|store off|current|id|list|bookmarks|show|use|history|messages|delete|restart|set|unset|alias|note|tag|forget]`
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]`
 - `/reset`
 - `/system <text>`

@@ -542,6 +542,7 @@ def render_runtime_summary(
     reasoning_mode = "on" if reasoning_visible else "off"
     conversation_mode = "on" if conversations.enabled else "off"
     conversation_store = "on" if conversations.store else "off"
+    conversation_resume = conversations.resume_policy
     active_conversation = conversation_id or "not started"
     context_auto = "on" if context.auto_compact else "off"
     context_threshold = round(context.threshold * 100)
@@ -566,6 +567,7 @@ def render_runtime_summary(
             (
                 f"mode={conversation_mode} "
                 f"store={conversation_store} "
+                f"resume={conversation_resume} "
                 f"id={active_conversation}"
             ),
         ),
@@ -695,7 +697,13 @@ def render_help_screen(
         '  - "/drop"',
         '  - "/remote on"',
         '  - "/conv on"',
+        '  - "/conv list --page 0 --size 10"',
+        '  - "/conv current"',
+        '  - "/conv use conv_123"',
         '  - "/conv new"',
+        '  - "/conv set name Release notes review"',
+        '  - "/conv alias conv_123 release-review"',
+        '  - "/conv bookmarks"',
         '  - "/compact"',
         '  - "/compact threshold 85"',
         '  - "/timeout 300000"',

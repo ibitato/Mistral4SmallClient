@@ -33,6 +33,7 @@ from mistral4cli.cli import (
     _write_tty_newline,
     main,
 )
+from mistral4cli.conversation_registry import ConversationRegistry
 from mistral4cli.local_mistral import (
     DEFAULT_TIMEOUT_MS,
     BackendKind,
@@ -249,6 +250,18 @@ class FakeConversationResponse:
 
 
 @dataclass(slots=True)
+class FakeConversationEntity:
+    id: str
+    model: str = "mistral-small-latest"
+    agent_id: str = ""
+    name: str = ""
+    description: str = ""
+    metadata: dict[str, Any] | None = None
+    created_at: str = "2026-04-28T00:00:00Z"
+    updated_at: str = "2026-04-28T00:00:00Z"
+
+
+@dataclass(slots=True)
 class FakeConversationEvent:
     event: str
     data: Any
@@ -297,6 +310,7 @@ class FakeConversations:
         *,
         responses: list[FakeConversationResponse] | None = None,
         stream_events: list[FakeConversationEvent] | None = None,
+        entities: list[FakeConversationEntity] | None = None,
     ) -> None:
         self.responses = responses or [
             FakeConversationResponse(
@@ -310,11 +324,22 @@ class FakeConversations:
             )
         ]
         self.stream_events = stream_events or []
+        self.entities = entities or [
+            FakeConversationEntity(
+                id="conv_1",
+                name="Primary conversation",
+                description="Tracked in tests",
+                metadata={"suite": "cli"},
+            )
+        ]
         self.start_calls: list[dict[str, Any]] = []
         self.append_calls: list[dict[str, Any]] = []
         self.start_stream_calls: list[dict[str, Any]] = []
         self.append_stream_calls: list[dict[str, Any]] = []
+        self.list_calls: list[dict[str, Any]] = []
+        self.get_calls: list[dict[str, Any]] = []
         self.delete_calls: list[dict[str, Any]] = []
+        self.restart_calls: list[dict[str, Any]] = []
 
     def start(self, **kwargs: Any) -> FakeConversationResponse:
         self.start_calls.append(kwargs)
@@ -332,6 +357,18 @@ class FakeConversations:
         self.append_stream_calls.append(kwargs)
         return FakeConversationStream(self.stream_events)
 
+    def list(self, **kwargs: Any) -> list[FakeConversationEntity]:
+        self.list_calls.append(kwargs)
+        return list(self.entities)
+
+    def get(self, **kwargs: Any) -> FakeConversationEntity:
+        self.get_calls.append(kwargs)
+        conversation_id = str(kwargs["conversation_id"])
+        for entity in self.entities:
+            if entity.id == conversation_id:
+                return entity
+        raise RuntimeError(f"unknown conversation {conversation_id}")
+
     def get_history(self, **kwargs: Any) -> object:
         return type(
             "History",
@@ -342,6 +379,7 @@ class FakeConversations:
                         "Entry",
                         (),
                         {
+                            "id": "entry_1",
                             "type": "message.input",
                             "role": "user",
                             "content": "hello",
@@ -361,6 +399,7 @@ class FakeConversations:
                         "Message",
                         (),
                         {
+                            "id": "message_1",
                             "type": "message.output",
                             "role": "assistant",
                             "content": [{"type": "text", "text": "ok"}],
@@ -372,6 +411,20 @@ class FakeConversations:
 
     def delete(self, **kwargs: Any) -> None:
         self.delete_calls.append(kwargs)
+
+    def restart(self, **kwargs: Any) -> FakeConversationResponse:
+        self.restart_calls.append(kwargs)
+        if self.responses:
+            return self.responses.pop(0)
+        return FakeConversationResponse(
+            conversation_id="conv_restart",
+            outputs=[
+                FakeConversationOutput(
+                    type="message.output",
+                    content=[{"type": "text", "text": "branched"}],
+                )
+            ],
+        )
 
 
 class FakeBeta:
@@ -648,13 +701,24 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     assert "max_tokens" not in call
 
 
-def test_once_can_start_in_conversations_mode(monkeypatch: Any) -> None:
+def test_once_can_start_in_conversations_mode(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
     output = io.StringIO()
     fake_client = FakeConversationClient()
     monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
 
     exit_code = main(
-        ["--conversations", "--once", "Return only ok.", "--no-stream", "--no-mcp"],
+        [
+            "--conversations",
+            "--once",
+            "Return only ok.",
+            "--no-stream",
+            "--no-mcp",
+            "--conversation-index",
+            str(tmp_path / "conversations.json"),
+        ],
         stdin=FakeStdin(""),
         stdout=output,
         client_factory=lambda _config: fake_client,
@@ -674,6 +738,7 @@ def test_once_can_start_in_conversations_mode(monkeypatch: Any) -> None:
 
 def test_once_can_start_in_conversations_mode_with_reasoning_disabled(
     monkeypatch: Any,
+    tmp_path: Path,
 ) -> None:
     output = io.StringIO()
     fake_client = FakeConversationClient()
@@ -687,6 +752,8 @@ def test_once_can_start_in_conversations_mode_with_reasoning_disabled(
             "Return only ok.",
             "--no-stream",
             "--no-mcp",
+            "--conversation-index",
+            str(tmp_path / "conversations.json"),
         ],
         stdin=FakeStdin(""),
         stdout=output,
@@ -696,6 +763,94 @@ def test_once_can_start_in_conversations_mode_with_reasoning_disabled(
     assert exit_code == 0
     call = fake_client.beta.conversations.start_calls[0]
     assert call["completion_args"]["reasoning_effort"] == "none"
+
+
+def test_print_defaults_includes_conversation_resume_policy() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        ["--print-defaults", "--no-mcp", "--conversations"],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeConversationClient(),
+    )
+
+    assert exit_code == 0
+    assert "resume=last" in output.getvalue()
+
+
+def test_once_conversations_applies_pending_creation_metadata(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    fake_client = FakeConversationClient()
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    exit_code = main(
+        [
+            "--conversations",
+            "--conversation-name",
+            "Release review",
+            "--conversation-description",
+            "Track rollout notes",
+            "--conversation-meta",
+            "ticket=OPS-42",
+            "--conversation-meta",
+            "owner=dlopez",
+            "--once",
+            "Return only ok.",
+            "--no-stream",
+            "--no-mcp",
+            "--conversation-index",
+            str(tmp_path / "conversations.json"),
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: fake_client,
+    )
+
+    assert exit_code == 0
+    call = fake_client.beta.conversations.start_calls[0]
+    assert call["name"] == "Release review"
+    assert call["description"] == "Track rollout notes"
+    assert call["metadata"] == {"ticket": "OPS-42", "owner": "dlopez"}
+
+
+def test_once_conversations_auto_resumes_last_registry_entry(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    registry = ConversationRegistry.load(tmp_path / "conversations.json")
+    registry.update_remote_snapshot(
+        "conv_1",
+        remote_name="Saved remote conversation",
+        remote_model="mistral-small-latest",
+    )
+    registry.remember_active("conv_1")
+    fake_client = FakeConversationClient()
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    exit_code = main(
+        [
+            "--conversations",
+            "--conversation-index",
+            str(registry.path),
+            "--once",
+            "Return only ok.",
+            "--no-stream",
+            "--no-mcp",
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: fake_client,
+    )
+
+    assert exit_code == 0
+    assert fake_client.beta.conversations.start_calls == []
+    assert len(fake_client.beta.conversations.append_calls) == 1
+    assert fake_client.beta.conversations.append_calls[0]["conversation_id"] == "conv_1"
 
 
 def test_main_creates_debug_log_file_by_default(tmp_path: Path) -> None:
@@ -2537,7 +2692,8 @@ def test_conversations_command_store_new_history_and_delete() -> None:
     assert (
         _run_command("conv", "history", session, output, stdin=FakeStdin("")) is False
     )
-    assert "message.input user: hello" in output.getvalue()
+    assert "message.input user id=entry_1: hello" in output.getvalue()
+    assert '"/conv restart <entry_id>"' in output.getvalue()
     assert (
         _run_command("conv", "messages", session, output, stdin=FakeStdin("")) is False
     )
@@ -2545,6 +2701,175 @@ def test_conversations_command_store_new_history_and_delete() -> None:
     assert _run_command("conv", "delete", session, output) is False
     assert conversations.delete_calls == [{"conversation_id": "conv_1"}]
     assert session.conversation_id is None
+
+
+def test_conversations_command_list_show_and_use(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        entities=[
+            FakeConversationEntity(
+                id="conv_1",
+                name="Primary conversation",
+                description="Tracked in tests",
+                metadata={"suite": "cli"},
+            )
+        ]
+    )
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+        conversation_registry=ConversationRegistry.load(
+            tmp_path / "conversations.json"
+        ),
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    assert (
+        _run_command(
+            "conv",
+            "list --page 0 --size 5 --meta suite=cli",
+            session,
+            output,
+            repl_state=_ReplState(),
+            local_config=LocalMistralConfig(),
+            client_factory=lambda _config: FakeConversationClient(conversations),
+            stdin=FakeStdin(""),
+        )
+        is False
+    )
+    assert conversations.list_calls == [
+        {"page": 0, "page_size": 5, "metadata": {"suite": "cli"}}
+    ]
+    assert "Primary conversation" in output.getvalue()
+    output.seek(0)
+    output.truncate(0)
+
+    assert (
+        _run_command(
+            "conv",
+            "show conv_1",
+            session,
+            output,
+            repl_state=_ReplState(),
+            local_config=LocalMistralConfig(),
+            client_factory=lambda _config: FakeConversationClient(conversations),
+            stdin=FakeStdin(""),
+        )
+        is False
+    )
+    assert "Tracked in tests" in output.getvalue()
+    output.seek(0)
+    output.truncate(0)
+
+    assert (
+        _run_command(
+            "conv",
+            "use conv_1",
+            session,
+            output,
+            repl_state=_ReplState(),
+            local_config=LocalMistralConfig(),
+            client_factory=lambda _config: FakeConversationClient(conversations),
+            stdin=FakeStdin(""),
+        )
+        is False
+    )
+    assert session.conversation_id == "conv_1"
+    assert "Attached to conversation conv_1." in output.getvalue()
+
+
+def test_conversations_command_pending_settings_and_bookmarks(tmp_path: Path) -> None:
+    output = io.StringIO()
+    registry = ConversationRegistry.load(tmp_path / "conversations.json")
+    session = MistralSession(
+        client=FakeConversationClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        conversation_registry=registry,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+    session.conversation_id = "conv_1"
+    registry.remember_active("conv_1")
+
+    assert _run_command("conv", "set name Release review", session, output) is False
+    assert _run_command("conv", "set meta owner=dlopez", session, output) is False
+    assert session.pending_conversation.name == "Release review"
+    assert session.pending_conversation.metadata == {"owner": "dlopez"}
+    assert _run_command("conv", "alias conv_1 release-review", session, output) is False
+    assert _run_command("conv", "tag add conv_1 ops", session, output) is False
+    output.seek(0)
+    output.truncate(0)
+
+    assert (
+        _run_command(
+            "conv",
+            "bookmarks",
+            session,
+            output,
+            stdin=FakeStdin(""),
+        )
+        is False
+    )
+    rendered = output.getvalue()
+    assert "release-review" in rendered
+    assert "ops" in rendered
+
+
+def test_conversations_command_restart_switches_to_new_conversation(
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_branch",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "branched"}],
+                    )
+                ],
+            )
+        ],
+        entities=[
+            FakeConversationEntity(id="conv_1"),
+            FakeConversationEntity(id="conv_branch", description="Branch"),
+        ],
+    )
+    registry = ConversationRegistry.load(tmp_path / "conversations.json")
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        conversation_registry=registry,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+    session.conversation_id = "conv_1"
+    registry.remember_active("conv_1")
+
+    assert _run_command("conv", "restart entry_1", session, output) is False
+    assert conversations.restart_calls[0]["conversation_id"] == "conv_1"
+    assert conversations.restart_calls[0]["from_entry_id"] == "entry_1"
+    assert session.conversation_id == "conv_branch"
+    assert registry.get("conv_branch") is not None
+    assert registry.get("conv_branch").parent_conversation_id == "conv_1"
+    assert "Active conversation: conv_branch." in output.getvalue()
 
 
 def test_remote_command_switches_backend_and_resets_conversation(

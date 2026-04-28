@@ -34,6 +34,7 @@ ENV_MAX_TOKENS = "MISTRAL_LOCAL_MAX_TOKENS"
 ENV_REMOTE_API_KEY = "MISTRAL_API_KEY"
 ENV_CONVERSATIONS = "MISTRAL_CONVERSATIONS"
 ENV_CONVERSATION_STORE = "MISTRAL_CONVERSATION_STORE"
+ENV_CONVERSATION_RESUME = "MISTRAL_CONVERSATION_RESUME"
 ENV_CONTEXT_AUTO_COMPACT = "MISTRAL_CONTEXT_AUTO_COMPACT"
 ENV_CONTEXT_THRESHOLD = "MISTRAL_CONTEXT_THRESHOLD"
 ENV_CONTEXT_RESERVE_TOKENS = "MISTRAL_CONTEXT_RESERVE_TOKENS"
@@ -48,6 +49,7 @@ DEFAULT_CONTEXT_THRESHOLD = 0.9
 DEFAULT_CONTEXT_RESERVE_TOKENS = 8_192
 DEFAULT_CONTEXT_KEEP_RECENT_TURNS = 6
 DEFAULT_CONTEXT_SUMMARY_MAX_TOKENS = 2_048
+DEFAULT_CONVERSATION_RESUME_POLICY = "last"
 
 
 class BackendKind(str, Enum):
@@ -146,14 +148,26 @@ class ConversationConfig:
 
     enabled: bool = False
     store: bool = True
+    resume_policy: str = DEFAULT_CONVERSATION_RESUME_POLICY
 
     @classmethod
     def from_env(cls) -> ConversationConfig:
         """Build conversation defaults from environment variables."""
 
+        resume_policy = (
+            os.environ.get(
+                ENV_CONVERSATION_RESUME,
+                DEFAULT_CONVERSATION_RESUME_POLICY,
+            )
+            .strip()
+            .lower()
+        )
+        if resume_policy not in {"last", "new", "prompt"}:
+            resume_policy = DEFAULT_CONVERSATION_RESUME_POLICY
         return cls(
             enabled=_env_bool(ENV_CONVERSATIONS, default=False),
             store=_env_bool(ENV_CONVERSATION_STORE, default=True),
+            resume_policy=resume_policy,
         )
 
 

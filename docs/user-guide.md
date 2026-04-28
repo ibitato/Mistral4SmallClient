@@ -224,26 +224,105 @@ Enable or disable inside the REPL:
 /conv off
 ```
 
-Useful Conversations commands:
+Startup flags:
+
+```text
+--conversations
+--conversation-store on|off
+--conversation-resume last|new|prompt
+--conversation-name "Release review"
+--conversation-description "Track rollout notes"
+--conversation-meta ticket=OPS-42
+--conversation-meta owner=dlopez
+--conversation-index /custom/path/conversations.json
+```
+
+Conversations persistence model:
+
+- with `store=on`, Mistral stores the conversation history server-side and the
+  CLI keeps the current `conversation_id`
+- with `store=off`, each turn is stateless and no persistent `conversation_id`
+  is kept locally
+- Mistral may return a new `conversation_id` on append or restart; the CLI
+  follows that id automatically and migrates its local bookmark metadata
+- local aliases, tags, notes, and bookmarks are **not** stored on Mistral; they
+  live in the local registry file
+
+Local registry:
+
+- default path: `~/.local/state/mistral4cli/conversations.json`
+- if `XDG_STATE_HOME` is set, the registry lives under
+  `$XDG_STATE_HOME/mistral4cli/conversations.json`
+- `--conversation-index` overrides that path for one run
+
+Remote management commands:
 
 ```text
 /conv
+/conv current
+/conv on
+/conv off
 /conv new
 /conv id
+/conv list --page 0 --size 20 --meta owner=dlopez
+/conv show conv_123
+/conv use conv_123
 /conv history
+/conv history conv_123
 /conv messages
+/conv delete
+/conv delete conv_123
+/conv restart entry_123
+/conv restart entry_123 conv_123
 /conv store on
 /conv store off
-/conv delete
 ```
+
+Local organization commands:
+
+```text
+/conv alias conv_123 release-review
+/conv note conv_123 Track rollout blockers
+/conv tag add conv_123 ops
+/conv tag remove conv_123 ops
+/conv bookmarks
+/conv forget conv_123
+```
+
+Pending remote creation settings:
+
+```text
+/conv set name Release review
+/conv set description Track rollout notes
+/conv set meta ticket=OPS-42
+/conv set meta owner=dlopez
+/conv unset name
+/conv unset description
+/conv unset meta ticket
+/conv unset all
+```
+
+How to think about those settings:
+
+- `name`, `description`, and `metadata` are applied to the **next** remote
+  conversation start
+- Mistral does not expose a remote update API for an existing conversation
+  name/description/metadata, so the CLI cannot retroactively edit those fields
+- local aliases and notes are the CLI-side workaround for post-creation
+  organization
 
 Important behavior:
 
-- enabling Conversations resets the local chat
-- disabling Conversations resets the chat and restores the prior backend
-- `/conv new` starts a fresh Conversation on the next user turn
-- `store=on` keeps a server-side `conversation_id`
-- `store=off` is stateless and does not preserve a `conversation_id`
+- enabling Conversations switches to the remote backend and resets the local chat
+- disabling Conversations resets the chat and restores the prior backend if known
+- `/conv new` drops the active remote id so the next user turn starts a fresh
+  conversation
+- `/conv use <id>` reattaches the current session to an existing remote
+  conversation
+- `/conv history` prints remote entry ids; use those ids with `/conv restart`
+  to branch from a specific point
+- `/conv restart <entry_id>` creates a new remote conversation and switches the
+  session to that branch
 - `/reasoning on|off|toggle` still applies in Conversations mode and controls
   whether the CLI requests visible reasoning
 - local `/compact` does not compact Conversations mode; Mistral handles that
@@ -251,6 +330,16 @@ Important behavior:
 - if Mistral Conversations does not return any `thinking` blocks for a turn, the
   CLI prints a one-line best-effort notice instead of silently pretending
   reasoning was unavailable locally
+
+Auto-resume:
+
+- `resume=last` is the default
+- when starting directly in Conversations mode, the CLI reattaches to the last
+  stored remote conversation recorded in the local registry
+- `resume=new` always starts from a fresh conversation
+- `resume=prompt` asks before resuming when the session is interactive
+- if the last saved id no longer exists remotely, the CLI clears the stale
+  pointer and starts fresh
 
 ## Context Management And Compacting
 
@@ -445,10 +534,20 @@ Conversations mode does not start:
 ```text
 /conv on
 /conv
+/conv current
 ```
 
 If `store=off` is active, remember that it is stateless and will not preserve a
 conversation id.
+
+If the wrong conversation is resumed automatically, either start a fresh one or
+switch explicitly:
+
+```text
+/conv new
+/conv use conv_123
+/conv bookmarks
+```
 
 Context is too large:
 
@@ -514,7 +613,9 @@ If `MISTRAL_API_KEY` is available, also test:
 /remote on
 /defaults
 /conv on
-/conv
+/conv current
+/conv list --page 0 --size 5
+/conv bookmarks
 /conv new
 /conv off
 /remote off
