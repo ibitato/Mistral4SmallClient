@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.11 - 2026-04-28
+
+### Fixed
+
+- Interrupted Mistral Conversations tool turns now send synthetic
+  `function.result` cancellation payloads back to the backend before rolling
+  the turn back locally. This prevents remote conversations from getting stuck
+  with `Cannot append other inputs while function results are still missing`
+  after `Ctrl-C`.
+
+### Added
+
+- Regression coverage for interrupted Conversations tool execution and
+  interrupted Conversations streaming after a remote `function.call` has been
+  emitted.
+
 ## 1.5.10 - 2026-04-28
 
 ### Fixed

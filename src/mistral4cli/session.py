@@ -1532,6 +1532,8 @@ class MistralSession:
         self._last_usage = None
         self._turn_usage_accumulator = None
         self._set_status("thinking")
+        pending_tool_calls: list[dict[str, Any]] = []
+        pending_tool_inputs: list[dict[str, Any]] = []
         try:
             seen_tool_calls: set[str] = set()
             inputs = self._conversation_user_inputs(content)
@@ -1543,6 +1545,8 @@ class MistralSession:
                     tools=tools,
                 )
                 if turn.cancelled or turn.error:
+                    if turn.cancelled and turn.tool_calls:
+                        self._complete_pending_conversation_tool_calls(turn.tool_calls)
                     self._rollback_to(message_start)
                     self._turn_usage_accumulator = None
                     self._set_status("interrupted" if turn.cancelled else "error")
@@ -1563,8 +1567,9 @@ class MistralSession:
                         cancelled=False,
                     )
 
+                pending_tool_calls = list(turn.tool_calls)
                 self._commit_assistant_message(turn)
-                tool_inputs: list[dict[str, Any]] = []
+                tool_inputs = pending_tool_inputs = []
                 for call in turn.tool_calls:
                     function = call["function"]
                     name = str(function["name"])
@@ -1621,6 +1626,8 @@ class MistralSession:
                         }
                     )
                 inputs = tool_inputs
+                pending_tool_calls = []
+                pending_tool_inputs = []
 
             self._rollback_to(message_start)
             self._turn_usage_accumulator = None
@@ -1628,6 +1635,10 @@ class MistralSession:
             self._set_status("error")
             return TurnResult(content="", finish_reason="error", cancelled=False)
         except KeyboardInterrupt:
+            self._complete_pending_conversation_tool_calls(
+                pending_tool_calls,
+                completed_inputs=pending_tool_inputs,
+            )
             self._rollback_to(message_start)
             self._turn_usage_accumulator = None
             self._print("\n[interrupted]\n")
@@ -1821,11 +1832,15 @@ class MistralSession:
                                     self._print(parsed.text)
                         printed_anything = True
         except KeyboardInterrupt:
+            tool_calls = [
+                state.to_tool_call() for _, state in sorted(tool_states.items())
+            ]
             self._print("\n[interrupted]\n")
             return _ModelTurn(
                 content="".join(answer_parts).strip() or parser.answer,
                 reasoning="".join(reasoning_parts).strip() or parser.reasoning,
                 finish_reason="cancelled",
+                tool_calls=tool_calls,
                 cancelled=True,
             )
         except Exception as exc:
@@ -2281,6 +2296,70 @@ class MistralSession:
         if result.text:
             parts.append(result.text)
         return "\n\n".join(parts)
+
+    def _cancelled_tool_result(self, call: dict[str, Any]) -> MCPToolResult:
+        """Build a synthetic tool result used to unblock interrupted Conversations."""
+
+        function = call["function"]
+        return MCPToolResult(
+            text="[tool-error] cancelled by user",
+            is_error=True,
+            structured_content={
+                "status": "error",
+                "tool": str(function["name"]),
+                "code": "cancelled_by_user",
+                "cancelled": True,
+            },
+        )
+
+    def _complete_pending_conversation_tool_calls(
+        self,
+        tool_calls: list[dict[str, Any]],
+        *,
+        completed_inputs: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """Send cancellation tool results to unblock an interrupted Conversation."""
+
+        if not tool_calls or self.conversation_id is None:
+            return
+        inputs = list(completed_inputs or [])
+        completed_ids = {
+            str(item.get("tool_call_id", ""))
+            for item in inputs
+            if isinstance(item, dict)
+        }
+        for call in tool_calls:
+            call_id = str(call["id"])
+            if call_id in completed_ids:
+                continue
+            inputs.append(
+                {
+                    "type": "function.result",
+                    "tool_call_id": call_id,
+                    "result": self._render_tool_result(
+                        self._cancelled_tool_result(call)
+                    ),
+                }
+            )
+        if not inputs:
+            return
+        try:
+            self.client.beta.conversations.append(
+                **self._conversation_append_kwargs(inputs=inputs)
+            )
+            logger.warning(
+                "Completed pending Conversations tool calls after interruption "
+                "conversation_id=%s count=%s",
+                self.conversation_id,
+                len(inputs),
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to complete pending Conversations tool calls after "
+                "interruption conversation_id=%s error=%s",
+                self.conversation_id,
+                exc,
+            )
 
     def _call_tool_bridge(
         self, public_name: str, arguments: dict[str, Any]

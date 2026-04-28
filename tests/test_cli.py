@@ -293,8 +293,13 @@ class FakeConversationFunctionDelta:
 
 
 class FakeConversationStream:
-    def __init__(self, events: list[FakeConversationEvent]) -> None:
+    def __init__(
+        self,
+        events: list[FakeConversationEvent],
+        interrupt_after: int | None = None,
+    ) -> None:
         self.events = events
+        self.interrupt_after = interrupt_after
         self.closed = False
 
     def __enter__(self) -> FakeConversationStream:
@@ -304,7 +309,10 @@ class FakeConversationStream:
         self.closed = True
 
     def __iter__(self):
-        return iter(self.events)
+        for index, event in enumerate(self.events):
+            if self.interrupt_after is not None and index >= self.interrupt_after:
+                raise KeyboardInterrupt
+            yield event
 
 
 class FakeConversations:
@@ -314,6 +322,7 @@ class FakeConversations:
         responses: list[FakeConversationResponse] | None = None,
         stream_events: list[FakeConversationEvent] | None = None,
         entities: list[FakeConversationEntity] | None = None,
+        stream_interrupt_after: int | None = None,
     ) -> None:
         self.responses = responses or [
             FakeConversationResponse(
@@ -327,6 +336,7 @@ class FakeConversations:
             )
         ]
         self.stream_events = stream_events or []
+        self.stream_interrupt_after = stream_interrupt_after
         self.entities = entities or [
             FakeConversationEntity(
                 id="conv_1",
@@ -354,11 +364,17 @@ class FakeConversations:
 
     def start_stream(self, **kwargs: Any) -> FakeConversationStream:
         self.start_stream_calls.append(kwargs)
-        return FakeConversationStream(self.stream_events)
+        return FakeConversationStream(
+            self.stream_events,
+            interrupt_after=self.stream_interrupt_after,
+        )
 
     def append_stream(self, **kwargs: Any) -> FakeConversationStream:
         self.append_stream_calls.append(kwargs)
-        return FakeConversationStream(self.stream_events)
+        return FakeConversationStream(
+            self.stream_events,
+            interrupt_after=self.stream_interrupt_after,
+        )
 
     def list(self, **kwargs: Any) -> list[FakeConversationEntity]:
         self.list_calls.append(kwargs)
@@ -515,6 +531,12 @@ class FakeToolBridge:
 class FakeLongToolBridge(FakeToolBridge):
     def describe_tools(self) -> str:
         return "\n".join(f"tool line {index}" for index in range(20))
+
+
+class InterruptingToolBridge(FakeToolBridge):
+    def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
+        self.calls.append((public_name, arguments))
+        raise KeyboardInterrupt
 
 
 def test_main_returns_zero_without_interactive_input() -> None:
@@ -2889,6 +2911,126 @@ def test_conversations_tool_call_executes_bridge_and_appends_result() -> None:
     assert tool_bridge.calls == [("web_search", {"query": "mistral"})]
     assert conversations.append_calls[0]["inputs"][0]["type"] == "function.result"
     assert conversations.append_calls[0]["inputs"][0]["tool_call_id"] == "tool_call_1"
+
+
+def test_conversations_tool_interrupt_appends_cancel_result_and_recovers() -> None:
+    output = io.StringIO()
+    tool_bridge = InterruptingToolBridge()
+    conversations = FakeConversations(
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_tools",
+                outputs=[
+                    FakeConversationOutput(
+                        type="function.call",
+                        tool_call_id="tool_call_1",
+                        name="web_search",
+                        arguments='{"query":"mistral"}',
+                    )
+                ],
+            ),
+            FakeConversationResponse(
+                conversation_id="conv_tools",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "cancelled cleanup"}],
+                    )
+                ],
+            ),
+            FakeConversationResponse(
+                conversation_id="conv_tools",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "recovered"}],
+                    )
+                ],
+            ),
+        ]
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        tool_bridge=tool_bridge,
+        stdout=output,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    first = session.send("search", stream=False)
+    second = session.send("try again", stream=False)
+
+    assert first.cancelled is True
+    assert first.finish_reason == "cancelled"
+    assert second.cancelled is False
+    assert second.content == "recovered"
+    assert conversations.append_calls[0]["inputs"][0]["type"] == "function.result"
+    assert conversations.append_calls[0]["inputs"][0]["tool_call_id"] == "tool_call_1"
+    assert "cancelled_by_user" in conversations.append_calls[0]["inputs"][0]["result"]
+    assert conversations.append_calls[1]["inputs"] == "try again"
+
+
+def test_conversations_stream_interrupt_with_tool_call_appends_cancel_result() -> None:
+    output = io.StringIO()
+    conversations = FakeConversations(
+        stream_events=[
+            FakeConversationEvent(
+                "conversation.response.started",
+                FakeConversationStarted("conv_tools"),
+            ),
+            FakeConversationEvent(
+                "function.call.delta",
+                FakeConversationFunctionDelta(
+                    tool_call_id="tool_call_1",
+                    name="web_search",
+                    arguments='{"query":"mistral"}',
+                ),
+            ),
+            FakeConversationEvent(
+                "conversation.response.done",
+                FakeConversationDone(),
+            ),
+        ],
+        responses=[
+            FakeConversationResponse(
+                conversation_id="conv_tools",
+                outputs=[
+                    FakeConversationOutput(
+                        type="message.output",
+                        content=[{"type": "text", "text": "cleanup"}],
+                    )
+                ],
+            )
+        ],
+        stream_interrupt_after=2,
+    )
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    result = session.send("search", stream=True)
+
+    assert result.cancelled is True
+    assert result.finish_reason == "cancelled"
+    assert conversations.append_calls[0]["inputs"][0]["type"] == "function.result"
+    assert conversations.append_calls[0]["inputs"][0]["tool_call_id"] == "tool_call_1"
+    assert "cancelled_by_user" in conversations.append_calls[0]["inputs"][0]["result"]
 
 
 def test_remote_command_requires_api_key(monkeypatch: Any) -> None:
