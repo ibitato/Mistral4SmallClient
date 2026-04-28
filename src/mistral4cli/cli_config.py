@@ -10,8 +10,6 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TextIO
 
-from mistralai.client import Mistral
-
 from mistral4cli.conversation_registry import ConversationRegistry
 from mistral4cli.local_mistral import (
     DEFAULT_API_KEY,
@@ -32,6 +30,7 @@ from mistral4cli.local_mistral import (
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.logging_config import LoggingConfig
 from mistral4cli.mcp_bridge import MCPConfig, MCPToolBridge, discover_mcp_config_path
+from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralSession,
@@ -483,7 +482,7 @@ def _resolve_logging_config(args: argparse.Namespace) -> LoggingConfig:
 
 def _build_session(
     *,
-    client_factory: Callable[[MistralConfig], Mistral],
+    client_factory: Callable[[MistralConfig], MistralClientProtocol],
     config: LocalMistralConfig,
     generation: LocalGenerationConfig,
     system_prompt: str,

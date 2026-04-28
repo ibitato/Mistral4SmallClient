@@ -8,8 +8,6 @@ import sys
 from collections.abc import Callable, Sequence
 from typing import Any, TextIO
 
-from mistralai.client import Mistral
-
 from mistral4cli import __version__
 from mistral4cli import cli_repl as _cli_repl_mod
 from mistral4cli.attachments import PathPicker
@@ -62,6 +60,7 @@ from mistral4cli.local_mistral import (
     build_client,
 )
 from mistral4cli.logging_config import configure_logging, render_logging_summary
+from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session import (
     MistralSession,
     PendingConversationSettings,
@@ -90,7 +89,7 @@ def _run_command(
     *,
     repl_state: _ReplState | None = None,
     local_config: LocalMistralConfig | None = None,
-    client_factory: Callable[[MistralConfig], Mistral] = build_client,
+    client_factory: Callable[[MistralConfig], MistralClientProtocol] = build_client,
     input_func: Callable[[str], str] = input,
     stdin: TextIO = sys.stdin,
     path_picker: PathPicker | None = None,
@@ -138,7 +137,7 @@ def main(
     stdin: TextIO = sys.stdin,
     stdout: TextIO = sys.stdout,
     stderr: TextIO = sys.stderr,
-    client_factory: Callable[[MistralConfig], Mistral] = build_client,
+    client_factory: Callable[[MistralConfig], MistralClientProtocol] = build_client,
     path_picker: PathPicker | None = None,
 ) -> int:
     """Run the CLI."""

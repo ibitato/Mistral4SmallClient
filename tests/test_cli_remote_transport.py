@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+from typing import cast
+
 from tests.cli_support import *
 
 
@@ -92,7 +94,7 @@ def test_remote_stream_usage_is_tracked_in_status_snapshot() -> None:
             self.chat = UsageStreamChat()
 
     session = MistralSession(
-        client=UsageStreamClient(),
+        client=cast(Any, UsageStreamClient()),
         backend_kind=BackendKind.REMOTE,
         model_id="mistral-small-latest",
         server_url=None,
@@ -381,8 +383,9 @@ def test_conversations_streaming_records_usage_and_text() -> None:
         conversations.start_stream_calls[0]["completion_args"]["reasoning_effort"]
         == "high"
     )
-    assert session.status_snapshot().last_usage is not None
-    assert session.status_snapshot().last_usage.total_tokens == 12
+    last_usage = session.status_snapshot().last_usage
+    assert last_usage is not None
+    assert last_usage.total_tokens == 12
 
 
 def test_conversations_append_stream_disables_reasoning_effort_when_hidden() -> None:

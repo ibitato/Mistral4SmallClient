@@ -730,7 +730,8 @@ def render_help_screen(
         "Ctrl-C cancels the current response without dropping the session.",
         "Ctrl-D exits the REPL.",
         (
-            "In attachment pickers, Enter selects the highlighted file and [..] "
+            "In attachment pickers, Enter selects the highlighted entry, [use] "
+            "keeps the current directory during directory browsing, and [..] "
             "goes to the parent directory."
         ),
         "Thinking blocks are rendered in dim italic text when display is enabled.",

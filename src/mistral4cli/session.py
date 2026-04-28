@@ -7,8 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
-from mistralai.client import Mistral
-
 from mistral4cli.conversation_registry import ConversationRegistry
 from mistral4cli.local_mistral import (
     DEFAULT_MODEL_ID,
@@ -18,6 +16,7 @@ from mistral4cli.local_mistral import (
     ConversationConfig,
     LocalGenerationConfig,
 )
+from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session_context import SessionContextMixin
 from mistral4cli.session_conversations import SessionConversationsMixin
 from mistral4cli.session_primitives import (
@@ -46,7 +45,7 @@ class MistralSession(
 ):
     """Stateful conversation helper for the Mistral Small 4 CLI."""
 
-    client: Mistral
+    client: MistralClientProtocol
     backend_kind: BackendKind = BackendKind.LOCAL
     model_id: str = DEFAULT_MODEL_ID
     server_url: str | None = DEFAULT_SERVER_URL

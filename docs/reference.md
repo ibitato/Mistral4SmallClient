@@ -54,7 +54,7 @@ Render a supported document into image blocks for the model.
 
 Linux-only command-line entrypoint for the general Mistral Small 4 CLI.
 
-#### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[MistralConfig], Mistral]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
+#### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[MistralConfig], MistralClientProtocol]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
 
 Run the CLI.
 
@@ -128,7 +128,7 @@ Configuration for the remote Mistral cloud endpoint.
 
 Construct an official `mistralai` client for the selected backend.
 
-#### `get_client_timeout_ms(client: 'Mistral', default: 'int' = 300000) -> 'int'`
+#### `get_client_timeout_ms(client: 'MistralClientProtocol | object', default: 'int' = 300000) -> 'int'`
 
 Return the effective timeout configured on a Mistral client.
 
@@ -148,7 +148,7 @@ Return the `/v1/models` payload from the local server.
 
 Return whether the remote Mistral cloud API key is available.
 
-#### `set_client_timeout_ms(client: 'Mistral', timeout_ms: 'int') -> 'None'`
+#### `set_client_timeout_ms(client: 'MistralClientProtocol | object', timeout_ms: 'int') -> 'None'`
 
 Update the effective timeout on a Mistral client in place.
 

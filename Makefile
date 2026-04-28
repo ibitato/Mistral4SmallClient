@@ -1,4 +1,4 @@
-.PHONY: help sync lock build format format-check lint typecheck test docs docs-check check run cancel-probe clean
+.PHONY: help sync lock build format format-check lint typecheck typecheck-mypy typecheck-pyright test docs docs-check check run cancel-probe clean
 
 UV ?= uv
 
@@ -11,7 +11,9 @@ help:
 		'  make format     - format Python code with ruff' \
 		'  make format-check - verify formatting without changing files' \
 		'  make lint       - lint Python code with ruff' \
-		'  make typecheck  - run mypy' \
+		'  make typecheck  - run mypy and pyright' \
+		'  make typecheck-mypy - run mypy' \
+		'  make typecheck-pyright - run pyright' \
 		'  make test       - run pytest' \
 		'  make docs       - generate docs/reference.md from docstrings' \
 		'  make docs-check - verify generated docs and language hygiene' \
@@ -38,8 +40,13 @@ format-check:
 lint:
 	$(UV) run ruff check .
 
-typecheck:
-	$(UV) run mypy src
+typecheck-mypy:
+	$(UV) run mypy
+
+typecheck-pyright:
+	$(UV) run pyright
+
+typecheck: typecheck-mypy typecheck-pyright
 
 test:
 	$(UV) run pytest

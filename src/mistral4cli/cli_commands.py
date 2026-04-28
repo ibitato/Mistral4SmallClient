@@ -8,8 +8,6 @@ import sys
 from collections.abc import Callable
 from typing import TextIO
 
-from mistralai.client import Mistral
-
 from mistral4cli.attachments import PathPicker
 from mistral4cli.cli_config import _parse_metadata_pairs
 from mistral4cli.cli_shortcuts import (
@@ -35,6 +33,7 @@ from mistral4cli.local_mistral import (
     get_client_timeout_ms,
     remote_api_key_available,
 )
+from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session import MistralSession
 from mistral4cli.ui import render_help_screen, render_status_snapshot
 
@@ -49,7 +48,7 @@ def _run_command(
     *,
     repl_state: _ReplState | None = None,
     local_config: LocalMistralConfig | None = None,
-    client_factory: Callable[[MistralConfig], Mistral],
+    client_factory: Callable[[MistralConfig], MistralClientProtocol],
     input_func: Callable[[str], str] = input,
     stdin: TextIO = sys.stdin,
     path_picker: PathPicker | None = None,
@@ -255,7 +254,7 @@ def _run_conversations_command(
     *,
     repl_state: _ReplState,
     local_config: LocalMistralConfig | None,
-    client_factory: Callable[[MistralConfig], Mistral],
+    client_factory: Callable[[MistralConfig], MistralClientProtocol],
     stdin: TextIO,
     input_func: Callable[[str], str],
     print_paginated_text: Callable[..., None],
@@ -802,7 +801,7 @@ def _run_remote_command(
     *,
     repl_state: _ReplState,
     local_config: LocalMistralConfig | None,
-    client_factory: Callable[[MistralConfig], Mistral],
+    client_factory: Callable[[MistralConfig], MistralClientProtocol],
     refresh_repl_screen: Callable[[TextIO, MistralSession], None],
 ) -> bool:
     normalized = argument.strip().lower()

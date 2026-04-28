@@ -13,15 +13,19 @@ class ToolBridge(Protocol):
 
     def runtime_summary(self) -> str:
         """Summarize the active tool backend."""
+        ...
 
     def describe_tools(self) -> str:
         """Render a human-readable tool catalogue."""
+        ...
 
     def to_mistral_tools(self) -> list[dict[str, Any]]:
         """Return tools shaped for the official Mistral SDK."""
+        ...
 
     def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
         """Execute a single tool call."""
+        ...
 
 
 @dataclass(slots=True)

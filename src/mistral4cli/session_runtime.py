@@ -1,5 +1,6 @@
 # mypy: disable-error-code="assignment,attr-defined,has-type"
 # mypy: disable-error-code="no-any-return,no-untyped-def"
+# pyright: reportAttributeAccessIssue=false
 """Runtime, status, and remote-conversation management for sessions."""
 
 from __future__ import annotations
@@ -8,8 +9,6 @@ import logging
 from dataclasses import replace
 from typing import Any, cast
 
-from mistralai.client import Mistral
-
 from mistral4cli.local_mistral import (
     BackendKind,
     ConversationConfig,
@@ -17,6 +16,7 @@ from mistral4cli.local_mistral import (
     set_client_timeout_ms,
 )
 from mistral4cli.mcp_bridge import MCPToolResult
+from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session_primitives import (
     DEFAULT_SYSTEM_PROMPT,
     REMOTE_CONTEXT_WINDOWS,
@@ -117,7 +117,7 @@ class SessionRuntimeMixin:
     def switch_backend(
         self,
         *,
-        client: Mistral,
+        client: MistralClientProtocol,
         backend_kind: BackendKind,
         model_id: str,
         server_url: str | None,
@@ -142,7 +142,7 @@ class SessionRuntimeMixin:
     def enable_conversations(
         self,
         *,
-        client: Mistral,
+        client: MistralClientProtocol,
         model_id: str,
         store: bool,
         server_url: str | None = None,

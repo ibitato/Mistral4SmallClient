@@ -1,4 +1,5 @@
 # mypy: disable-error-code="attr-defined,has-type,no-any-return,no-untyped-def"
+# pyright: reportAttributeAccessIssue=false
 """Context estimation, compaction, and transport selection for sessions."""
 
 from __future__ import annotations

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from mistral4cli.mcp_bridge import MCPToolResult
 from mistral4cli.tooling import CompositeToolBridge
 
 
@@ -28,8 +29,11 @@ class FakeBridge:
             }
         ]
 
-    def call_tool(self, public_name: str, arguments: dict[str, Any]) -> tuple[str, str]:
-        return self.prefix, public_name
+    def call_tool(self, public_name: str, arguments: dict[str, Any]) -> MCPToolResult:
+        return MCPToolResult(
+            text=f"{self.prefix}:{public_name}",
+            is_error=False,
+        )
 
 
 def test_composite_tool_bridge_prefixes_collisions() -> None:
@@ -41,5 +45,5 @@ def test_composite_tool_bridge_prefixes_collisions() -> None:
         "shared",
         "fake__shared",
     ]
-    assert bridge.call_tool("shared", {}) == ("local", "shared")
-    assert bridge.call_tool("fake__shared", {}) == ("remote", "fake__shared")
+    assert bridge.call_tool("shared", {}).text == "local:shared"
+    assert bridge.call_tool("fake__shared", {}).text == "remote:fake__shared"

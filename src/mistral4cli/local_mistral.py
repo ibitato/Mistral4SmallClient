@@ -12,6 +12,8 @@ from urllib.request import urlopen
 
 from mistralai.client import Mistral
 
+from mistral4cli.mistral_client import MistralClientProtocol
+
 DEFAULT_API_KEY = "local-test"
 DEFAULT_MODEL_ID = "unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL"
 DEFAULT_SERVER_URL = "http://127.0.0.1:8080"
@@ -268,7 +270,10 @@ def _env_float(name: str, *, default: float) -> float:
         return default
 
 
-def get_client_timeout_ms(client: Mistral, default: int = DEFAULT_TIMEOUT_MS) -> int:
+def get_client_timeout_ms(
+    client: MistralClientProtocol | object,
+    default: int = DEFAULT_TIMEOUT_MS,
+) -> int:
     """Return the effective timeout configured on a Mistral client."""
 
     timeout_ms = getattr(client, "timeout_ms", None)
@@ -281,7 +286,10 @@ def get_client_timeout_ms(client: Mistral, default: int = DEFAULT_TIMEOUT_MS) ->
     return default
 
 
-def set_client_timeout_ms(client: Mistral, timeout_ms: int) -> None:
+def set_client_timeout_ms(
+    client: MistralClientProtocol | object,
+    timeout_ms: int,
+) -> None:
     """Update the effective timeout on a Mistral client in place."""
 
     cast(Any, client).timeout_ms = timeout_ms

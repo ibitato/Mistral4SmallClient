@@ -169,8 +169,8 @@ The attachment commands are designed for multimodal turns:
   `txt`, `md`, `rst`, `json`, `yaml`, `yml`, `toml`, `csv`, `pdf`, and `docx`.
 - Both commands accept an optional `--prompt`/`-p` argument so you can steer
   the analysis without retyping the default instruction.
-- The picker stays fully inside the terminal: first select a root directory,
-  then use the fuzzy picker to choose one matching file.
+- The picker stays fully inside the terminal: first browse directories with
+  `[use]` and `[..]`, then use the fuzzy picker to choose one matching file.
 - In local mode, `/doc` rasterizes the selected document into page images before
   sending it to `llama.cpp`.
 - In remote mode, `/image` uses the official SDK `image_url` chat flow, and

@@ -1,4 +1,7 @@
 # ruff: noqa: F403, F405
+from collections.abc import Iterator
+from typing import cast
+
 from tests.cli_support import *
 
 
@@ -709,7 +712,7 @@ def test_streaming_textual_json_tool_call_fallback_executes_tool_loop() -> None:
             self.chat = SequencedChat()
 
     session = MistralSession(
-        client=SequencedClient(),
+        client=cast(Any, SequencedClient()),
         generation=LocalGenerationConfig(),
         tool_bridge=bridge,
         stdout=output,
@@ -780,7 +783,7 @@ def test_raw_stream_cancel_rolls_back_user_turn_and_allows_followup(
         if isinstance(response, FakeRawStreamResponse):
 
             class InterruptingResponse(FakeRawStreamResponse):
-                def __iter__(self_inner):
+                def __iter__(self) -> Iterator[bytes]:
                     iterator = super().__iter__()
                     yield next(iterator)
                     raise KeyboardInterrupt
@@ -818,7 +821,7 @@ def test_model_error_rolls_back_failed_turn() -> None:
             self.chat = ErrorChat()
 
     session = MistralSession(
-        client=ErrorClient(),
+        client=cast(Any, ErrorClient()),
         generation=LocalGenerationConfig(),
         stdout=output,
     )

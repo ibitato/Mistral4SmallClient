@@ -1,4 +1,5 @@
 # mypy: disable-error-code="attr-defined,has-type,no-any-return"
+# pyright: reportAttributeAccessIssue=false
 """Turn orchestration, tool execution, and output helpers for sessions."""
 
 from __future__ import annotations

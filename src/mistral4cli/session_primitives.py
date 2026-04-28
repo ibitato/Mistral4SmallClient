@@ -6,14 +6,13 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
-from mistralai.client import Mistral
-
 from mistral4cli.local_mistral import (
     BackendKind,
     ContextConfig,
     ConversationConfig,
     LocalGenerationConfig,
 )
+from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.ui import render_runtime_summary
 
 DEFAULT_SYSTEM_PROMPT = "\n".join(
@@ -266,7 +265,7 @@ class _ModelTurn:
 class _BackendState:
     """Snapshot of the non-Conversations backend that can be restored later."""
 
-    client: Mistral
+    client: MistralClientProtocol
     backend_kind: BackendKind
     model_id: str
     server_url: str | None

@@ -23,9 +23,11 @@ from mistral4cli.attachments import (
 from mistral4cli.terminal_picker import (
     FINISH_SELECTION_VALUE,
     GO_TO_PARENT_VALUE,
+    SELECT_CURRENT_DIRECTORY_VALUE,
     TerminalPickerUnavailableError,
     _discover_matching_files,
     _prompt_candidate_selection,
+    _prompt_root_directory,
     pick_paths_in_terminal,
 )
 
@@ -152,6 +154,25 @@ def test_prompt_candidate_selection_returns_parent_action(tmp_path: Path) -> Non
     assert selected == []
 
 
+def test_prompt_root_directory_can_descend_and_select_current(tmp_path: Path) -> None:
+    child = tmp_path / "child"
+    child.mkdir()
+    fake_inquirer = _FakeInquirer(
+        filepath_result=tmp_path,
+        fuzzy_results=[str(child), SELECT_CURRENT_DIRECTORY_VALUE],
+    )
+
+    selected = _prompt_root_directory(
+        kind="image",
+        start_dir=tmp_path,
+        inquirer=fake_inquirer,
+        path_validator=None,
+        style=None,
+    )
+
+    assert selected == child
+
+
 def test_pick_paths_in_terminal_can_go_to_parent_before_selecting(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -165,6 +186,7 @@ def test_pick_paths_in_terminal_can_go_to_parent_before_selecting(
     fake_inquirer = _FakeInquirer(
         filepath_result=child,
         fuzzy_results=[
+            SELECT_CURRENT_DIRECTORY_VALUE,
             GO_TO_PARENT_VALUE,
             str(selected),
             FINISH_SELECTION_VALUE,

@@ -11,6 +11,7 @@ TERMINAL_PICKER_MAX_CANDIDATES = 1_500
 TERMINAL_PICKER_HEIGHT = "70%"
 GO_TO_PARENT_VALUE = "__mistral4cli_go_to_parent__"
 FINISH_SELECTION_VALUE = "__mistral4cli_finish_selection__"
+SELECT_CURRENT_DIRECTORY_VALUE = "__mistral4cli_select_current_directory__"
 
 
 class TerminalPickerUnavailableError(RuntimeError):
@@ -129,27 +130,61 @@ def _prompt_root_directory(
     path_validator: Any,
     style: Any,
 ) -> Path | None:
-    try:
-        value = inquirer.filepath(
-            message=f"Select the {kind} search directory:",
-            default=str(start_dir),
-            only_directories=True,
-            validate=path_validator(
-                is_dir=True,
-                message="Input must be an existing directory.",
-            ),
-            instruction="Tab completes path",
-            long_instruction=(
-                "Choose a root directory first. Matching files will be listed "
-                "in a terminal fuzzy picker."
-            ),
-            style=style,
-            raise_keyboard_interrupt=True,
-        ).execute()
-    except KeyboardInterrupt:
-        return None
-    root = Path(str(value)).expanduser()
-    return root.resolve()
+    del path_validator
+    current_dir = start_dir.expanduser().resolve()
+    while True:
+        child_directories = [
+            path
+            for path in sorted(
+                current_dir.iterdir(), key=lambda path: path.name.lower()
+            )
+            if path.is_dir() and not path.name.startswith(".")
+        ]
+        choices = [
+            {
+                "name": f"[use] Select this directory: {current_dir}",
+                "value": SELECT_CURRENT_DIRECTORY_VALUE,
+            }
+        ]
+        if current_dir.parent != current_dir:
+            choices.append(
+                {"name": "[..] Go to parent directory", "value": GO_TO_PARENT_VALUE}
+            )
+        choices.extend(
+            {"name": f"[dir] {path.name}", "value": str(path)}
+            for path in child_directories
+        )
+        try:
+            selection = inquirer.fuzzy(
+                message=f"Choose the {kind} search directory:",
+                choices=choices,
+                multiselect=False,
+                instruction="Type to filter directories",
+                long_instruction=(
+                    "Enter selects the highlighted directory. Use [use] to keep "
+                    "the current directory, [..] to go to the parent, and Ctrl-C "
+                    "to cancel."
+                ),
+                style=style,
+                pointer=">",
+                marker="*",
+                marker_pl=".",
+                max_height=TERMINAL_PICKER_HEIGHT,
+                cycle=True,
+                match_exact=False,
+                keybindings={"toggle-exact": [{"key": "c-t"}]},
+                raise_keyboard_interrupt=True,
+            ).execute()
+        except KeyboardInterrupt:
+            return None
+        if not selection:
+            return None
+        if selection == SELECT_CURRENT_DIRECTORY_VALUE:
+            return current_dir
+        if selection == GO_TO_PARENT_VALUE:
+            current_dir = current_dir.parent
+            continue
+        current_dir = Path(str(selection)).expanduser().resolve()
 
 
 def _discover_matching_files(

@@ -86,6 +86,7 @@ class PathPicker(Protocol):
         multiple: bool,
     ) -> list[Path]:
         """Return the selected files, or an empty list when canceled."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)

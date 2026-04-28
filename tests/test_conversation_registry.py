@@ -3,13 +3,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from mistral4cli.conversation_registry import (
     ConversationRegistry,
     default_registry_path,
 )
 
 
-def test_default_registry_path_uses_state_directory(monkeypatch) -> None:
+def test_default_registry_path_uses_state_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("XDG_STATE_HOME", "/tmp/m4s-state")
     path = default_registry_path()
 
@@ -33,10 +37,13 @@ def test_registry_round_trip_and_alias_resolution(tmp_path: Path) -> None:
     reloaded = ConversationRegistry.load(path)
 
     assert reloaded.last_active_conversation_id == "conv_1"
-    assert reloaded.resolve_reference("primary") is not None
-    assert reloaded.resolve_reference("primary").conversation_id == "conv_1"
-    assert reloaded.get("conv_1").note == "keep this thread"
-    assert reloaded.get("conv_1").tags == ["ops"]
+    resolved = reloaded.resolve_reference("primary")
+    record = reloaded.get("conv_1")
+    assert resolved is not None
+    assert record is not None
+    assert resolved.conversation_id == "conv_1"
+    assert record.note == "keep this thread"
+    assert record.tags == ["ops"]
 
 
 def test_registry_migrates_ids_and_keeps_parent_links(tmp_path: Path) -> None:
@@ -54,8 +61,10 @@ def test_registry_migrates_ids_and_keeps_parent_links(tmp_path: Path) -> None:
     registry.migrate_conversation_id("conv_old", "conv_new")
 
     assert registry.get("conv_old") is None
+    child = registry.get("conv_child")
     assert registry.get("conv_new") is not None
-    assert registry.get("conv_child").parent_conversation_id == "conv_new"
+    assert child is not None
+    assert child.parent_conversation_id == "conv_new"
     assert registry.last_active_conversation_id == "conv_new"
 
 

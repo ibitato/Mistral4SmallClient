@@ -384,7 +384,7 @@ def test_remote_stream_reasoning_is_rendered_and_committed_cleanly() -> None:
             ),
         ]
     )
-    fake_client.chat.stream = lambda **kwargs: fake_client.chat.last_stream  # type: ignore[method-assign]
+    fake_client.chat.stream = lambda **kwargs: fake_client.chat.last_stream
     session = MistralSession(
         client=fake_client,
         backend_kind=BackendKind.REMOTE,

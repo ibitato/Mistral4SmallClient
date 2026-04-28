@@ -1,4 +1,5 @@
 # mypy: disable-error-code="attr-defined"
+# pyright: reportAttributeAccessIssue=false
 """Local raw chat and SDK transport implementations for sessions."""
 
 from __future__ import annotations

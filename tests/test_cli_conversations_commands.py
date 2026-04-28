@@ -274,7 +274,9 @@ def test_conversations_command_handles_datetime_timestamps(
     )
     assert "Primary conversation" in output.getvalue()
 
-    record = session.conversation_registry.get("conv_1")
+    registry = session.conversation_registry
+    assert registry is not None
+    record = registry.get("conv_1")
     assert record is not None
     assert record.created_at == timestamp.isoformat()
     assert record.updated_at == timestamp.isoformat()
@@ -460,9 +462,13 @@ def test_conversations_command_note_tag_remove_unset_and_forget(tmp_path: Path) 
     assert (
         _run_command("conv", "note primary keep this thread", session, output) is False
     )
-    assert registry.get("conv_1").note == "keep this thread"
+    record = registry.get("conv_1")
+    assert record is not None
+    assert record.note == "keep this thread"
     assert _run_command("conv", "tag remove primary ops", session, output) is False
-    assert registry.get("conv_1").tags == []
+    record = registry.get("conv_1")
+    assert record is not None
+    assert record.tags == []
     assert _run_command("conv", "set name Release review", session, output) is False
     assert (
         _run_command("conv", "set description Track rollout notes", session, output)
@@ -533,7 +539,9 @@ def test_conversations_command_restart_switches_to_new_conversation(
     assert conversations.restart_calls[0]["inputs"] == ""
     assert session.conversation_id == "conv_branch"
     assert registry.get("conv_branch") is not None
-    assert registry.get("conv_branch").parent_conversation_id == "conv_1"
+    branch = registry.get("conv_branch")
+    assert branch is not None
+    assert branch.parent_conversation_id == "conv_1"
     assert "Active conversation: conv_branch." in output.getvalue()
 
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from mistral4cli.mcp_bridge import MCPConfig, MCPToolBridge, discover_mcp_config_path
 
 
@@ -31,7 +33,10 @@ def test_load_mcp_config_parses_firecrawl_server(tmp_path: Path) -> None:
     assert config.servers[0].url == "https://example.test/mcp"
 
 
-def test_load_mcp_config_expands_firecrawl_api_key(tmp_path: Path, monkeypatch) -> None:
+def test_load_mcp_config_expands_firecrawl_api_key(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     config_path = tmp_path / "mcp.json"
     monkeypatch.setenv("FIRECRAWL_API_KEY", "example-firecrawl-token")
     config_path.write_text(
@@ -58,7 +63,8 @@ def test_load_mcp_config_expands_firecrawl_api_key(tmp_path: Path, monkeypatch) 
 
 
 def test_load_mcp_config_skips_unresolved_env_placeholder(
-    tmp_path: Path, monkeypatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("FIRECRAWL_API_KEY", raising=False)
     config_path = tmp_path / "mcp.json"
@@ -82,7 +88,10 @@ def test_load_mcp_config_skips_unresolved_env_placeholder(
     assert config.servers == ()
 
 
-def test_discover_mcp_config_path_prefers_env(tmp_path: Path, monkeypatch) -> None:
+def test_discover_mcp_config_path_prefers_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     config_path = tmp_path / "custom-mcp.json"
     config_path.write_text('{"mcpServers": {}}', encoding="utf-8")
     monkeypatch.setenv("MISTRAL_LOCAL_MCP_CONFIG", str(config_path))

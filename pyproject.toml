@@ -42,6 +42,7 @@ Documentation = "https://github.com/ibitato/Mistral4SmallClient/blob/main/docs/l
 [dependency-groups]
 dev = [
     "mypy>=1.15,<2.0",
+    "pyright[nodejs]>=1.1.409,<1.2.0",
     "pytest>=8.3,<9.0",
     "ruff>=0.11,<0.12",
 ]
@@ -63,7 +64,7 @@ indent-style = "space"
 
 [tool.mypy]
 python_version = "3.10"
-files = ["src"]
+files = ["src", "tests"]
 mypy_path = "src"
 check_untyped_defs = true
 disallow_incomplete_defs = true
@@ -76,6 +77,32 @@ warn_redundant_casts = true
 warn_return_any = true
 warn_unused_configs = true
 warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_incomplete_defs = false
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.test_local_mistral",
+    "tests.test_remote_conversations",
+    "tests.test_remote_mistral",
+]
+ignore_errors = true
+
+[tool.pyright]
+include = ["src", "tests"]
+exclude = [
+    "**/__pycache__",
+    "tests/test_local_mistral.py",
+    "tests/test_remote_conversations.py",
+    "tests/test_remote_mistral.py",
+]
+pythonVersion = "3.10"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
 
 [tool.pytest.ini_options]
 addopts = "-ra"

@@ -258,9 +258,10 @@ export FIRECRAWL_API_KEY=...
 Attachment picker flow:
 
 - `/image` and `/doc` use a pure terminal picker with no GUI requirements
-- first choose a root directory
+- first browse directories in the terminal picker
+- use `[use]` to keep the current directory or `[..]` to move to the parent
 - then use a fuzzy list to pick one matching file
-- `Enter` selects the highlighted file, `[..]` moves to the parent directory, `Ctrl-C` cancels
+- `Enter` selects the highlighted entry and `Ctrl-C` cancels
 - if the picker cannot run, the CLI falls back to manual path entry
 
 ## Local Mistral Small 4 setup
@@ -331,12 +332,15 @@ make test
 make docs
 ```
 
-`make check` runs formatting, lint and type checks.
+`make check` runs formatting, lint, `mypy`, `pyright`, and docs checks.
 `make test` runs the full `pytest` suite, including local integration tests
 that require the `llama.cpp` server.
 Remote cloud integration runs automatically when `MISTRAL_API_KEY` is present
 in the environment and skips cleanly when it is absent.
 `make docs` regenerates the checked-in API reference from public docstrings.
+`make typecheck` runs both static type checkers, with `mypy` covering `src`
+and `tests` and `pyright` providing a second pass over the configured project
+tree.
 
 For the intended retro palette in the interactive REPL, prefer:
 

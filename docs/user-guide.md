@@ -478,6 +478,14 @@ Behavior by backend:
 - remote `/doc` uses the official SDK document flow for `pdf` and `docx`
 - remote plain-text documents are embedded directly as text
 
+Attachment picker flow:
+
+- first browse directories in the terminal picker
+- use `[use]` to keep the current directory or `[..]` to move to the parent
+- then use the fuzzy list to choose one matching file
+- `Enter` selects the highlighted entry and `Ctrl-C` cancels
+- if the picker cannot run, the CLI falls back to manual path entry
+
 Attachment lifecycle:
 
 - selected images or documents stay active until dropped or replaced

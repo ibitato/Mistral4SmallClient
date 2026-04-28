@@ -1,4 +1,5 @@
 # mypy: disable-error-code="attr-defined"
+# pyright: reportAttributeAccessIssue=false
 """Conversations API transport helpers for interactive sessions."""
 
 from __future__ import annotations

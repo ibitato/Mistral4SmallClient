@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -158,7 +159,7 @@ class FakeStream:
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         self.closed = True
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[FakeEvent]:
         for index, event in enumerate(self.events):
             if self.interrupt_after is not None and index >= self.interrupt_after:
                 raise KeyboardInterrupt
@@ -231,13 +232,14 @@ class FakeClient:
         complete_interrupt_once: bool = False,
         interrupt_after: int | None = None,
     ) -> None:
-        self.chat = FakeChat(
+        self.chat: Any = FakeChat(
             complete_text=complete_text,
             complete_responses=complete_responses,
             stream_chunks=stream_chunks,
             complete_interrupt_once=complete_interrupt_once,
             interrupt_after=interrupt_after,
         )
+        self.beta: Any = None
 
 
 @dataclass(slots=True)
@@ -264,8 +266,8 @@ class FakeConversationEntity:
     name: str = ""
     description: str = ""
     metadata: dict[str, Any] | None = None
-    created_at: str = "2026-04-28T00:00:00Z"
-    updated_at: str = "2026-04-28T00:00:00Z"
+    created_at: str | datetime = "2026-04-28T00:00:00Z"
+    updated_at: str | datetime = "2026-04-28T00:00:00Z"
 
 
 @dataclass(slots=True)
@@ -312,7 +314,7 @@ class FakeConversationStream:
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         self.closed = True
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[FakeConversationEvent]:
         for index, event in enumerate(self.events):
             if self.interrupt_after is not None and index >= self.interrupt_after:
                 raise KeyboardInterrupt
@@ -458,7 +460,7 @@ class FakeBeta:
 class FakeConversationClient(FakeClient):
     def __init__(self, conversations: FakeConversations | None = None) -> None:
         super().__init__()
-        self.beta = FakeBeta(conversations or FakeConversations())
+        self.beta: Any = FakeBeta(conversations or FakeConversations())
 
 
 class FakeRawHTTPResponse:
@@ -485,7 +487,7 @@ class FakeRawStreamResponse:
     def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
         return None
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[bytes]:
         return iter(self.lines)
 
 
@@ -544,5 +546,96 @@ class InterruptingToolBridge(FakeToolBridge):
 
 
 __all__ = [
-    name for name in globals() if not (name.startswith("__") and name != "__version__")
+    "ANSI_ESCAPE_RE",
+    "CLEAR_SCREEN",
+    "CYAN",
+    "DEFAULT_LOG_RETENTION_DAYS",
+    "DEFAULT_SYSTEM_PROMPT",
+    "DEFAULT_TIMEOUT_MS",
+    "FIXTURE_DIR",
+    "GREEN",
+    "LINUX_ONLY_MESSAGE",
+    "ORANGE",
+    "RED",
+    "RESET",
+    "Any",
+    "BackendKind",
+    "ContextConfig",
+    "ConversationConfig",
+    "ConversationRegistry",
+    "FakeBeta",
+    "FakeChat",
+    "FakeChoice",
+    "FakeClient",
+    "FakeConversationClient",
+    "FakeConversationDone",
+    "FakeConversationEntity",
+    "FakeConversationEvent",
+    "FakeConversationFunctionDelta",
+    "FakeConversationMessageDelta",
+    "FakeConversationOutput",
+    "FakeConversationResponse",
+    "FakeConversationStarted",
+    "FakeConversations",
+    "FakeDelta",
+    "FakeEvent",
+    "FakeLongToolBridge",
+    "FakeMessage",
+    "FakeRawHTTPResponse",
+    "FakeRawStreamResponse",
+    "FakeResponse",
+    "FakeStdin",
+    "FakeStream",
+    "FakeTTYOutput",
+    "FakeToolBridge",
+    "FakeToolCall",
+    "FakeToolFunction",
+    "FakeUsage",
+    "InteractiveTTYRenderer",
+    "InterruptingToolBridge",
+    "LocalGenerationConfig",
+    "LocalMistralConfig",
+    "LocalToolBridge",
+    "MCPToolResult",
+    "MistralCodingSession",
+    "MistralSession",
+    "Path",
+    "RemoteMistralConfig",
+    "SmartOutputWriter",
+    "UsageSnapshot",
+    "_InputHistory",
+    "_PendingAttachment",
+    "_ReplState",
+    "__version__",
+    "_build_active_attachment_message",
+    "_clear_screen_if_supported",
+    "_parse_command",
+    "_refresh_repl_screen",
+    "_repl_status_line",
+    "_run_command",
+    "_run_repl",
+    "_write_tty_newline",
+    "build_client",
+    "build_image_message",
+    "build_remote_document_message",
+    "build_remote_image_message",
+    "datetime",
+    "field",
+    "io",
+    "iter_typewriter_chunks",
+    "main",
+    "os",
+    "paint_prompt_lines",
+    "pty",
+    "re",
+    "render_help_screen",
+    "render_welcome_banner",
+    "select",
+    "signal",
+    "subprocess",
+    "sys",
+    "terminal_recommendation",
+    "time",
+    "timezone",
+    "wrap_prompt_buffer",
 ]

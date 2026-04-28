@@ -11,6 +11,9 @@ This repository uses Python 3.10, `uv` for environment and dependency management
 - Use `make test` to run the `pytest` suite.
 - Use `make docs` to regenerate the checked-in API reference from public docstrings.
 - Use `make docs-check` to verify that the generated documentation and language hygiene are up to date.
+- Keep [`docs/project-tree.md`](docs/project-tree.md) updated whenever the
+  repository structure changes, including file additions, removals, renames, or
+  directory reorganizations.
 - Validate against the local server at `http://127.0.0.1:8080` with the model `unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL`.
 - For CLI smoke tests, use `uv run python -m mistral4cli --print-defaults` and `uv run python -m mistral4cli --once "..." --no-stream`.
 - When working with images, always use an image of at least `2x2` pixels.
@@ -41,7 +44,10 @@ This repository uses Python 3.10, `uv` for environment and dependency management
 - Do not disable rules globally unless there is a clear and stable reason.
 
 ## Typing
-- `mypy` must keep passing on `src/`.
+- `mypy` must keep passing on both `src/` and `tests/`, with integration-test
+  exceptions documented in configuration rather than ad hoc local skips.
+- `pyright` must keep passing as the second static type checker in the normal
+  development workflow.
 - Add annotations to new or modified functions.
 - Prefer concrete types over `Any`.
 - If you need a `# type: ignore`, justify it and revisit it later.
