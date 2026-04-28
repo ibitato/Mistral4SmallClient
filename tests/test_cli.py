@@ -2923,6 +2923,7 @@ def test_conversations_command_pending_settings_and_bookmarks(tmp_path: Path) ->
     assert _run_command("conv", "set meta owner=dlopez", session, output) is False
     assert session.pending_conversation.name == "Release review"
     assert session.pending_conversation.metadata == {"owner": "dlopez"}
+    assert _run_command("conv", "alias release-review", session, output) is False
     assert _run_command("conv", "alias conv_1 release-review", session, output) is False
     assert _run_command("conv", "tag add conv_1 ops", session, output) is False
     output.seek(0)
@@ -2941,6 +2942,28 @@ def test_conversations_command_pending_settings_and_bookmarks(tmp_path: Path) ->
     rendered = output.getvalue()
     assert "release-review" in rendered
     assert "ops" in rendered
+
+
+def test_conversations_command_alias_without_active_id_errors(tmp_path: Path) -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeConversationClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        conversation_registry=ConversationRegistry.load(
+            tmp_path / "conversations.json"
+        ),
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    assert _run_command("conv", "alias release-review", session, output) is False
+    assert "No active conversation id yet." in output.getvalue()
 
 
 def test_conversations_command_status_id_store_and_new(tmp_path: Path) -> None:

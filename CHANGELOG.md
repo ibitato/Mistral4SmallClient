@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.5 - 2026-04-28
+
+### Added
+
+- `/conv alias <text>` now assigns an alias directly to the active conversation
+  without requiring its `conversation_id`.
+
+### Changed
+
+- `/conv alias <conversation_id> <text>` remains supported for explicit remote
+  conversation references.
+- Conversations help text and user documentation now document the active
+  conversation alias shortcut.
+
 ## 1.5.4 - 2026-04-28
 
 ### Fixed

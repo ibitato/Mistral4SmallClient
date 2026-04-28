@@ -1751,16 +1751,23 @@ def _run_conversations_command(
         return False
 
     if action == "alias":
-        if len(tokens) < 3:
-            stdout.write("Usage: /conversations alias <conversation_id> <text>\n")
+        if len(tokens) < 2:
+            stdout.write("Usage: /conversations alias [<conversation_id>] <text>\n")
         else:
             try:
+                if len(tokens) == 2:
+                    if not session.conversation_id:
+                        raise ValueError(
+                            "No active conversation id yet. Use "
+                            '"/conv alias <conversation_id> <text>" or start one first.'
+                        )
+                    reference = session.conversation_id
+                    alias = tokens[1]
+                else:
+                    reference = tokens[1]
+                    alias = " ".join(tokens[2:])
                 stdout.write(
-                    session.set_local_conversation_alias(
-                        tokens[1],
-                        " ".join(tokens[2:]),
-                    )
-                    + "\n"
+                    session.set_local_conversation_alias(reference, alias) + "\n"
                 )
             except Exception as exc:
                 stdout.write(f"[conversations] {exc}\n")

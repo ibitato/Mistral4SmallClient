@@ -80,7 +80,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v1.5.4` also trigger a GitHub Actions release build that
+Version tags such as `v1.5.5` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -197,6 +197,8 @@ Conversations management:
 - `/conv delete [id]` deletes a remote conversation
 - `/conv alias`, `/conv note`, `/conv tag`, `/conv bookmarks`, and `/conv forget`
   manage the CLI-side local overlay
+- `/conv alias release-review` assigns an alias directly to the active
+  conversation; `/conv alias <id> release-review` still works for any known id
 - Mistral does not expose a remote update API for existing conversation
   `name`/`metadata`, so aliases and bookmarks are stored locally by the CLI
 - Mistral model Conversations currently preserve `name` and `description`, but

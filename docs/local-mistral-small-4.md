@@ -198,6 +198,8 @@ Conversations mode:
   `/conv history`, `/conv messages`, `/conv restart`, and `/conv delete`
 - supports local bookmarks and aliases with `/conv alias`, `/conv note`,
   `/conv tag`, `/conv bookmarks`, and `/conv forget`
+- `/conv alias release-review` is a shortcut for aliasing the active
+  conversation without repeating its id
 - keeps a local registry under `~/.local/state/mistral4cli/conversations.json`
   or `$XDG_STATE_HOME/mistral4cli/conversations.json`
 - accepts pending remote creation metadata with `--conversation-name`,

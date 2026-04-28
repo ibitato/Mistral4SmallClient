@@ -288,6 +288,7 @@ Remote management commands:
 Local organization commands:
 
 ```text
+/conv alias release-review
 /conv alias conv_123 release-review
 /conv note conv_123 Track rollout blockers
 /conv tag add conv_123 ops
@@ -329,6 +330,9 @@ Important behavior:
   conversation
 - `/conv use <id>` reattaches the current session to an existing remote
   conversation
+- `/conv alias release-review` applies the alias directly to the active
+  conversation; use `/conv alias <id> release-review` when you want to label a
+  different one
 - `/conv history` prints remote entry ids; use those ids with `/conv restart`
   to branch from a specific point
 - `/conv restart <entry_id>` creates a new remote conversation and switches the

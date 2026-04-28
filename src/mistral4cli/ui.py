@@ -702,6 +702,7 @@ def render_help_screen(
         '  - "/conv use conv_123"',
         '  - "/conv new"',
         '  - "/conv set name Release notes review"',
+        '  - "/conv alias release-review"',
         '  - "/conv alias conv_123 release-review"',
         '  - "/conv bookmarks"',
         '  - "/compact"',
