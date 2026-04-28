@@ -1638,7 +1638,11 @@ def _run_conversations_command(
         if not ensure_enabled(allow_resume=False):
             return False
         try:
-            rendered = session.attach_remote_conversation(reference, source="manual")
+            conversation_id = session.resolve_conversation_reference(reference)
+            rendered = session.attach_remote_conversation(
+                conversation_id,
+                source="manual",
+            )
         except Exception as exc:
             stdout.write(f"[conversations] {exc}\n")
             stdout.flush()

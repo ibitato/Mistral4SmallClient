@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.10 - 2026-04-28
+
+### Fixed
+
+- `/conv use <alias>` now resolves local conversation aliases before calling the
+  Mistral Conversations API, so bookmarked conversations can be resumed through
+  aliases instead of only raw `conversation_id` values.
+
+### Added
+
+- Regression coverage for `/conv use <alias>` to ensure local alias resolution
+  stays wired through the REPL command handler.
+
 ## 1.5.9 - 2026-04-28
 
 ### Changed

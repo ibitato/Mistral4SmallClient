@@ -3213,6 +3213,40 @@ def test_conversations_command_pending_settings_and_bookmarks(tmp_path: Path) ->
     assert "ops" in rendered
 
 
+def test_conversations_command_use_resolves_local_alias(tmp_path: Path) -> None:
+    output = io.StringIO()
+    conversations = FakeConversations()
+    registry = ConversationRegistry.load(tmp_path / "conversations.json")
+    registry.set_alias("conv_1", "release-review")
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        stdout=output,
+        conversation_registry=registry,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+
+    assert (
+        _run_command(
+            "conv",
+            "use release-review",
+            session,
+            output,
+            repl_state=_ReplState(),
+        )
+        is False
+    )
+    assert conversations.get_calls[-1] == {"conversation_id": "conv_1"}
+    assert session.conversation_id == "conv_1"
+    assert "Attached to conversation conv_1." in output.getvalue()
+
+
 def test_conversations_command_alias_without_active_id_errors(tmp_path: Path) -> None:
     output = io.StringIO()
     session = MistralSession(
