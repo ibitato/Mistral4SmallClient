@@ -108,6 +108,7 @@ Inside the REPL:
 
 - `/help` for actionable usage
 - `/defaults` to inspect runtime parameters
+- `/status` to inspect the current live session snapshot
 - `--version` or `-v` to print the installed CLI version
 - `/tools` to inspect loaded tools
 - `/timeout [VALUE]` to inspect or change the active request timeout
@@ -129,6 +130,7 @@ Interactive TTY behavior:
 - long prompts wrap in the composer instead of overflowing one raw line
 - a bottom status bar appears during active turns and shows live phase, backend,
   attachments, live context estimate, and backend token accounting
+- `/status` prints that same live session state on demand between turns
 - fenced code blocks in assistant answers are highlighted in a dedicated cyan
   code style so snippets stand out from normal prose
 - standalone Markdown separators such as `---` are rendered as terminal divider

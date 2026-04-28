@@ -73,6 +73,7 @@ an actionable help system:
 - `--version` or `-v` prints the installed CLI version and exits
 - `/help` shows commands, examples, and MCP status
 - `/defaults` prints the active runtime defaults
+- `/status` prints the current live session snapshot
 - `/timeout [value]` shows or updates the active request timeout
 - `/remote on|off` switches between local `llama.cpp` and Mistral cloud
 - `/conv ...` manages optional Mistral Cloud Conversations mode, bookmarks,
@@ -250,6 +251,7 @@ Session commands:
 
 - `/help`
 - `/defaults`
+- `/status`
 - `/remote [on|off]`
 - `/conv [on|off|new|store on|store off|current|id|list|bookmarks|show|use|history|messages|delete|restart|set|unset|alias|note|tag|forget]`
 - `/compact [status|now|auto on|auto off|threshold N|reserve N|keep N]`

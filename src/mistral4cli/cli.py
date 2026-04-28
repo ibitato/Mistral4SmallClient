@@ -257,6 +257,59 @@ def _repl_status_line(session: MistralSession, repl_state: _ReplState) -> str:
     return " | ".join(parts)
 
 
+def _render_session_status(
+    session: MistralSession,
+    repl_state: _ReplState,
+) -> str:
+    snapshot = session.status_snapshot()
+    phase = _status_phase_label(snapshot)
+    server = "Mistral Cloud"
+    if session.backend_kind is BackendKind.LOCAL:
+        server = session.server_url or "local server"
+
+    lines = ["Session status:"]
+    lines.append(f"Phase: {phase}")
+    lines.append(
+        "Runtime: "
+        f"backend={session.backend_kind.value} "
+        f"server={server} "
+        f"model={session.model_id}"
+    )
+    lines.append(
+        "Response: "
+        f"stream={'on' if session.stream_enabled else 'off'} "
+        f"reasoning={'on' if session.show_reasoning else 'off'} "
+        f"timeout={session.timeout_ms}ms"
+    )
+    lines.append(
+        "Conversations: "
+        f"mode={'on' if session.conversations.enabled else 'off'} "
+        f"store={'on' if session.conversations.store else 'off'} "
+        f"resume={session.conversations.resume_policy} "
+        f"id={session.conversation_id or 'not started'}"
+    )
+    estimated = _format_estimated_context_for_status(
+        snapshot.estimated_context,
+        conversations_enabled=session.conversations.enabled,
+    )
+    last_usage = _format_usage_for_status(snapshot.last_usage)
+    total_usage = _format_session_total_for_status(snapshot.cumulative_usage)
+    lines.append(f"Context: {estimated} {last_usage} {total_usage}")
+    attachment_parts: list[str] = []
+    if repl_state.pending_attachment is not None:
+        attachment_parts.append(f"stage={repl_state.pending_attachment.kind}")
+    if repl_state.active_images:
+        attachment_parts.append(f"images={len(repl_state.active_images)}")
+    if repl_state.active_documents:
+        attachment_parts.append(f"documents={len(repl_state.active_documents)}")
+    if attachment_parts:
+        lines.append("Attachments: " + " ".join(attachment_parts))
+    pending = session.pending_conversation_text()
+    if pending:
+        lines.append(pending)
+    return "\n".join(lines)
+
+
 def _build_active_attachment_message(
     session: MistralSession,
     *,
@@ -1272,6 +1325,10 @@ def _run_command(
             stdin=stdin,
             prompt_label="tools",
         )
+        return False
+    if command == "status":
+        stdout.write(_render_session_status(session, repl_state) + "\n")
+        stdout.flush()
         return False
     if command in {"conversations", "conv"}:
         return _run_conversations_command(

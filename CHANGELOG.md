@@ -4,6 +4,19 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
+## 1.5.12 - 2026-04-28
+
+### Added
+
+- New `/status` REPL command to print the live session snapshot on demand
+  between turns, including phase, backend, model, Conversations state, context
+  estimate, backend usage, and active attachments.
+
+### Changed
+
+- Help text and user documentation now distinguish `/defaults` as static
+  runtime configuration and `/status` as dynamic session state.
+
 ## 1.5.11 - 2026-04-28
 
 ### Fixed

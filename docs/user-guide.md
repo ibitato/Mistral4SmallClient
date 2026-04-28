@@ -81,6 +81,7 @@ Then inside the REPL:
 ```text
 /help
 /defaults
+/status
 /tools
 ```
 
@@ -102,6 +103,11 @@ configuration:
 - `Logging`: active log file and retention policy
 
 Use this output first when debugging a surprising runtime behavior.
+
+Use `/status` when you want the live session snapshot instead of the static
+runtime configuration. `/status` reports the current phase, active
+backend/server/model, current Conversations state, context estimate, most
+recent backend usage, cumulative usage, and active attachments.
 
 During active turns, the bottom TTY status bar exposes three different token
 signals:
@@ -128,6 +134,7 @@ Common commands:
 ```text
 /help
 /defaults
+/status
 /tools
 /reset
 /system You are a concise assistant.

@@ -52,6 +52,7 @@ from mistral4cli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralCodingSession,
     MistralSession,
+    UsageSnapshot,
 )
 from mistral4cli.ui import (
     CLEAR_SCREEN,
@@ -947,6 +948,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
     assert "+-" in banner
     assert "| Backend" in banner
     assert "| Model" in banner
+    assert "/status" in help_text
     assert "/tools" in help_text
     assert "FireCrawl MCP" in help_text
     assert "/run" in help_text
@@ -1835,6 +1837,7 @@ def test_parse_command_supports_system_reset_and_tools() -> None:
     assert _parse_command("/conv on") == ("conv", "on")
     assert _parse_command("/conversations new") == ("conversations", "new")
     assert _parse_command("/compact threshold 85") == ("compact", "threshold 85")
+    assert _parse_command("/status") == ("status", "")
     assert _parse_command("/timeout 5m") == ("timeout", "5m")
     assert _parse_command("/reasoning off") == ("reasoning", "off")
     assert _parse_command("/run --cwd . -- git status") == (
@@ -1876,6 +1879,42 @@ def test_compact_status_and_runtime_configuration_command() -> None:
     assert session.context.auto_compact is False
     assert session.context.reserve_tokens == 4096
     assert session.context.keep_recent_turns == 4
+
+
+def test_status_command_shows_dynamic_session_snapshot() -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        backend_kind=BackendKind.REMOTE,
+        model_id="mistral-small-latest",
+        server_url=None,
+        generation=LocalGenerationConfig(max_tokens=128),
+        stdout=output,
+    )
+    session.enable_conversations(
+        client=session.client,
+        model_id="mistral-small-latest",
+        store=True,
+    )
+    session.conversation_id = "conv_123"
+    session._last_usage = UsageSnapshot(total_tokens=321, max_context_tokens=256_000)
+    session._cumulative_usage = UsageSnapshot(total_tokens=654)
+    repl_state = _ReplState()
+    repl_state.active_images = [Path("/tmp/example.png")]
+    repl_state.active_documents = [Path("/tmp/example.pdf")]
+
+    assert _run_command("status", "", session, output, repl_state=repl_state) is False
+
+    rendered = output.getvalue()
+    assert "Session status:" in rendered
+    assert (
+        "Runtime: backend=remote server=Mistral Cloud model=mistral-small-latest"
+        in rendered
+    )
+    assert "Response: stream=on reasoning=on timeout=300000ms" in rendered
+    assert "Conversations: mode=on store=on resume=last id=conv_123" in rendered
+    assert "Context: est:backend last:321/256000 usage:654" in rendered
+    assert "Attachments: images=1 documents=1" in rendered
 
 
 def test_manual_compact_summarizes_old_history_and_preserves_recent_turns() -> None:
