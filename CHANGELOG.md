@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here.
 
+## 2.0.3 - 2026-04-29
+
+### Fixed
+
+- Hardened local `llama.cpp` raw-chat sessions after tool use so a missing final
+  assistant message no longer leaves the next prompt vulnerable to
+  `After the optional system message, conversation roles must alternate user and assistant roles`.
+- Added defensive repair for previously broken local raw-chat histories before
+  the next prompt, including stale trailing tool and orphan user turns.
+
 ## 2.0.2 - 2026-04-28
 
 ### Fixed

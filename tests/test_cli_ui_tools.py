@@ -1,4 +1,6 @@
 # ruff: noqa: F403, F405
+import copy
+import json
 from collections.abc import Iterator
 from typing import cast
 
@@ -806,6 +808,187 @@ def test_raw_stream_cancel_rolls_back_user_turn_and_allows_followup(
         {"role": "user", "content": "Return only ok."},
         {"role": "assistant", "content": "ok"},
     ]
+
+
+def test_local_tool_turn_without_final_answer_inserts_placeholder_and_allows_followup(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    tool_call = FakeToolCall(
+        function=FakeToolFunction(
+            name="web_search",
+            arguments='{"query":"mcp"}',
+        )
+    )
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        tool_bridge=FakeToolBridge(),
+        stdout=output,
+    )
+    responses = iter(
+        [
+            FakeRawHTTPResponse(
+                json.dumps(
+                    {
+                        "choices": [
+                            {
+                                "finish_reason": "tool_calls",
+                                "message": {
+                                    "role": "assistant",
+                                    "tool_calls": [
+                                        {
+                                            "id": tool_call.id,
+                                            "type": tool_call.type,
+                                            "function": {
+                                                "name": tool_call.function.name,
+                                                "arguments": (
+                                                    tool_call.function.arguments
+                                                ),
+                                            },
+                                        }
+                                    ],
+                                },
+                            }
+                        ]
+                    }
+                )
+            ),
+            FakeRawHTTPResponse(
+                '{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":""}}]}'
+            ),
+            FakeRawHTTPResponse(
+                '{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}'
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(MistralSession, "_should_use_raw_chat", lambda self: True)
+    monkeypatch.setattr(
+        MistralSession,
+        "_open_raw_request",
+        lambda self, payload: next(responses),
+    )
+
+    first = session.send("Busca MCP.", stream=False)
+    second = session.send("Return only ok.", stream=False)
+
+    assert first.cancelled is False
+    assert first.finish_reason == "stop"
+    assert second.content == "ok"
+    assert session.messages == [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": "Busca MCP."},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": tool_call.id,
+                    "type": tool_call.type,
+                    "function": {
+                        "name": tool_call.function.name,
+                        "arguments": tool_call.function.arguments,
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "name": "web_search",
+            "content": '{"results":[{"title":"Example","url":"https://example.com"}]}',
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "[Previous tool run completed without a final assistant answer. "
+                "Continue from the preserved tool results above.]"
+            ),
+        },
+        {"role": "user", "content": "Return only ok."},
+        {"role": "assistant", "content": "ok"},
+    ]
+
+
+def test_local_raw_history_repair_closes_trailing_tool_turn_before_next_prompt(
+    monkeypatch: Any,
+) -> None:
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.messages = [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": "Busca algo."},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "tool_call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "shell",
+                        "arguments": '{"command":"echo test"}',
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "tool_call_1",
+            "name": "shell",
+            "content": '{"stdout":"test"}',
+        },
+    ]
+    captured_payloads: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(MistralSession, "_should_use_raw_chat", lambda self: True)
+
+    def open_raw_request(self: MistralSession, payload: dict[str, Any]) -> object:
+        captured_payloads.append(copy.deepcopy(payload))
+        return FakeRawHTTPResponse(
+            '{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"ok"}}]}'
+        )
+
+    monkeypatch.setattr(MistralSession, "_open_raw_request", open_raw_request)
+
+    result = session.send("Return only ok.", stream=False)
+
+    assert result.content == "ok"
+    assert captured_payloads[0]["messages"] == [
+        {"role": "system", "content": session.system_prompt},
+        {"role": "user", "content": "Busca algo."},
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "tool_call_1",
+                    "type": "function",
+                    "function": {
+                        "name": "shell",
+                        "arguments": '{"command":"echo test"}',
+                    },
+                }
+            ],
+        },
+        {
+            "role": "tool",
+            "tool_call_id": "tool_call_1",
+            "name": "shell",
+            "content": '{"stdout":"test"}',
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "[Previous tool run completed without a final assistant answer. "
+                "Continue from the preserved tool results above.]"
+            ),
+        },
+        {"role": "user", "content": "Return only ok."},
+    ]
+    assert "[repair] restored local raw-chat history" in output.getvalue()
 
 
 def test_model_error_rolls_back_failed_turn() -> None:

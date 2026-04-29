@@ -16,6 +16,11 @@ from mistral4cli.ui import render_reasoning_chunk
 
 logger = logging.getLogger("mistral4cli.session")
 
+_LOCAL_RAW_TOOL_PLACEHOLDER = (
+    "[Previous tool run completed without a final assistant answer. "
+    "Continue from the preserved tool results above.]"
+)
+
 
 class SessionToolsMixin:
     """Coordinate user turns, tool loops, and visible terminal output."""
@@ -32,6 +37,7 @@ class SessionToolsMixin:
         normalized = self._normalize_user_content(content)
         if normalized is None:
             return TurnResult(content="", finish_reason="empty", cancelled=False)
+        self._repair_local_raw_history()
 
         logger.debug(
             "Sending turn stream=%s disable_tools=%s attachments=%s content=%s",
@@ -458,6 +464,63 @@ class SessionToolsMixin:
                 turn.finish_reason,
                 len(turn.content),
                 len(turn.reasoning),
+            )
+            return
+
+        if self.messages and self.messages[-1].get("role") == "tool":
+            self._append_local_raw_tool_placeholder(
+                reason="Turn finished without final assistant text after tools."
+            )
+
+    def _append_local_raw_tool_placeholder(self, *, reason: str) -> None:
+        """Close a local raw-chat tool cycle when no final assistant text exists."""
+
+        self.messages.append(
+            {"role": "assistant", "content": _LOCAL_RAW_TOOL_PLACEHOLDER}
+        )
+        self._mark_context_status_dirty()
+        logger.warning("Inserted local raw-chat placeholder assistant: %s", reason)
+
+    def _repair_local_raw_history(self) -> None:
+        """Repair stale local raw-chat history before sending the next prompt."""
+
+        if not self._should_use_raw_chat():
+            return
+        body = self.messages[1:]
+        if not body:
+            return
+        last = body[-1]
+        last_role = str(last.get("role", ""))
+        if last_role == "tool":
+            self._append_local_raw_tool_placeholder(
+                reason="Recovered trailing tool messages before next user turn."
+            )
+            self._print(
+                "[repair] restored local raw-chat history after an incomplete "
+                "tool turn.\n"
+            )
+            return
+        if last_role == "user":
+            removed = self.messages.pop()
+            self._mark_context_status_dirty()
+            logger.warning(
+                "Dropped stale local raw-chat user turn before next request: %s",
+                self._content_summary(removed.get("content")),
+            )
+            self._print(
+                "[repair] dropped a stale local raw-chat user turn before continuing.\n"
+            )
+            return
+        if last_role == "assistant" and last.get("tool_calls"):
+            self.messages.pop()
+            self._mark_context_status_dirty()
+            logger.warning(
+                "Dropped incomplete local raw-chat assistant tool-call turn "
+                "before next request."
+            )
+            self._print(
+                "[repair] dropped an incomplete local raw-chat tool call "
+                "before continuing.\n"
             )
 
     def _sync_conversation_id(
