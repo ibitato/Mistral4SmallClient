@@ -128,6 +128,10 @@ color.
 Standalone Markdown separators such as `---`, `***`, and `___` are rendered as
 real terminal divider lines outside fenced code blocks.
 
+In the interactive TTY composer, multiline paste is normalized into one text
+buffer. Pasted line breaks and tabs are flattened to spaces, the full text
+stays editable in the prompt, and nothing is sent until you press Enter.
+
 ## Basic REPL Commands
 
 Common commands:

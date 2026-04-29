@@ -80,7 +80,7 @@ This creates:
 - `dist/mistral4cli-<version>-py3-none-any.whl`
 - `dist/mistral4cli-<version>.tar.gz`
 
-Version tags such as `v2.0.3` also trigger a GitHub Actions release build that
+Version tags such as `v2.0.4` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
@@ -147,6 +147,8 @@ Interactive TTY behavior:
 
 - the prompt is rendered as a retro green `M4S>` composer in TTY sessions
 - long prompts wrap in the composer instead of overflowing one raw line
+- multiline paste in the TTY composer is flattened into one editable text
+  buffer; nothing is sent until you press Enter
 - a bottom status bar appears during active turns and shows live phase, backend,
   attachments, live context estimate, and backend token accounting
 - `/status` prints that same live session state on demand between turns

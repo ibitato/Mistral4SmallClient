@@ -205,7 +205,7 @@ def wrap_prompt_buffer(prompt: str, buffer: str, *, width: int) -> list[str]:
     """Wrap one logical REPL buffer into prompt-display lines."""
 
     available_width = max(width, len(prompt) + 8, len(PROMPT_CONTINUATION_PREFIX) + 8)
-    content = buffer or ""
+    content = buffer.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
     wrapped = textwrap.wrap(
         content,
         width=available_width,
@@ -213,7 +213,7 @@ def wrap_prompt_buffer(prompt: str, buffer: str, *, width: int) -> list[str]:
         subsequent_indent=PROMPT_CONTINUATION_PREFIX,
         replace_whitespace=False,
         drop_whitespace=False,
-        break_long_words=False,
+        break_long_words=True,
         break_on_hyphens=False,
     )
     if not wrapped:

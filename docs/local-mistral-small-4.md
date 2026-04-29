@@ -99,6 +99,8 @@ TTY usability details:
 
 - the prompt is rendered as a retro green `M4S>` composer in TTY sessions
 - long prompts wrap in the interactive composer instead of overflowing one line
+- multiline paste in the TTY composer is flattened into one editable text
+  buffer; nothing is sent until you press Enter
 - a bottom status bar appears during active turns and shows phase, backend,
   attachments, the cached context estimate, and backend token accounting
 - fenced code blocks are tinted in a dedicated cyan code style so generated

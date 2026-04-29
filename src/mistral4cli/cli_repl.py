@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import shutil
 import sys
 from collections.abc import Callable
@@ -30,6 +31,11 @@ from mistral4cli.ui import (
 )
 
 logger = logging.getLogger("mistral4cli.cli")
+
+BRACKETED_PASTE_ENABLE = "\x1b[?2004h"
+BRACKETED_PASTE_DISABLE = "\x1b[?2004l"
+BRACKETED_PASTE_START = "200~"
+BRACKETED_PASTE_END = "\x1b[201~"
 
 
 def _linux_supported() -> bool:
@@ -111,6 +117,53 @@ def _write_tty_newline(stdout: TextIO) -> None:
     stdout.flush()
 
 
+def _set_bracketed_paste(stdout: TextIO, *, enabled: bool) -> None:
+    """Toggle bracketed paste mode for terminals that support it."""
+
+    stdout.write(BRACKETED_PASTE_ENABLE if enabled else BRACKETED_PASTE_DISABLE)
+    stdout.flush()
+
+
+def _normalize_pasted_text(text: str) -> str:
+    """Fold multiline pasted text into one prompt buffer line."""
+
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    normalized = re.sub(r"[ \t]*\n+[ \t]*", " ", normalized)
+    normalized = normalized.replace("\t", " ")
+    return normalized.strip()
+
+
+def _read_bracketed_paste(stdin: TextIO) -> str:
+    """Read one bracketed paste payload and return the normalized text."""
+
+    chars: list[str] = []
+    while True:
+        char = stdin.read(1)
+        if char == "":
+            break
+        chars.append(char)
+        if "".join(chars[-len(BRACKETED_PASTE_END) :]) == BRACKETED_PASTE_END:
+            del chars[-len(BRACKETED_PASTE_END) :]
+            break
+    return _normalize_pasted_text("".join(chars))
+
+
+def _read_escape_sequence(stdin: TextIO) -> str:
+    """Read one CSI escape sequence payload after the initial ESC byte."""
+
+    next_char = stdin.read(1)
+    if next_char != "[":
+        return next_char
+    payload = ""
+    while True:
+        char = stdin.read(1)
+        if char == "":
+            return payload
+        payload += char
+        if char.isalpha() or char == "~":
+            return payload
+
+
 def _read_tty_line(
     prompt: str,
     stdin: TextIO,
@@ -132,6 +185,7 @@ def _read_tty_line(
         stdout.write(prompt)
         stdout.flush()
     try:
+        _set_bracketed_paste(stdout, enabled=True)
         tty.setraw(fileno)
         while True:
             char = stdin.read(1)
@@ -165,22 +219,27 @@ def _read_tty_line(
                         _redraw_prompt_line(stdout, prompt, buffer)
                 continue
             if char == "\x1b":
-                next_char = stdin.read(1)
-                if next_char != "[":
-                    continue
-                direction = stdin.read(1)
-                if direction == "A":
+                sequence = _read_escape_sequence(stdin)
+                if sequence == "A":
                     buffer = history.previous(buffer)
                     if renderer is not None:
                         renderer.render_input(prompt, buffer)
                     else:
                         _redraw_prompt_line(stdout, prompt, buffer)
-                elif direction == "B":
+                elif sequence == "B":
                     buffer = history.next()
                     if renderer is not None:
                         renderer.render_input(prompt, buffer)
                     else:
                         _redraw_prompt_line(stdout, prompt, buffer)
+                elif sequence == BRACKETED_PASTE_START:
+                    pasted = _read_bracketed_paste(stdin)
+                    if pasted:
+                        buffer += pasted
+                        if renderer is not None:
+                            renderer.render_input(prompt, buffer)
+                        else:
+                            _redraw_prompt_line(stdout, prompt, buffer)
                 continue
             if char.isprintable():
                 buffer += char
@@ -190,6 +249,7 @@ def _read_tty_line(
                     stdout.write(char)
                     stdout.flush()
     finally:
+        _set_bracketed_paste(stdout, enabled=False)
         termios.tcsetattr(fileno, termios.TCSADRAIN, original_attrs)
 
 

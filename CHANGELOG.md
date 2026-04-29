@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here.
 
+## 2.0.4 - 2026-04-29
+
+### Fixed
+
+- Hardened the interactive TTY composer so multiline paste no longer submits one
+  line at a time. Bracketed paste is now captured into a single editable input
+  buffer and only sent after pressing Enter.
+- Normalized pasted line breaks and tabs into plain spaces in the TTY input
+  buffer, preventing accidental embedded returns from corrupting REPL input.
+- Improved long-input composer wrapping so embedded newlines and very long
+  unbroken tokens render safely in the prompt instead of overflowing one line.
+
 ## 2.0.3 - 2026-04-29
 
 ### Fixed

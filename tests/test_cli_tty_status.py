@@ -266,6 +266,38 @@ def test_wrap_prompt_buffer_uses_continuation_prefix_for_long_input() -> None:
     assert lines[1].startswith("... ")
 
 
+def test_wrap_prompt_buffer_normalizes_embedded_newlines() -> None:
+    lines = wrap_prompt_buffer(
+        "M4S> ",
+        "hola\nesto es una prueba\notra linea",
+        width=28,
+    )
+
+    assert lines[0].startswith("M4S> ")
+    assert all("\n" not in line for line in lines)
+    assert " ".join(line.strip(". ") for line in lines) == (
+        "M4S> hola esto es una prueba otra linea"
+    )
+
+
+def test_wrap_prompt_buffer_breaks_long_unbroken_tokens() -> None:
+    lines = wrap_prompt_buffer(
+        "M4S> ",
+        "palabra" * 20,
+        width=24,
+    )
+
+    assert len(lines) >= 2
+    assert all(len(line) <= 24 for line in lines)
+
+
+def test_normalize_pasted_text_flattens_multiline_clipboard_payload() -> None:
+    assert (
+        _normalize_pasted_text("  hola\r\nmundo\tbien \n otra\tcosa  ")
+        == "hola mundo bien otra cosa"
+    )
+
+
 def test_paint_prompt_lines_styles_prompt_prefixes(monkeypatch: Any) -> None:
     monkeypatch.delenv("NO_COLOR", raising=False)
     monkeypatch.setenv("TERM", "xterm-256color")
@@ -603,6 +635,30 @@ def test_write_tty_newline_emits_crlf() -> None:
     _write_tty_newline(output)
 
     assert output.getvalue() == "\r\n"
+
+
+def test_read_tty_line_treats_bracketed_paste_as_one_buffer(monkeypatch: Any) -> None:
+    import termios
+    import tty
+
+    class FakeTTYInput(FakeStdin):
+        def fileno(self) -> int:
+            return 0
+
+    output = io.StringIO()
+    stdin = FakeTTYInput("\x1b[200~hola\r\nmundo\tbien\x1b[201~\r", tty=True)
+
+    monkeypatch.setattr(termios, "tcgetattr", lambda _fileno: [0])
+    monkeypatch.setattr(termios, "tcsetattr", lambda *_args: None)
+    monkeypatch.setattr(tty, "setraw", lambda _fileno: None)
+
+    line = _read_tty_line("M4S> ", stdin, output, _InputHistory())
+
+    assert line == "hola mundo bien"
+    rendered = output.getvalue()
+    assert rendered.startswith("M4S> \x1b[?2004h")
+    assert "hola mundo bien" in rendered
+    assert rendered.endswith("\x1b[?2004l")
 
 
 def test_repl_quit_with_renderer_restores_column_zero(
