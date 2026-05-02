@@ -1,5 +1,10 @@
 # ruff: noqa: F403, F405
-from mistralcli.local_mistral import REMOTE_MEDIUM_MODEL_ID
+from mistralcli.local_mistral import (
+    BackendKind,
+    REMOTE_MODEL_ID,
+    REMOTE_MEDIUM_MODEL_ID,
+    RemoteMistralConfig,
+)
 from tests.cli_support import *
 
 
@@ -682,3 +687,126 @@ def test_remote_off_switches_back_to_local() -> None:
     assert "Local backend enabled. Conversation reset." in output.getvalue()
     assert "| Backend" in output.getvalue()
     assert local_config.server_url in output.getvalue()
+
+
+def test_remote_model_command_changes_model(monkeypatch: Any) -> None:
+    """Test that /remote model <model> changes the remote model when remote is on."""
+    output = io.StringIO()
+    captured: list[object] = []
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.messages.append({"role": "user", "content": "stale"})
+    monkeypatch.setenv("MISTRAL_API_KEY", "example-mistral-key")
+
+    # First, switch to remote mode
+    def client_factory(config: object) -> FakeClient:
+        captured.append(config)
+        return FakeClient()
+
+    _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=client_factory,
+    )
+    captured.clear()
+    output = io.StringIO()
+    session.stdout = output
+
+    # Now change the model to medium
+    should_exit = _run_command(
+        "remote",
+        "model medium",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=client_factory,
+        remote_model_id=REMOTE_MODEL_ID,
+    )
+
+    assert should_exit is False
+    assert len(captured) == 1
+    assert isinstance(captured[0], RemoteMistralConfig)
+    assert captured[0].model_id == REMOTE_MEDIUM_MODEL_ID
+    assert session.model_id == REMOTE_MEDIUM_MODEL_ID
+    assert session.backend_kind is BackendKind.REMOTE
+    assert (
+        f"Remote model changed to {REMOTE_MEDIUM_MODEL_ID}. Conversation reset."
+        in output.getvalue()
+    )
+
+
+def test_remote_model_command_fails_if_not_remote_on(monkeypatch: Any) -> None:
+    """Test that /remote model fails when not in remote mode."""
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    # Session starts in LOCAL mode by default
+    assert session.backend_kind is BackendKind.LOCAL
+
+    monkeypatch.setenv("MISTRAL_API_KEY", "example-mistral-key")
+
+    should_exit = _run_command(
+        "remote",
+        "model medium",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeClient(),
+        remote_model_id=REMOTE_MODEL_ID,
+    )
+
+    assert should_exit is False
+    assert session.backend_kind is BackendKind.LOCAL  # Still in local mode
+    assert "[remote] Remote mode is not active. Use '/remote on' first." in output.getvalue()
+
+
+def test_remote_model_command_rejects_invalid_model(monkeypatch: Any) -> None:
+    """Test that /remote model rejects invalid model names."""
+    output = io.StringIO()
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    session.messages.append({"role": "user", "content": "stale"})
+    monkeypatch.setenv("MISTRAL_API_KEY", "example-mistral-key")
+
+    # Switch to remote mode first
+    def client_factory(config: object) -> FakeClient:
+        return FakeClient()
+
+    _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=client_factory,
+    )
+    output = io.StringIO()
+    session.stdout = output
+
+    # Try to change to invalid model
+    should_exit = _run_command(
+        "remote",
+        "model invalid-model",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=client_factory,
+        remote_model_id=REMOTE_MODEL_ID,
+    )
+
+    assert should_exit is False
+    assert "Usage: /remote model [small|medium]" in output.getvalue()
+    # Model should not have changed
+    assert session.model_id == REMOTE_MODEL_ID
