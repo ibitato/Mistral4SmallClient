@@ -810,3 +810,101 @@ def test_remote_model_command_rejects_invalid_model(monkeypatch: Any) -> None:
     assert "Usage: /remote model [small|medium]" in output.getvalue()
     # Model should not have changed
     assert session.model_id == REMOTE_MODEL_ID
+
+
+def test_conversations_command_preserves_selected_remote_model(monkeypatch: Any) -> None:
+    """Test that /conv preserves the current session model instead of resetting to default."""
+    output = io.StringIO()
+    conversations = FakeConversations()
+    
+    # Start with medium model selected
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id=REMOTE_MEDIUM_MODEL_ID,
+        server_url=None,
+        stdout=output,
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    # Enable conversations - should preserve medium model, not reset to small
+    should_exit = _run_command(
+        "conv",
+        "on",
+        session,
+        output,
+        repl_state=_ReplState(),
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeConversationClient(conversations),
+        remote_model_id=REMOTE_MODEL_ID,  # This is the default, but session has medium
+    )
+
+    assert should_exit is False
+    assert session.conversations.enabled is True
+    assert session.backend_kind is BackendKind.REMOTE
+    # Critical: model should still be medium, not reset to small
+    assert session.model_id == REMOTE_MEDIUM_MODEL_ID
+    assert "Conversations enabled" in output.getvalue()
+
+
+def test_remote_on_preserves_selected_model(monkeypatch: Any) -> None:
+    """Test that /remote on preserves the current session model."""
+    output = io.StringIO()
+    conversations = FakeConversations()
+    
+    # Start with medium model already selected in remote backend
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id=REMOTE_MEDIUM_MODEL_ID,
+        server_url=None,
+        stdout=output,
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    # Run /remote on - should preserve medium model
+    should_exit = _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeConversationClient(conversations),
+        remote_model_id=REMOTE_MODEL_ID,  # Default is small, but session has medium
+    )
+
+    assert should_exit is False
+    assert session.backend_kind is BackendKind.REMOTE
+    # Model should still be medium
+    assert session.model_id == REMOTE_MEDIUM_MODEL_ID
+    assert f"Remote backend enabled ({REMOTE_MEDIUM_MODEL_ID})" in output.getvalue()
+
+
+def test_remote_command_shows_current_model(monkeypatch: Any) -> None:
+    """Test that /remote (no args) shows the current session model, not default."""
+    output = io.StringIO()
+    conversations = FakeConversations()
+    
+    # Session with medium model
+    session = MistralSession(
+        client=FakeConversationClient(conversations),
+        backend_kind=BackendKind.REMOTE,
+        model_id=REMOTE_MEDIUM_MODEL_ID,
+        server_url=None,
+        stdout=output,
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    # Run /remote without args - should show medium, not small
+    should_exit = _run_command(
+        "remote",
+        "",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=lambda _config: FakeConversationClient(conversations),
+        remote_model_id=REMOTE_MODEL_ID,  # Default is small
+    )
+
+    assert should_exit is False
+    assert f"Remote model: {REMOTE_MEDIUM_MODEL_ID}" in output.getvalue()
