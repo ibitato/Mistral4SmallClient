@@ -1,4 +1,4 @@
-"""Always-on local Linux shell and workspace tools for the Mistral Small 4 CLI."""
+"""Always-on local Linux shell and workspace tools for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 

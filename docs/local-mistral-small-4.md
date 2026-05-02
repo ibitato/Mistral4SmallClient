@@ -1,10 +1,10 @@
-# Mistral Small 4 Local and Remote CLI
+# Mistral Small 4 + Medium 3.5 Local and Remote CLI
 
-This repository provides a general Mistral Small 4 CLI built on top of the
+This repository provides a general Mistral Small 4 + Medium 3.5 CLI built on top of the
 official `mistralai` Python SDK against two backends:
 
 - a local `llama.cpp` deployment
-- the hosted Mistral cloud model exposed as `mistral-small-latest`
+- the hosted Mistral cloud models exposed as `mistral-small-latest` and `mistral-medium-3.5`
 
 The CLI is designed to switch between those backends without changing the main
 REPL workflow, attachments, or tool availability.
@@ -63,7 +63,7 @@ The integration test uses a `2x2` PNG fixture to avoid that crash.
 
 ## CLI
 
-The repository ships a dedicated `mistral4cli` REPL for Mistral Small 4. It
+The repository ships a dedicated `mistral4cli` REPL for using and testing Mistral Small 4 and Mistral Medium 3.5. It
 uses the official `mistralai` SDK directly and can target either the local or
 remote backend at runtime.
 
@@ -97,7 +97,7 @@ an actionable help system:
 
 TTY usability details:
 
-- the prompt is rendered as a retro green `M4S>` composer in TTY sessions
+- the prompt is rendered as a retro green `M4D>` composer in TTY sessions
 - long prompts wrap in the interactive composer instead of overflowing one line
 - multiline paste in the TTY composer is flattened into one editable text
   buffer; nothing is sent until you press Enter
@@ -198,7 +198,7 @@ Runtime defaults:
 Remote mode:
 
 - reads `MISTRAL_API_KEY` from the environment
-- uses `mistral-small-latest`
+- defaults to `mistral-small-latest` and accepts `--remote-model mistral-medium-3.5`
 - resets the conversation when switching backend
 - stays on the official Python SDK path
 - uses `reasoning_effort=high` when reasoning is enabled
@@ -320,7 +320,7 @@ The CLI can switch to the remote Mistral cloud backend with `/remote on`.
 
 Current constraints from the official SDK and live API:
 
-- `mistral-small-latest` works through normal chat completions
+- `mistral-small-latest` and `mistral-medium-3.5` work through normal chat completions
 - `prompt_mode="reasoning"` is rejected by the live API for that model
 - `reasoning_effort` works through the current official Python SDK and returns
   structured `thinking` content

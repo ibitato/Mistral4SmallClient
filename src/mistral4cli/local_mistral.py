@@ -1,4 +1,4 @@
-"""Configuration and client helpers for local and remote Mistral backends."""
+"""Configuration and client helpers for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -23,6 +23,22 @@ DEFAULT_TOP_P = 0.95
 DEFAULT_PROMPT_MODE = "reasoning"
 
 REMOTE_MODEL_ID = "mistral-small-latest"
+REMOTE_MEDIUM_MODEL_ID = "mistral-medium-3.5"
+SUPPORTED_REMOTE_MODEL_IDS = (
+    REMOTE_MODEL_ID,
+    REMOTE_MEDIUM_MODEL_ID,
+)
+REMOTE_MODEL_ALIASES = {
+    "small": REMOTE_MODEL_ID,
+    "small4": REMOTE_MODEL_ID,
+    "small-4": REMOTE_MODEL_ID,
+    "mistral-small-4": REMOTE_MODEL_ID,
+    REMOTE_MODEL_ID: REMOTE_MODEL_ID,
+    "medium": REMOTE_MEDIUM_MODEL_ID,
+    "medium3.5": REMOTE_MEDIUM_MODEL_ID,
+    "medium-3.5": REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MEDIUM_MODEL_ID: REMOTE_MEDIUM_MODEL_ID,
+}
 REMOTE_SERVER_LABEL = "Mistral Cloud"
 
 ENV_API_KEY = "MISTRAL_LOCAL_API_KEY"
@@ -34,6 +50,7 @@ ENV_TOP_P = "MISTRAL_LOCAL_TOP_P"
 ENV_PROMPT_MODE = "MISTRAL_LOCAL_PROMPT_MODE"
 ENV_MAX_TOKENS = "MISTRAL_LOCAL_MAX_TOKENS"
 ENV_REMOTE_API_KEY = "MISTRAL_API_KEY"
+ENV_REMOTE_MODEL_ID = "MISTRAL_REMOTE_MODEL_ID"
 ENV_CONVERSATIONS = "MISTRAL_CONVERSATIONS"
 ENV_CONVERSATION_STORE = "MISTRAL_CONVERSATION_STORE"
 ENV_CONVERSATION_RESUME = "MISTRAL_CONVERSATION_RESUME"
@@ -95,7 +112,12 @@ class RemoteMistralConfig:
     timeout_ms: int = DEFAULT_TIMEOUT_MS
 
     @classmethod
-    def from_env(cls, *, timeout_ms: int = DEFAULT_TIMEOUT_MS) -> RemoteMistralConfig:
+    def from_env(
+        cls,
+        *,
+        timeout_ms: int = DEFAULT_TIMEOUT_MS,
+        model_id: str | None = None,
+    ) -> RemoteMistralConfig:
         """Build a remote config from environment variables."""
 
         api_key = os.environ.get(ENV_REMOTE_API_KEY, "").strip()
@@ -103,7 +125,14 @@ class RemoteMistralConfig:
             raise RemoteAPIKeyError(
                 f"Set {ENV_REMOTE_API_KEY} in your environment to enable remote mode."
             )
-        return cls(api_key=api_key, timeout_ms=timeout_ms)
+        selected_model = normalize_remote_model_id(
+            model_id or os.environ.get(ENV_REMOTE_MODEL_ID)
+        )
+        return cls(
+            api_key=api_key,
+            model_id=selected_model,
+            timeout_ms=timeout_ms,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +265,17 @@ class ContextConfig:
 
 
 MistralConfig = LocalMistralConfig | RemoteMistralConfig
+
+
+def normalize_remote_model_id(model_id: str | None) -> str:
+    """Normalize a supported remote model selection or raise a clear error."""
+
+    normalized = (model_id or REMOTE_MODEL_ID).strip().lower()
+    resolved = REMOTE_MODEL_ALIASES.get(normalized)
+    if resolved is not None:
+        return resolved
+    supported = ", ".join(SUPPORTED_REMOTE_MODEL_IDS)
+    raise ValueError(f"Unsupported remote model {model_id!r}; use one of: {supported}.")
 
 
 def _env_bool(name: str, *, default: bool) -> bool:

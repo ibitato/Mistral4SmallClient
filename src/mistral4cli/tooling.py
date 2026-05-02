@@ -1,4 +1,4 @@
-"""Tool bridge composition for the Mistral Small 4 CLI."""
+"""Tool bridge composition for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 

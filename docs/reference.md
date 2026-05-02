@@ -52,7 +52,7 @@ Render a supported document into image blocks for the model.
 
 ## `mistral4cli.cli`
 
-Linux-only command-line entrypoint for the general Mistral Small 4 CLI.
+Linux-only command-line entrypoint for the dual-model Mistral CLI.
 
 #### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[MistralConfig], MistralClientProtocol]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
 
@@ -60,7 +60,7 @@ Run the CLI.
 
 ## `mistral4cli.local_mistral`
 
-Configuration and client helpers for local and remote Mistral backends.
+Configuration and client helpers for the dual-model Mistral CLI.
 
 ### Class `BackendKind`
 
@@ -120,7 +120,7 @@ Configuration for the remote Mistral cloud endpoint.
 
 #### Methods
 
-  #### `from_env(cls, timeout_ms: 'int' = 300000) -> 'RemoteMistralConfig'`
+  #### `from_env(cls, timeout_ms: 'int' = 300000, model_id: 'str | None' = None) -> 'RemoteMistralConfig'`
 
   Build a remote config from environment variables.
 
@@ -144,6 +144,10 @@ Fetch and decode a JSON document from the local server.
 
 Return the `/v1/models` payload from the local server.
 
+#### `normalize_remote_model_id(model_id: 'str | None') -> 'str'`
+
+Normalize a supported remote model selection or raise a clear error.
+
 #### `remote_api_key_available() -> 'bool'`
 
 Return whether the remote Mistral cloud API key is available.
@@ -154,7 +158,7 @@ Update the effective timeout on a Mistral client in place.
 
 ## `mistral4cli.local_tools`
 
-Always-on local Linux shell and workspace tools for the Mistral Small 4 CLI.
+Always-on local Linux shell and workspace tools for the dual-model Mistral CLI.
 
 ### Class `LocalToolBridge`
 
@@ -256,15 +260,15 @@ Resolve the MCP config path from CLI, env or repo defaults.
 
 ## `mistral4cli.session`
 
-Interactive session facade for the Mistral Small 4 CLI.
+Interactive session facade for the dual-model Mistral CLI.
 
 ### Class `MistralSession`
 
-Stateful conversation helper for the Mistral Small 4 CLI.
+Stateful conversation helper for the dual-model Mistral CLI.
 
 ## `mistral4cli.tooling`
 
-Tool bridge composition for the Mistral Small 4 CLI.
+Tool bridge composition for the dual-model Mistral CLI.
 
 ### Class `CompositeToolBridge`
 
@@ -316,7 +320,7 @@ Minimal interface shared by local and MCP tool bridges.
 
 ## `mistral4cli.ui`
 
-Terminal rendering helpers for the Mistral Small 4 CLI.
+Terminal rendering helpers for the dual-model Mistral CLI.
 
 ### Class `InteractiveTTYRenderer`
 

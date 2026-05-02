@@ -19,7 +19,11 @@ from mistral4cli.cli_state import (
     _repl_status_line,
     _ReplState,
 )
-from mistral4cli.local_mistral import LocalMistralConfig, MistralConfig
+from mistral4cli.local_mistral import (
+    REMOTE_MODEL_ID,
+    LocalMistralConfig,
+    MistralConfig,
+)
 from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session import MistralSession
 from mistral4cli.ui import (
@@ -318,6 +322,7 @@ def _run_repl(
     *,
     local_config: LocalMistralConfig,
     client_factory: Callable[[MistralConfig], MistralClientProtocol],
+    remote_model_id: str = REMOTE_MODEL_ID,
     input_func: Callable[[str], str],
     stdin: TextIO,
     stdout: TextIO,
@@ -377,6 +382,7 @@ def _run_repl(
                 repl_state=repl_state,
                 local_config=local_config,
                 client_factory=client_factory,
+                remote_model_id=remote_model_id,
                 input_func=input_func,
                 stdin=stdin,
                 path_picker=path_picker,

@@ -1,4 +1,5 @@
 # ruff: noqa: F403, F405
+from mistral4cli.local_mistral import REMOTE_MEDIUM_MODEL_ID
 from tests.cli_support import *
 
 
@@ -580,10 +581,47 @@ def test_remote_command_switches_backend_and_resets_conversation(
     assert session.messages == [
         {"role": "system", "content": session.system_prompt},
     ]
-    assert "Remote backend enabled. Conversation reset." in output.getvalue()
+    assert (
+        "Remote backend enabled (mistral-small-latest). Conversation reset."
+        in output.getvalue()
+    )
     assert "| Backend" in output.getvalue()
     assert "remote" in output.getvalue()
     assert "Mistral Cloud" in output.getvalue()
+
+
+def test_remote_command_can_select_medium_model(monkeypatch: Any) -> None:
+    output = io.StringIO()
+    captured: list[object] = []
+    session = MistralSession(
+        client=FakeClient(),
+        generation=LocalGenerationConfig(),
+        stdout=output,
+    )
+    monkeypatch.setenv("MISTRAL_API_KEY", "example-mistral-key")
+
+    def client_factory(config: object) -> FakeClient:
+        captured.append(config)
+        return FakeClient()
+
+    should_exit = _run_command(
+        "remote",
+        "on",
+        session,
+        output,
+        local_config=LocalMistralConfig(),
+        client_factory=client_factory,
+        remote_model_id=REMOTE_MEDIUM_MODEL_ID,
+    )
+
+    assert should_exit is False
+    assert len(captured) == 1
+    assert isinstance(captured[0], RemoteMistralConfig)
+    assert session.model_id == REMOTE_MEDIUM_MODEL_ID
+    assert (
+        f"Remote backend enabled ({REMOTE_MEDIUM_MODEL_ID}). Conversation reset."
+        in output.getvalue()
+    )
 
 
 def test_remote_command_clears_screen_in_tty(monkeypatch: Any) -> None:
