@@ -15,7 +15,7 @@ from typing import Any, Protocol, TextIO
 
 from PIL import Image, ImageDraw, ImageFont
 
-from mistral4cli.terminal_picker import (
+from mistralcli.terminal_picker import (
     TerminalPickerUnavailableError,
     pick_paths_in_terminal,
 )
@@ -406,7 +406,7 @@ def _render_pdf_document(path: Path) -> RenderedDocument:
         )
 
     content_blocks: list[dict[str, Any]] = []
-    with tempfile.TemporaryDirectory(prefix="mistral4cli-doc-") as tmpdir:
+    with tempfile.TemporaryDirectory(prefix="mistralcli-doc-") as tmpdir:
         output_prefix = Path(tmpdir) / "page"
         command = [
             "pdftoppm",

@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from mistral4cli.session_primitives import (
+from mistralcli.session_primitives import (
     _conversation_content_segments,
     _conversation_tool_call,
     _ConversationToolCallState,
@@ -18,7 +18,7 @@ from mistral4cli.session_primitives import (
     _RenderedSegment,
 )
 
-logger = logging.getLogger("mistral4cli.session")
+logger = logging.getLogger("mistralcli.session")
 
 
 class SessionConversationsMixin:

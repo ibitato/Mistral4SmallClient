@@ -63,7 +63,7 @@ The integration test uses a `2x2` PNG fixture to avoid that crash.
 
 ## CLI
 
-The repository ships a dedicated `mistral4cli` REPL for using and testing Mistral Small 4 and Mistral Medium 3.5. It
+The repository ships a dedicated `mistralcli` REPL for using and testing Mistral Small 4 and Mistral Medium 3.5. It
 uses the official `mistralai` SDK directly and can target either the local or
 remote backend at runtime.
 
@@ -97,7 +97,7 @@ an actionable help system:
 
 TTY usability details:
 
-- the prompt is rendered as a retro green `M4D>` composer in TTY sessions
+- the prompt is rendered as a retro green `MC>` composer in TTY sessions
 - long prompts wrap in the interactive composer instead of overflowing one line
 - multiline paste in the TTY composer is flattened into one editable text
   buffer; nothing is sent until you press Enter
@@ -221,8 +221,8 @@ Conversations mode:
   `/conv tag`, `/conv bookmarks`, and `/conv forget`
 - `/conv alias release-review` is a shortcut for aliasing the active
   conversation without repeating its id
-- keeps a local registry under `~/.local/state/mistral4cli/conversations.json`
-  or `$XDG_STATE_HOME/mistral4cli/conversations.json`
+- keeps a local registry under `~/.local/state/mistralcli/conversations.json`
+  or `$XDG_STATE_HOME/mistralcli/conversations.json`
 - accepts pending remote creation metadata with `--conversation-name`,
   `--conversation-description`, `--conversation-meta KEY=VALUE`, and
   `/conv set ...`
@@ -270,12 +270,12 @@ Operational notes:
 - `Ctrl-D` exits the CLI.
 - The interactive REPL clears the screen on startup and after reset actions.
 - `TERM=xterm-256color` is recommended for the intended retro palette.
-- `uv run python -m mistral4cli --once "..." --no-stream` runs a one-shot smoke
+- `uv run python -m mistralcli --once "..." --no-stream` runs a one-shot smoke
   prompt against the local server.
 - The CLI prefers `MISTRAL_LOCAL_MCP_CONFIG` when set; otherwise it falls back
   to `./mcp.json` if the file exists. The FireCrawl URL in that file expands
   `FIRECRAWL_API_KEY` from the environment.
-- `uv run python -m mistral4cli` plus `/image` or `/doc` can be used to inspect,
+- `uv run python -m mistralcli` plus `/image` or `/doc` can be used to inspect,
   summarize, compare, or extract from attached files without leaving the session.
 
 ## Validation targets

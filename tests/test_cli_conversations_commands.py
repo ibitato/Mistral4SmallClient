@@ -1,5 +1,5 @@
 # ruff: noqa: F403, F405
-from mistral4cli.local_mistral import REMOTE_MEDIUM_MODEL_ID
+from mistralcli.local_mistral import REMOTE_MEDIUM_MODEL_ID
 from tests.cli_support import *
 
 

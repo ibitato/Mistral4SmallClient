@@ -1,9 +1,9 @@
-"""mistral4cli package."""
+"""mistralcli package."""
 
 from importlib.metadata import PackageNotFoundError, version
 
 try:
-    __version__ = version("mistral4cli")
+    __version__ = version("mistralcli")
 except PackageNotFoundError:
     __version__ = "0.0.0"
 

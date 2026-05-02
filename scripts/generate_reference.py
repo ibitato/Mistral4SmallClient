@@ -16,14 +16,14 @@ if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
 MODULE_NAMES = (
-    "mistral4cli.attachments",
-    "mistral4cli.cli",
-    "mistral4cli.local_mistral",
-    "mistral4cli.local_tools",
-    "mistral4cli.mcp_bridge",
-    "mistral4cli.session",
-    "mistral4cli.tooling",
-    "mistral4cli.ui",
+    "mistralcli.attachments",
+    "mistralcli.cli",
+    "mistralcli.local_mistral",
+    "mistralcli.local_tools",
+    "mistralcli.mcp_bridge",
+    "mistralcli.session",
+    "mistralcli.tooling",
+    "mistralcli.ui",
 )
 
 
@@ -31,7 +31,7 @@ def build_reference_markdown() -> str:
     """Build Markdown API reference for the public package surface."""
 
     lines: list[str] = [
-        "# Mistral4Cli API Reference",
+        "# MistralCli API Reference",
         "",
         "This file is generated from public docstrings.",
         "",

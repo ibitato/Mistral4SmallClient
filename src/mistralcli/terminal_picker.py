@@ -9,9 +9,9 @@ from typing import Any, TextIO
 
 TERMINAL_PICKER_MAX_CANDIDATES = 1_500
 TERMINAL_PICKER_HEIGHT = "70%"
-GO_TO_PARENT_VALUE = "__mistral4cli_go_to_parent__"
-FINISH_SELECTION_VALUE = "__mistral4cli_finish_selection__"
-SELECT_CURRENT_DIRECTORY_VALUE = "__mistral4cli_select_current_directory__"
+GO_TO_PARENT_VALUE = "__mistralcli_go_to_parent__"
+FINISH_SELECTION_VALUE = "__mistralcli_finish_selection__"
+SELECT_CURRENT_DIRECTORY_VALUE = "__mistralcli_select_current_directory__"
 
 
 class TerminalPickerUnavailableError(RuntimeError):

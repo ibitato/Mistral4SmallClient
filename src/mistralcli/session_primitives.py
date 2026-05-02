@@ -6,19 +6,19 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     BackendKind,
     ContextConfig,
     ConversationConfig,
     LocalGenerationConfig,
 )
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.ui import render_runtime_summary
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.ui import render_runtime_summary
 
 DEFAULT_SYSTEM_PROMPT = "\n".join(
     [
         (
-            "You are the assistant inside the Mistral4Cli Linux terminal "
+            "You are the assistant inside the MistralCli Linux terminal "
             "client for using and testing Mistral Small 4 and Mistral Medium 3.5."
         ),
         (

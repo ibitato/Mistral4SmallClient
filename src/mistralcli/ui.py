@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TextIO
 
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     REMOTE_SERVER_LABEL,
     BackendKind,
     ContextConfig,
@@ -38,7 +38,7 @@ ASCII_BANNER = (
     "\n"
     r"|_|  |_|_/__/\__|_| \__,_|_\_\_|  |_||_||_.__/\__,_|_|_|"
     "\n"
-    r"                    [ MistralDual ]                    "
+    r"                    [ MistralCli  ]                    "
 )
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")

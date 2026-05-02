@@ -1,5 +1,5 @@
 # ruff: noqa: F403, F405
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     REMOTE_MEDIUM_MODEL_ID,
     REMOTE_MODEL_ID,
     normalize_remote_model_id,
@@ -31,7 +31,7 @@ def test_version_flag_prints_package_version() -> None:
     )
 
     assert exit_code == 0
-    assert output.getvalue() == f"mistral4cli {__version__}\n"
+    assert output.getvalue() == f"mistralcli {__version__}\n"
 
 
 def test_short_version_flag_prints_package_version() -> None:
@@ -45,7 +45,7 @@ def test_short_version_flag_prints_package_version() -> None:
     )
 
     assert exit_code == 0
-    assert output.getvalue() == f"mistral4cli {__version__}\n"
+    assert output.getvalue() == f"mistralcli {__version__}\n"
 
 
 def test_main_rejects_non_linux_before_print_defaults(monkeypatch: Any) -> None:
@@ -58,7 +58,7 @@ def test_main_rejects_non_linux_before_print_defaults(monkeypatch: Any) -> None:
         client_factory_called = True
         return FakeClient()
 
-    monkeypatch.setattr("mistral4cli.cli.sys.platform", "darwin")
+    monkeypatch.setattr("mistralcli.cli.sys.platform", "darwin")
 
     exit_code = main(
         ["--print-defaults", "--no-mcp"],
@@ -84,7 +84,7 @@ def test_main_rejects_non_linux_before_once(monkeypatch: Any) -> None:
         client_factory_called = True
         return FakeClient()
 
-    monkeypatch.setattr("mistral4cli.cli.sys.platform", "win32")
+    monkeypatch.setattr("mistralcli.cli.sys.platform", "win32")
 
     exit_code = main(
         ["--once", "Return only ok.", "--no-mcp"],
@@ -104,7 +104,7 @@ def test_main_rejects_non_linux_before_interactive_start(monkeypatch: Any) -> No
     output = FakeTTYOutput()
     error = io.StringIO()
 
-    monkeypatch.setattr("mistral4cli.cli.sys.platform", "darwin")
+    monkeypatch.setattr("mistralcli.cli.sys.platform", "darwin")
 
     exit_code = main(
         ["--no-mcp"],
@@ -443,12 +443,12 @@ def test_main_creates_debug_log_file_by_default(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    log_file = tmp_path / "mistral4cli.log"
+    log_file = tmp_path / "mistralcli.log"
     assert log_file.exists()
     rendered = log_file.read_text(encoding="utf-8")
-    assert "INFO mistral4cli Logging configured" in rendered
-    assert "INFO mistral4cli.cli CLI start" in rendered
-    assert "DEBUG mistral4cli.cli Built tool bridge count=1" in rendered
+    assert "INFO mistralcli Logging configured" in rendered
+    assert "INFO mistralcli.cli CLI start" in rendered
+    assert "DEBUG mistralcli.cli Built tool bridge count=1" in rendered
 
 
 def test_help_and_banner_are_actionable_and_retro() -> None:

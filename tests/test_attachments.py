@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from mistral4cli.attachments import (
+from mistralcli.attachments import (
     DEFAULT_DOCUMENT_PROMPT,
     DEFAULT_IMAGE_PROMPT,
     DOCUMENT_SUFFIXES,
@@ -20,7 +20,7 @@ from mistral4cli.attachments import (
     load_document,
     render_document,
 )
-from mistral4cli.terminal_picker import (
+from mistralcli.terminal_picker import (
     FINISH_SELECTION_VALUE,
     GO_TO_PARENT_VALUE,
     SELECT_CURRENT_DIRECTORY_VALUE,
@@ -103,7 +103,7 @@ def test_choose_paths_prefers_terminal_picker_in_tty(
     stdout = _FakeTTY()
     expected = [Path("one.png"), Path("two.png")]
     monkeypatch.setattr(
-        "mistral4cli.attachments.pick_paths_in_terminal",
+        "mistralcli.attachments.pick_paths_in_terminal",
         lambda **_kwargs: expected,
     )
 
@@ -121,7 +121,7 @@ def test_choose_paths_prefers_terminal_picker_in_tty(
 
 
 def test_load_inquirer_components_uses_real_submodule_exports() -> None:
-    from mistral4cli.terminal_picker import _load_inquirer_components
+    from mistralcli.terminal_picker import _load_inquirer_components
 
     inquirer, get_style, path_validator = _load_inquirer_components()
 
@@ -194,7 +194,7 @@ def test_pick_paths_in_terminal_can_go_to_parent_before_selecting(
     )
 
     monkeypatch.setattr(
-        "mistral4cli.terminal_picker._load_inquirer_components",
+        "mistralcli.terminal_picker._load_inquirer_components",
         lambda: (
             fake_inquirer,
             lambda _style, style_override=False: None,
@@ -247,7 +247,7 @@ def test_choose_paths_falls_back_to_manual_prompt_when_terminal_picker_is_unavai
         raise TerminalPickerUnavailableError("no picker")
 
     monkeypatch.setattr(
-        "mistral4cli.attachments.pick_paths_in_terminal",
+        "mistralcli.attachments.pick_paths_in_terminal",
         raise_unavailable,
     )
 
@@ -352,11 +352,11 @@ def test_render_text_document_does_not_flag_exact_page_limit_as_truncated(
     text_file.write_text("placeholder", encoding="utf-8")
 
     monkeypatch.setattr(
-        "mistral4cli.attachments._wrap_text_for_document",
+        "mistralcli.attachments._wrap_text_for_document",
         lambda _text: ["line"] * (42 * MAX_DOCUMENT_PAGES),
     )
     monkeypatch.setattr(
-        "mistral4cli.attachments._render_text_page",
+        "mistralcli.attachments._render_text_page",
         lambda *, title, lines: b"png",
     )
 

@@ -8,13 +8,13 @@ import json
 import logging
 from typing import Any, cast
 
-from mistral4cli.conversation_registry import ConversationRecord
-from mistral4cli.local_mistral import BackendKind
-from mistral4cli.mcp_bridge import MCPBridgeError, MCPToolResult
-from mistral4cli.session_primitives import TurnResult, _field, _ModelTurn
-from mistral4cli.ui import render_reasoning_chunk
+from mistralcli.conversation_registry import ConversationRecord
+from mistralcli.local_mistral import BackendKind
+from mistralcli.mcp_bridge import MCPBridgeError, MCPToolResult
+from mistralcli.session_primitives import TurnResult, _field, _ModelTurn
+from mistralcli.ui import render_reasoning_chunk
 
-logger = logging.getLogger("mistral4cli.session")
+logger = logging.getLogger("mistralcli.session")
 
 _LOCAL_RAW_TOOL_PLACEHOLDER = (
     "[Previous tool run completed without a final assistant answer. "

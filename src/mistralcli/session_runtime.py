@@ -9,15 +9,15 @@ import logging
 from dataclasses import replace
 from typing import Any, cast
 
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     BackendKind,
     ConversationConfig,
     get_client_timeout_ms,
     set_client_timeout_ms,
 )
-from mistral4cli.mcp_bridge import MCPToolResult
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.session_primitives import (
+from mistralcli.mcp_bridge import MCPToolResult
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.session_primitives import (
     DEFAULT_SYSTEM_PROMPT,
     REMOTE_CONTEXT_WINDOWS,
     SessionStatusSnapshot,
@@ -31,7 +31,7 @@ from mistral4cli.session_primitives import (
     render_defaults_summary,
 )
 
-logger = logging.getLogger("mistral4cli.session")
+logger = logging.getLogger("mistralcli.session")
 
 
 class SessionRuntimeMixin:

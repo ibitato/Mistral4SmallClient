@@ -8,9 +8,9 @@ import sys
 from collections.abc import Callable
 from typing import TextIO
 
-from mistral4cli.attachments import PathPicker
-from mistral4cli.cli_config import _parse_metadata_pairs
-from mistral4cli.cli_shortcuts import (
+from mistralcli.attachments import PathPicker
+from mistralcli.cli_config import _parse_metadata_pairs
+from mistralcli.cli_shortcuts import (
     _run_doc_shortcut,
     _run_edit_shortcut,
     _run_find_shortcut,
@@ -18,12 +18,12 @@ from mistral4cli.cli_shortcuts import (
     _run_ls_shortcut,
     _run_shell_shortcut,
 )
-from mistral4cli.cli_state import (
+from mistralcli.cli_state import (
     _clear_attachments,
     _render_session_status,
     _ReplState,
 )
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     DEFAULT_TIMEOUT_MS,
     REMOTE_MODEL_ID,
     BackendKind,
@@ -34,11 +34,11 @@ from mistral4cli.local_mistral import (
     get_client_timeout_ms,
     remote_api_key_available,
 )
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.session import MistralSession
-from mistral4cli.ui import render_help_screen, render_status_snapshot
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.session import MistralSession
+from mistralcli.ui import render_help_screen, render_status_snapshot
 
-logger = logging.getLogger("mistral4cli.cli")
+logger = logging.getLogger("mistralcli.cli")
 
 
 def _run_command(

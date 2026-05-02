@@ -40,7 +40,7 @@ def test_help_command_paginates_in_tty(monkeypatch: Any) -> None:
         stdout=output,
     )
     monkeypatch.setattr(
-        "mistral4cli.cli.shutil.get_terminal_size",
+        "mistralcli.cli.shutil.get_terminal_size",
         lambda: os.terminal_size((100, 12)),
     )
 
@@ -68,7 +68,7 @@ def test_help_command_can_quit_pager_early(monkeypatch: Any) -> None:
         stdout=output,
     )
     monkeypatch.setattr(
-        "mistral4cli.cli.shutil.get_terminal_size",
+        "mistralcli.cli.shutil.get_terminal_size",
         lambda: os.terminal_size((100, 12)),
     )
 
@@ -119,7 +119,7 @@ def test_tools_command_paginates_in_tty(monkeypatch: Any) -> None:
         stdout=output,
     )
     monkeypatch.setattr(
-        "mistral4cli.cli.shutil.get_terminal_size",
+        "mistralcli.cli.shutil.get_terminal_size",
         lambda: os.terminal_size((100, 8)),
     )
 
@@ -147,7 +147,7 @@ def test_tools_command_can_quit_pager_early(monkeypatch: Any) -> None:
         stdout=output,
     )
     monkeypatch.setattr(
-        "mistral4cli.cli.shutil.get_terminal_size",
+        "mistralcli.cli.shutil.get_terminal_size",
         lambda: os.terminal_size((100, 8)),
     )
 

@@ -12,7 +12,7 @@ from urllib.request import urlopen
 
 from mistralai.client import Mistral
 
-from mistral4cli.mistral_client import MistralClientProtocol
+from mistralcli.mistral_client import MistralClientProtocol
 
 DEFAULT_API_KEY = "local-test"
 DEFAULT_MODEL_ID = "unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL"

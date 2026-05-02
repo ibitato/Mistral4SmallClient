@@ -1,4 +1,4 @@
-# Mistral4Cli
+# MistralCli
 
 [![CI](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml)
 [![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
@@ -37,7 +37,7 @@ The repository is intentionally focused on one product:
 
 ```bash
 make sync
-uv run python -m mistral4cli
+uv run python -m mistralcli
 ```
 
 For a complete command-by-command walkthrough, see the
@@ -57,15 +57,15 @@ For a complete command-by-command walkthrough, see the
 Useful one-shot smoke test:
 
 ```bash
-uv run python -m mistral4cli --version
-uv run python -m mistral4cli --once "Return only the word ok." --no-stream
+uv run python -m mistralcli --version
+uv run python -m mistralcli --once "Return only the word ok." --no-stream
 ```
 
 Reasoning can be requested or disabled at startup:
 
 ```bash
-uv run python -m mistral4cli --reasoning
-uv run python -m mistral4cli --no-reasoning
+uv run python -m mistralcli --reasoning
+uv run python -m mistralcli --no-reasoning
 ```
 
 ## Install without cloning the repo
@@ -78,8 +78,8 @@ make build
 
 This creates:
 
-- `dist/mistral4cli-<version>-py3-none-any.whl`
-- `dist/mistral4cli-<version>.tar.gz`
+- `dist/mistralcli-<version>-py3-none-any.whl`
+- `dist/mistralcli-<version>.tar.gz`
 
 Version tags such as `v2.0.4` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
@@ -87,26 +87,26 @@ publishes the wheel and source archive as GitHub release assets.
 Copy the wheel to the target server and install it with `uv`:
 
 ```bash
-uv tool install ./mistral4cli-<version>-py3-none-any.whl
+uv tool install ./mistralcli-<version>-py3-none-any.whl
 ```
 
 Then run:
 
 ```bash
-mistral4cli --version
-mistral4cli
+mistralcli --version
+mistralcli
 ```
 
 ## Code layout
 
-The public CLI behavior stays centered around `mistral4cli`, but the internal
+The public CLI behavior stays centered around `mistralcli`, but the internal
 implementation is now split into smaller domain modules:
 
-- `src/mistral4cli/session.py` is the thin `MistralSession` facade
+- `src/mistralcli/session.py` is the thin `MistralSession` facade
 - `session_runtime.py`, `session_transport.py`, `session_conversations.py`,
   `session_tools.py`, `session_context.py`, and `session_primitives.py` own the
   main session domains
-- `src/mistral4cli/cli.py` is the thin CLI entrypoint facade
+- `src/mistralcli/cli.py` is the thin CLI entrypoint facade
 - `cli_config.py`, `cli_repl.py`, `cli_commands.py`, `cli_shortcuts.py`, and
   `cli_state.py` own CLI-specific runtime responsibilities
 - `tests/cli_support.py` contains shared CLI fixtures and fakes, while the CLI
@@ -119,8 +119,8 @@ If you prefer an isolated virtual environment instead of a tool install:
 
 ```bash
 uv venv
-uv pip install ./mistral4cli-<version>-py3-none-any.whl
-uv run mistral4cli --print-defaults
+uv pip install ./mistralcli-<version>-py3-none-any.whl
+uv run mistralcli --print-defaults
 ```
 
 Inside the REPL:
@@ -146,7 +146,7 @@ Inside the REPL:
 
 Interactive TTY behavior:
 
-- the prompt is rendered as a retro green `M4D>` composer in TTY sessions
+- the prompt is rendered as a retro green `MC>` composer in TTY sessions
 - long prompts wrap in the composer instead of overflowing one raw line
 - multiline paste in the TTY composer is flattened into one editable text
   buffer; nothing is sent until you press Enter
@@ -208,7 +208,7 @@ Remote mode requirements:
 - `--thinking` and `--no-thinking` control whether returned thinking is rendered
 - `store=off` runs stateless one-shot Conversation calls, so it does not preserve
   `conversation_id` across turns
-- the CLI keeps a local registry at `~/.local/state/mistral4cli/conversations.json`
+- the CLI keeps a local registry at `~/.local/state/mistralcli/conversations.json`
   (or `$XDG_STATE_HOME/...`) for aliases, tags, notes, and last-active resume state
 - the default request timeout is `300000 ms` (5 minutes)
 
@@ -366,7 +366,7 @@ actions so the app stays pinned to the top of the terminal.
 
 ## Repository layout
 
-- `src/mistral4cli/` - CLI, session, tools and attachment handling
+- `src/mistralcli/` - CLI, session, tools and attachment handling
 - `tests/` - unit and integration tests
 - `docs/user-guide.md` - practical end-user guide for the CLI
 - `docs/local-mistral-small-4.md` - detailed local deployment notes

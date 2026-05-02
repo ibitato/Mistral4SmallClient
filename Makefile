@@ -63,7 +63,7 @@ cancel-probe:
 check: format-check lint typecheck docs-check
 
 run:
-	$(UV) run mistral4cli
+	$(UV) run mistralcli
 
 clean:
 	rm -rf .venv .mypy_cache .ruff_cache .pytest_cache __pycache__ build dist htmlcov

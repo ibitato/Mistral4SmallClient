@@ -8,8 +8,8 @@ import logging
 from dataclasses import replace
 from typing import Any
 
-from mistral4cli.local_mistral import BackendKind
-from mistral4cli.session_primitives import (
+from mistralcli.local_mistral import BackendKind
+from mistralcli.session_primitives import (
     CompactResult,
     ContextStatus,
     _content_segments_from_value,
@@ -19,7 +19,7 @@ from mistral4cli.session_primitives import (
     _render_messages_for_compaction,
 )
 
-logger = logging.getLogger("mistral4cli.session")
+logger = logging.getLogger("mistralcli.session")
 
 
 class SessionContextMixin:
@@ -284,7 +284,7 @@ class SessionContextMixin:
             {
                 "role": "system",
                 "content": (
-                    "You compact chat history for Mistral4Cli. Summarize durable "
+                    "You compact chat history for MistralCli. Summarize durable "
                     "facts, decisions, file paths, commands and outputs, tool "
                     "results, user preferences, and open tasks. Keep the summary "
                     "concise, factual, and in English. Do not invent details."

@@ -9,21 +9,21 @@ from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
 DEFAULT_LOG_RETENTION_DAYS = 2
-DEFAULT_LOG_FILE_NAME = "mistral4cli.log"
+DEFAULT_LOG_FILE_NAME = "mistralcli.log"
 
 ENV_LOG_DIR = "MISTRAL_LOCAL_LOG_DIR"
 ENV_LOG_RETENTION_DAYS = "MISTRAL_LOCAL_LOG_RETENTION_DAYS"
 ENV_DEBUG = "MISTRAL_LOCAL_DEBUG"
 
-LOGGER_NAME = "mistral4cli"
-_MANAGED_HANDLER_ATTR = "_mistral4cli_managed"
+LOGGER_NAME = "mistralcli"
+_MANAGED_HANDLER_ATTR = "_mistralcli_managed"
 
 
 def _default_log_directory() -> Path:
     xdg_state_home = os.environ.get("XDG_STATE_HOME", "").strip()
     if xdg_state_home:
-        return Path(xdg_state_home).expanduser() / "mistral4cli" / "logs"
-    return Path.home() / ".local" / "state" / "mistral4cli" / "logs"
+        return Path(xdg_state_home).expanduser() / "mistralcli" / "logs"
+    return Path.home() / ".local" / "state" / "mistralcli" / "logs"
 
 
 def _parse_bool(raw_value: str | None, *, default: bool) -> bool:

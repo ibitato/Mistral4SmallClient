@@ -8,14 +8,14 @@ from uuid import uuid4
 
 import pytest
 
-from mistral4cli.conversation_registry import ConversationRegistry
-from mistral4cli.local_mistral import (
+from mistralcli.conversation_registry import ConversationRegistry
+from mistralcli.local_mistral import (
     BackendKind,
     LocalGenerationConfig,
     RemoteMistralConfig,
     build_client,
 )
-from mistral4cli.session import MistralSession, PendingConversationSettings
+from mistralcli.session import MistralSession, PendingConversationSettings
 
 pytestmark = pytest.mark.remote
 
