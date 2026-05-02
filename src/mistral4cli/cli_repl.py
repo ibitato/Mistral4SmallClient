@@ -20,9 +20,9 @@ from mistral4cli.cli_state import (
     _ReplState,
 )
 from mistral4cli.local_mistral import (
+    REMOTE_MODEL_ID,
     LocalMistralConfig,
     MistralConfig,
-    REMOTE_MODEL_ID,
 )
 from mistral4cli.mistral_client import MistralClientProtocol
 from mistral4cli.session import MistralSession

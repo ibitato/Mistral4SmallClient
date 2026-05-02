@@ -15,11 +15,13 @@ from mistral4cli.local_mistral import (
     DEFAULT_API_KEY,
     DEFAULT_MODEL_ID,
     DEFAULT_PROMPT_MODE,
-    ENV_REMOTE_MODEL_ID,
     DEFAULT_SERVER_URL,
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_MS,
     DEFAULT_TOP_P,
+    ENV_REMOTE_MODEL_ID,
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
     BackendKind,
     ContextConfig,
     ConversationConfig,
@@ -27,8 +29,6 @@ from mistral4cli.local_mistral import (
     LocalMistralConfig,
     MistralConfig,
     RemoteMistralConfig,
-    REMOTE_MODEL_ID,
-    REMOTE_MEDIUM_MODEL_ID,
     normalize_remote_model_id,
 )
 from mistral4cli.local_tools import LocalToolBridge
@@ -60,7 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mistral4cli",
         description=(
-            "Interactive multimodal CLI for using and testing Mistral Small 4 and Mistral Medium 3.5."
+            "Interactive multimodal CLI for using and testing "
+            "Mistral Small 4 and Mistral Medium 3.5."
         ),
     )
     parser.add_argument(

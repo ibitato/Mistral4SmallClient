@@ -27,8 +27,8 @@ from mistral4cli.cli_config import (
     _resolve_conversation_registry,
     _resolve_local_configs,
     _resolve_logging_config,
-    _resolve_remote_model_id,
     _resolve_reasoning_visibility,
+    _resolve_remote_model_id,
     _resolve_thinking_visibility,
     build_parser,
 )

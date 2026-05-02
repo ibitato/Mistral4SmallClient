@@ -25,10 +25,10 @@ from mistral4cli.cli_state import (
 )
 from mistral4cli.local_mistral import (
     DEFAULT_TIMEOUT_MS,
+    REMOTE_MODEL_ID,
     BackendKind,
     LocalMistralConfig,
     MistralConfig,
-    REMOTE_MODEL_ID,
     RemoteAPIKeyError,
     RemoteMistralConfig,
     get_client_timeout_ms,

@@ -275,9 +275,7 @@ def normalize_remote_model_id(model_id: str | None) -> str:
     if resolved is not None:
         return resolved
     supported = ", ".join(SUPPORTED_REMOTE_MODEL_IDS)
-    raise ValueError(
-        f"Unsupported remote model {model_id!r}; use one of: {supported}."
-    )
+    raise ValueError(f"Unsupported remote model {model_id!r}; use one of: {supported}.")
 
 
 def _env_bool(name: str, *, default: bool) -> bool:

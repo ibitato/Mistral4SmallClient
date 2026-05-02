@@ -1,4 +1,5 @@
 # ruff: noqa: F403, F405
+from mistral4cli.local_mistral import REMOTE_MEDIUM_MODEL_ID
 from tests.cli_support import *
 
 
@@ -580,7 +581,10 @@ def test_remote_command_switches_backend_and_resets_conversation(
     assert session.messages == [
         {"role": "system", "content": session.system_prompt},
     ]
-    assert "Remote backend enabled (mistral-small-latest). Conversation reset." in output.getvalue()
+    assert (
+        "Remote backend enabled (mistral-small-latest). Conversation reset."
+        in output.getvalue()
+    )
     assert "| Backend" in output.getvalue()
     assert "remote" in output.getvalue()
     assert "Mistral Cloud" in output.getvalue()

@@ -43,13 +43,13 @@ from mistral4cli.cli import (
 from mistral4cli.conversation_registry import ConversationRegistry
 from mistral4cli.local_mistral import (
     DEFAULT_TIMEOUT_MS,
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
     BackendKind,
     ContextConfig,
     ConversationConfig,
     LocalGenerationConfig,
     LocalMistralConfig,
-    REMOTE_MEDIUM_MODEL_ID,
-    REMOTE_MODEL_ID,
     RemoteMistralConfig,
     build_client,
     normalize_remote_model_id,
