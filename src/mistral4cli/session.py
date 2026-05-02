@@ -1,5 +1,5 @@
 # mypy: disable-error-code="assignment"
-"""Interactive session facade for the Mistral Small 4 CLI."""
+"""Interactive session facade for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ class MistralSession(
     SessionConversationsMixin,
     SessionTransportMixin,
 ):
-    """Stateful conversation helper for the Mistral Small 4 CLI."""
+    """Stateful conversation helper for the dual-model Mistral CLI."""
 
     client: MistralClientProtocol
     backend_kind: BackendKind = BackendKind.LOCAL

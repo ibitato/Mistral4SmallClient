@@ -1,4 +1,4 @@
-"""Logging configuration helpers for the Mistral Small 4 CLI."""
+"""Logging configuration helpers for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 

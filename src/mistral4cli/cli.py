@@ -1,4 +1,4 @@
-"""Linux-only command-line entrypoint for the general Mistral Small 4 CLI."""
+"""Linux-only command-line entrypoint for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from mistral4cli.cli_config import (
     _resolve_conversation_registry,
     _resolve_local_configs,
     _resolve_logging_config,
+    _resolve_remote_model_id,
     _resolve_reasoning_visibility,
     _resolve_thinking_visibility,
     build_parser,
@@ -95,6 +96,7 @@ def _run_command(
     repl_state: _ReplState | None = None,
     local_config: LocalMistralConfig | None = None,
     client_factory: Callable[[MistralConfig], MistralClientProtocol] = build_client,
+    remote_model_id: str = REMOTE_MODEL_ID,
     input_func: Callable[[str], str] = input,
     stdin: TextIO = sys.stdin,
     path_picker: PathPicker | None = None,
@@ -109,6 +111,7 @@ def _run_command(
         repl_state=repl_state,
         local_config=local_config,
         client_factory=client_factory,
+        remote_model_id=remote_model_id,
         input_func=input_func,
         stdin=stdin,
         path_picker=path_picker,
@@ -165,6 +168,12 @@ def main(
         stdin.isatty(),
     )
     config, generation, system_prompt = _resolve_local_configs(args)
+    try:
+        remote_model_id = _resolve_remote_model_id(args)
+    except ValueError as exc:
+        stderr.write(f"[remote] {exc}\n")
+        stderr.flush()
+        return 1
     conversations = _resolve_conversation_config(args)
     context = _resolve_context_config(args)
     reasoning_enabled = _resolve_reasoning_visibility(args)
@@ -189,7 +198,7 @@ def main(
         defaults_server: str | None = config.server_url
         if conversations.enabled:
             defaults_backend = BackendKind.REMOTE
-            defaults_model = REMOTE_MODEL_ID
+            defaults_model = remote_model_id
             defaults_server = None
         stdout.write(
             render_defaults_summary(
@@ -231,6 +240,7 @@ def main(
             context=context,
             conversation_registry=conversation_registry,
             pending_conversation=pending_conversation,
+            remote_model_id=remote_model_id,
         )
         _maybe_resume_conversation(
             session,
@@ -260,6 +270,7 @@ def main(
                 context=context,
                 conversation_registry=conversation_registry,
                 pending_conversation=pending_conversation,
+                remote_model_id=remote_model_id,
             )
             _maybe_resume_conversation(
                 session,
@@ -286,6 +297,7 @@ def main(
         context=context,
         conversation_registry=conversation_registry,
         pending_conversation=pending_conversation,
+        remote_model_id=remote_model_id,
     )
     _maybe_resume_conversation(
         session,
@@ -298,6 +310,7 @@ def main(
         session,
         local_config=config,
         client_factory=client_factory,
+        remote_model_id=remote_model_id,
         input_func=input_func,
         stdin=stdin,
         stdout=stdout,

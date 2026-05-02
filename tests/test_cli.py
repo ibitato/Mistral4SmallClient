@@ -133,7 +133,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert exit_code == 0
     assert client_factory_called is False
     rendered = output.getvalue()
-    assert "Mistral Small 4 CLI" in rendered
+    assert "Mistral Small 4 + Medium 3.5 CLI" in rendered
     assert "| Backend" in rendered
     assert "local" in rendered
     assert "Local OS tools: ready" in rendered
@@ -151,6 +151,28 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "| Logging" in rendered
     assert "debug=on" in rendered
     assert f"retention={DEFAULT_LOG_RETENTION_DAYS}d" in rendered
+
+
+def test_print_defaults_uses_selected_remote_model_in_conversations_mode() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        [
+            "--print-defaults",
+            "--no-mcp",
+            "--conversations",
+            "--remote-model",
+            "medium",
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeConversationClient(),
+    )
+
+    assert exit_code == 0
+    rendered = output.getvalue()
+    assert REMOTE_MEDIUM_MODEL_ID in rendered
+    assert "remote" in rendered
 
 
 def test_print_defaults_applies_context_cli_options() -> None:
@@ -253,6 +275,36 @@ def test_once_can_start_in_conversations_mode(
     assert fake_client.chat.complete_calls == []
 
 
+def test_once_can_start_in_conversations_mode_with_selected_remote_model(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    fake_client = FakeConversationClient()
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    exit_code = main(
+        [
+            "--conversations",
+            "--remote-model",
+            "medium",
+            "--once",
+            "Return only ok.",
+            "--no-stream",
+            "--no-mcp",
+            "--conversation-index",
+            str(tmp_path / "conversations.json"),
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: fake_client,
+    )
+
+    assert exit_code == 0
+    call = fake_client.beta.conversations.start_calls[0]
+    assert call["model"] == REMOTE_MEDIUM_MODEL_ID
+
+
 def test_once_can_start_in_conversations_mode_with_reasoning_disabled(
     monkeypatch: Any,
     tmp_path: Path,
@@ -294,6 +346,11 @@ def test_print_defaults_includes_conversation_resume_policy() -> None:
 
     assert exit_code == 0
     assert "resume=last" in output.getvalue()
+
+
+def test_remote_model_aliases_normalize_to_supported_models() -> None:
+    assert normalize_remote_model_id("small") == REMOTE_MODEL_ID
+    assert normalize_remote_model_id("medium") == REMOTE_MEDIUM_MODEL_ID
 
 
 def test_once_conversations_applies_pending_creation_metadata(
@@ -405,7 +462,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
         stream=output,
     )
 
-    assert "Mistral4Small multimodal console" in banner
+    assert "Mistral dual-model multimodal console" in banner
     assert "Type /help for actionable commands" in banner
     assert "Mistral cloud" in banner
     assert "+-" in banner

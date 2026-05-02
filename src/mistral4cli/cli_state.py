@@ -131,8 +131,8 @@ def _repl_prompt(repl_state: _ReplState) -> str:
     if repl_state.active_documents:
         tokens.append(f"doc:{len(repl_state.active_documents)}")
     if not tokens:
-        return "M4S> "
-    return f"M4S[{','.join(tokens)}]> "
+        return "M4D> "
+    return f"M4D[{','.join(tokens)}]> "
 
 
 def _format_estimated_context_for_status(

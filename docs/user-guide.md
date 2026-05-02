@@ -6,7 +6,7 @@ developer internals.
 
 ## What The CLI Does
 
-`mistral4cli` is an interactive Linux terminal client for Mistral Small 4. It
+`mistral4cli` is an interactive Linux terminal client for using and testing Mistral Small 4 and Mistral Medium 3.5. It
 can use:
 
 - a local `llama.cpp` server, which is the default backend
@@ -241,7 +241,8 @@ interactive session. Backend switching resets the active conversation.
 
 Remote mode uses:
 
-- model `mistral-small-latest`
+- model `mistral-small-latest` by default
+- `--remote-model medium` or `--remote-model mistral-medium-3.5` to switch to Medium 3.5
 - `reasoning_effort=high` when reasoning is on
 - `reasoning_effort=none` when reasoning is off
 - `/thinking` only affects local rendering of returned `thinking` blocks
@@ -676,6 +677,7 @@ If `MISTRAL_API_KEY` is available, also test:
 ```text
 /remote on
 /defaults
+/remote off
 /conv on
 /conv current
 /conv list --page 0 --size 5

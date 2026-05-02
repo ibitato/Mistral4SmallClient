@@ -28,6 +28,7 @@ from mistral4cli.local_mistral import (
     BackendKind,
     LocalMistralConfig,
     MistralConfig,
+    REMOTE_MODEL_ID,
     RemoteAPIKeyError,
     RemoteMistralConfig,
     get_client_timeout_ms,
@@ -49,6 +50,7 @@ def _run_command(
     repl_state: _ReplState | None = None,
     local_config: LocalMistralConfig | None = None,
     client_factory: Callable[[MistralConfig], MistralClientProtocol],
+    remote_model_id: str = REMOTE_MODEL_ID,
     input_func: Callable[[str], str] = input,
     stdin: TextIO = sys.stdin,
     path_picker: PathPicker | None = None,
@@ -96,6 +98,7 @@ def _run_command(
             repl_state=repl_state,
             local_config=local_config,
             client_factory=client_factory,
+            remote_model_id=remote_model_id,
             stdin=stdin,
             input_func=input_func,
             print_paginated_text=print_paginated_text,
@@ -111,6 +114,7 @@ def _run_command(
             repl_state=repl_state,
             local_config=local_config,
             client_factory=client_factory,
+            remote_model_id=remote_model_id,
             refresh_repl_screen=refresh_repl_screen,
         )
     if command == "timeout":
@@ -255,6 +259,7 @@ def _run_conversations_command(
     repl_state: _ReplState,
     local_config: LocalMistralConfig | None,
     client_factory: Callable[[MistralConfig], MistralClientProtocol],
+    remote_model_id: str,
     stdin: TextIO,
     input_func: Callable[[str], str],
     print_paginated_text: Callable[..., None],
@@ -265,7 +270,8 @@ def _run_conversations_command(
             return True
         try:
             remote_config = RemoteMistralConfig.from_env(
-                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS)
+                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
+                model_id=remote_model_id,
             )
         except RemoteAPIKeyError as exc:
             stdout.write(f"[conversations] {exc}\n")
@@ -802,6 +808,7 @@ def _run_remote_command(
     repl_state: _ReplState,
     local_config: LocalMistralConfig | None,
     client_factory: Callable[[MistralConfig], MistralClientProtocol],
+    remote_model_id: str,
     refresh_repl_screen: Callable[[TextIO, MistralSession], None],
 ) -> bool:
     normalized = argument.strip().lower()
@@ -811,13 +818,15 @@ def _run_remote_command(
         )
         stdout.write(f"Backend: {session.backend_kind.value}\n")
         stdout.write(f"Remote mode: {availability}\n")
+        stdout.write(f"Remote model: {remote_model_id}\n")
         stdout.flush()
         return False
 
     if normalized == "on":
         try:
             remote_config = RemoteMistralConfig.from_env(
-                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS)
+                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
+                model_id=remote_model_id,
             )
         except RemoteAPIKeyError as exc:
             stdout.write(f"[remote] {exc}\n")
@@ -837,7 +846,9 @@ def _run_remote_command(
             clear_pending=True,
         )
         refresh_repl_screen(stdout, session)
-        stdout.write("Remote backend enabled. Conversation reset.\n")
+        stdout.write(
+            f"Remote backend enabled ({remote_config.model_id}). Conversation reset.\n"
+        )
         stdout.flush()
         return False
 

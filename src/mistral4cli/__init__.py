@@ -17,10 +17,13 @@ from .local_mistral import (
     ConversationConfig,
     LocalGenerationConfig,
     LocalMistralConfig,
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
     RemoteMistralConfig,
     build_client,
     get_health,
     list_models,
+    normalize_remote_model_id,
     remote_api_key_available,
 )
 from .session import MistralCodingSession, MistralSession, PendingConversationSettings
@@ -37,11 +40,14 @@ __all__ = [
     "MistralCodingSession",
     "MistralSession",
     "PendingConversationSettings",
+    "REMOTE_MEDIUM_MODEL_ID",
+    "REMOTE_MODEL_ID",
     "RemoteMistralConfig",
     "__version__",
     "build_client",
     "get_health",
     "list_models",
     "main",
+    "normalize_remote_model_id",
     "remote_api_key_available",
 ]

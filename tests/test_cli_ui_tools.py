@@ -212,7 +212,7 @@ def test_refresh_repl_screen_clears_and_warns_before_banner(monkeypatch: Any) ->
     rendered = output.getvalue()
     assert rendered.startswith(CLEAR_SCREEN)
     assert "TERM=xterm-256color" in rendered
-    assert "Mistral4Small multimodal console" in rendered
+    assert "Mistral dual-model multimodal console" in rendered
 
 
 def test_tool_command_and_session_tool_loop() -> None:

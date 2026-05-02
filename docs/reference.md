@@ -52,7 +52,7 @@ Render a supported document into image blocks for the model.
 
 ## `mistral4cli.cli`
 
-Linux-only command-line entrypoint for the general Mistral Small 4 CLI.
+Linux-only command-line entrypoint for the general Mistral Small 4 + Medium 3.5 CLI.
 
 #### `main(argv: 'Sequence[str] | None' = None, input_func: 'Callable[[str], str]' = input, stdin: 'TextIO' = <TextIOWrapper>, stdout: 'TextIO' = <TextIOWrapper>, stderr: 'TextIO' = <TextIOWrapper>, client_factory: 'Callable[[MistralConfig], MistralClientProtocol]' = build_client, path_picker: 'PathPicker | None' = None) -> 'int'`
 
@@ -154,7 +154,7 @@ Update the effective timeout on a Mistral client in place.
 
 ## `mistral4cli.local_tools`
 
-Always-on local Linux shell and workspace tools for the Mistral Small 4 CLI.
+Always-on local Linux shell and workspace tools for the Mistral Small 4 + Medium 3.5 CLI.
 
 ### Class `LocalToolBridge`
 
@@ -256,15 +256,15 @@ Resolve the MCP config path from CLI, env or repo defaults.
 
 ## `mistral4cli.session`
 
-Interactive session facade for the Mistral Small 4 CLI.
+Interactive session facade for the Mistral Small 4 + Medium 3.5 CLI.
 
 ### Class `MistralSession`
 
-Stateful conversation helper for the Mistral Small 4 CLI.
+Stateful conversation helper for the Mistral Small 4 + Medium 3.5 CLI.
 
 ## `mistral4cli.tooling`
 
-Tool bridge composition for the Mistral Small 4 CLI.
+Tool bridge composition for the Mistral Small 4 + Medium 3.5 CLI.
 
 ### Class `CompositeToolBridge`
 
@@ -316,7 +316,7 @@ Minimal interface shared by local and MCP tool bridges.
 
 ## `mistral4cli.ui`
 
-Terminal rendering helpers for the Mistral Small 4 CLI.
+Terminal rendering helpers for the Mistral Small 4 + Medium 3.5 CLI.
 
 ### Class `InteractiveTTYRenderer`
 

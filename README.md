@@ -2,20 +2,21 @@
 
 [![CI](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml)
 [![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
+[![Mistral Medium 3.5](https://img.shields.io/badge/model-Mistral%20Medium%203.5-8a2be2)](https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04)
 [![llama.cpp](https://img.shields.io/badge/runtime-llama.cpp-00a000)](https://github.com/ggerganov/llama.cpp)
 [![Docs](https://img.shields.io/badge/docs-generated-blue)](docs/reference.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
 
-Retro terminal CLI for using **Mistral Small 4** both locally against
-`llama.cpp` and remotely against Mistral cloud, with the official `mistralai`
-Python SDK.
+Retro terminal CLI for using and testing **Mistral Small 4** locally against
+`llama.cpp`, plus **Mistral Small 4** and **Mistral Medium 3.5** remotely
+through Mistral Cloud with the official `mistralai` Python SDK.
 
 The client is currently supported on **Linux only**.
 
 The repository is intentionally focused on one product:
 
-- use Mistral Small 4 locally with `llama.cpp` or remotely with Mistral cloud
+- use Mistral Small 4 locally with `llama.cpp` and test Mistral Small 4 or Mistral Medium 3.5 remotely with Mistral Cloud
 - handle image and document turns through backend-appropriate multimodal flows
 - keep local OS tools and MCP tools available when the task needs them
 - support coding, document work, research, OCR, and general assistant workflows
@@ -23,7 +24,7 @@ The repository is intentionally focused on one product:
 ## What this project includes
 
 - a dedicated interactive CLI with retro green/orange presentation
-- a general-purpose multimodal assistant experience for Mistral Small 4
+- a general-purpose multimodal assistant experience for Mistral Small 4 and Mistral Medium 3.5
 - always-on local tools: `shell`, `read_file`, `write_file`, `list_dir`, `search_text`
 - optional FireCrawl MCP tools loaded from `mcp.json` using
   `FIRECRAWL_API_KEY` from your environment
@@ -145,7 +146,7 @@ Inside the REPL:
 
 Interactive TTY behavior:
 
-- the prompt is rendered as a retro green `M4S>` composer in TTY sessions
+- the prompt is rendered as a retro green `M4D>` composer in TTY sessions
 - long prompts wrap in the composer instead of overflowing one raw line
 - multiline paste in the TTY composer is flattened into one editable text
   buffer; nothing is sent until you press Enter
@@ -193,7 +194,7 @@ Examples:
 Remote mode requirements:
 
 - export `MISTRAL_API_KEY` in your shell
-- remote mode uses `mistral-small-latest`
+- remote mode defaults to `mistral-small-latest` and `--remote-model` can switch to `mistral-medium-3.5`
 - backend switching resets the active conversation
 - optional Conversations mode uses `client.beta.conversations` and is off by default
 - `--conversations` starts in Conversations mode; `--conversation-store on|off`
@@ -297,7 +298,7 @@ Recommended runtime defaults used by the CLI:
 
 Remote mode keeps the same sampling defaults, but it does not send
 `prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for
-`mistral-small-latest`, so the CLI uses the official SDK with
+`mistral-small-latest` or `mistral-medium-3.5`, so the CLI uses the official SDK with
 `reasoning_effort=high` when reasoning is enabled, and `reasoning_effort=none`
 when it is disabled. `/thinking` only affects terminal rendering.
 

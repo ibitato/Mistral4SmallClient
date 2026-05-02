@@ -48,8 +48,11 @@ from mistral4cli.local_mistral import (
     ConversationConfig,
     LocalGenerationConfig,
     LocalMistralConfig,
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
     RemoteMistralConfig,
     build_client,
+    normalize_remote_model_id,
 )
 from mistral4cli.local_tools import LocalToolBridge
 from mistral4cli.logging_config import DEFAULT_LOG_RETENTION_DAYS

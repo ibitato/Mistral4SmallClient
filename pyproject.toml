@@ -1,7 +1,7 @@
 [project]
 name = "mistral4cli"
 version = "2.0.4"
-description = "Retro multimodal CLI for using Mistral Small 4 locally and remotely"
+description = "Retro multimodal CLI for using and testing Mistral Small 4 and Mistral Medium 3.5"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -11,6 +11,7 @@ requires-python = ">=3.10,<3.11"
 keywords = [
     "mistral",
     "mistral-small-4",
+    "mistral-medium-3.5",
     "mistralai",
     "llama.cpp",
     "cli",

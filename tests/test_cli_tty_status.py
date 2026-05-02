@@ -253,7 +253,7 @@ def test_input_history_skips_empty_and_consecutive_duplicates() -> None:
 
 def test_wrap_prompt_buffer_uses_continuation_prefix_for_long_input() -> None:
     lines = wrap_prompt_buffer(
-        "M4S> ",
+        "M4D> ",
         (
             "This is a deliberately long prompt that should wrap into multiple "
             "display lines for the interactive composer."
@@ -262,27 +262,27 @@ def test_wrap_prompt_buffer_uses_continuation_prefix_for_long_input() -> None:
     )
 
     assert len(lines) >= 2
-    assert lines[0].startswith("M4S> ")
+    assert lines[0].startswith("M4D> ")
     assert lines[1].startswith("... ")
 
 
 def test_wrap_prompt_buffer_normalizes_embedded_newlines() -> None:
     lines = wrap_prompt_buffer(
-        "M4S> ",
+        "M4D> ",
         "hola\nesto es una prueba\notra linea",
         width=28,
     )
 
-    assert lines[0].startswith("M4S> ")
+    assert lines[0].startswith("M4D> ")
     assert all("\n" not in line for line in lines)
     assert " ".join(line.strip(". ") for line in lines) == (
-        "M4S> hola esto es una prueba otra linea"
+        "M4D> hola esto es una prueba otra linea"
     )
 
 
 def test_wrap_prompt_buffer_breaks_long_unbroken_tokens() -> None:
     lines = wrap_prompt_buffer(
-        "M4S> ",
+        "M4D> ",
         "palabra" * 20,
         width=24,
     )
@@ -304,13 +304,13 @@ def test_paint_prompt_lines_styles_prompt_prefixes(monkeypatch: Any) -> None:
     output = FakeTTYOutput()
 
     painted = paint_prompt_lines(
-        ["M4S> hola", "... mundo"],
-        prompt="M4S> ",
+        ["M4D> hola", "... mundo"],
+        prompt="M4D> ",
         stream=output,
     )
 
     assert GREEN in painted[0]
-    assert "M4S> hola" in ANSI_ESCAPE_RE.sub("", painted[0])
+    assert "M4D> hola" in ANSI_ESCAPE_RE.sub("", painted[0])
     assert GREEN in painted[1]
     assert "... mundo" in ANSI_ESCAPE_RE.sub("", painted[1])
 
@@ -591,11 +591,11 @@ def test_render_input_omits_status_bar_while_user_is_typing(
         lambda: os.terminal_size((40, 24)),
     )
 
-    renderer.render_input("M4S> ", "hola")
+    renderer.render_input("M4D> ", "hola")
 
     rendered = output.getvalue()
     plain = ANSI_ESCAPE_RE.sub("", rendered)
-    assert "M4S> hola" in plain
+    assert "M4D> hola" in plain
     assert "thinking..." not in plain
     assert GREEN in rendered
 
@@ -652,11 +652,11 @@ def test_read_tty_line_treats_bracketed_paste_as_one_buffer(monkeypatch: Any) ->
     monkeypatch.setattr(termios, "tcsetattr", lambda *_args: None)
     monkeypatch.setattr(tty, "setraw", lambda _fileno: None)
 
-    line = _read_tty_line("M4S> ", stdin, output, _InputHistory())
+    line = _read_tty_line("M4D> ", stdin, output, _InputHistory())
 
     assert line == "hola mundo bien"
     rendered = output.getvalue()
-    assert rendered.startswith("M4S> \x1b[?2004h")
+    assert rendered.startswith("M4D> \x1b[?2004h")
     assert "hola mundo bien" in rendered
     assert rendered.endswith("\x1b[?2004l")
 
@@ -733,7 +733,7 @@ def test_tty_repl_quit_exits_without_lingering_process_group(tmp_path: Path) -> 
             chunk = os.read(master_fd, 65536)
             if not chunk:
                 break
-            if b"M4S>" in chunk:
+            if b"M4D>" in chunk:
                 prompt_seen = True
                 break
         assert prompt_seen, "interactive prompt did not appear before timeout"
