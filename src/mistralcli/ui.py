@@ -1,4 +1,4 @@
-"""Terminal rendering helpers for the Mistral Small 4 CLI."""
+"""Terminal rendering helpers for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import TextIO
 
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     REMOTE_SERVER_LABEL,
     BackendKind,
     ContextConfig,
@@ -38,7 +38,7 @@ ASCII_BANNER = (
     "\n"
     r"|_|  |_|_/__/\__|_| \__,_|_\_\_|  |_||_||_.__/\__,_|_|_|"
     "\n"
-    r"                    [ Mistral4Small ]                    "
+    r"                    [ MistralCli  ]                    "
 )
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -640,7 +640,11 @@ def render_runtime_summary(
         ("Tools", tool_summary),
         ("Logging", logging_summary),
     ]
-    return _render_table("Mistral Small 4 CLI", rows, stream=stream)
+    return _render_table(
+        "Mistral Small 4 + Medium 3.5 CLI",
+        rows,
+        stream=stream,
+    )
 
 
 def render_welcome_banner(summary: str, *, stream: TextIO) -> str:
@@ -648,7 +652,12 @@ def render_welcome_banner(summary: str, *, stream: TextIO) -> str:
 
     lines = [
         _paint_multiline(ASCII_BANNER, GREEN, stream, bold=True),
-        _paint("Mistral4Small multimodal console", ORANGE, stream, bold=True),
+        _paint(
+            "Mistral dual-model multimodal console",
+            ORANGE,
+            stream,
+            bold=True,
+        ),
         _paint(
             (
                 "Official SDK, local llama.cpp, remote Mistral cloud, "
@@ -701,7 +710,8 @@ def render_help_screen(
         "/drop        Clear all active and staged attachments.",
         "/dropimage   Clear active and staged image attachments.",
         "/dropdoc     Clear active and staged document attachments.",
-        "/remote      Show, enable, or disable the Mistral cloud backend.",
+        "/remote      Show, enable/disable remote backend, or change model",
+        "             (small|medium).",
         "/conv        Show or manage Mistral Cloud Conversations mode.",
         "/compact     Show, tune, or run context compaction.",
         "/timeout     Show or set the active request timeout.",

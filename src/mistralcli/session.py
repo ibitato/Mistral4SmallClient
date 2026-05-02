@@ -1,5 +1,5 @@
 # mypy: disable-error-code="assignment"
-"""Interactive session facade for the Mistral Small 4 CLI."""
+"""Interactive session facade for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
-from mistral4cli.conversation_registry import ConversationRegistry
-from mistral4cli.local_mistral import (
+from mistralcli.conversation_registry import ConversationRegistry
+from mistralcli.local_mistral import (
     DEFAULT_MODEL_ID,
     DEFAULT_SERVER_URL,
     BackendKind,
@@ -16,10 +16,10 @@ from mistral4cli.local_mistral import (
     ConversationConfig,
     LocalGenerationConfig,
 )
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.session_context import SessionContextMixin
-from mistral4cli.session_conversations import SessionConversationsMixin
-from mistral4cli.session_primitives import (
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.session_context import SessionContextMixin
+from mistralcli.session_conversations import SessionConversationsMixin
+from mistralcli.session_primitives import (
     DEFAULT_SYSTEM_PROMPT,
     ContextStatus,
     PendingConversationSettings,
@@ -29,10 +29,10 @@ from mistral4cli.session_primitives import (
     _BackendState,
     render_defaults_summary,
 )
-from mistral4cli.session_runtime import SessionRuntimeMixin
-from mistral4cli.session_tools import SessionToolsMixin
-from mistral4cli.session_transport import SessionTransportMixin
-from mistral4cli.tooling import ToolBridge
+from mistralcli.session_runtime import SessionRuntimeMixin
+from mistralcli.session_tools import SessionToolsMixin
+from mistralcli.session_transport import SessionTransportMixin
+from mistralcli.tooling import ToolBridge
 
 
 @dataclass(slots=True)
@@ -43,7 +43,7 @@ class MistralSession(
     SessionConversationsMixin,
     SessionTransportMixin,
 ):
-    """Stateful conversation helper for the Mistral Small 4 CLI."""
+    """Stateful conversation helper for the dual-model Mistral CLI."""
 
     client: MistralClientProtocol
     backend_kind: BackendKind = BackendKind.LOCAL

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from mistralai import Mistral
 
-from mistral4cli.local_mistral import DEFAULT_MODEL_ID, DEFAULT_SERVER_URL
+from mistralcli.local_mistral import DEFAULT_MODEL_ID, DEFAULT_SERVER_URL
 
 
 @dataclass(frozen=True, slots=True)

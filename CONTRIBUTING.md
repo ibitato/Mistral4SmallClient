@@ -1,4 +1,4 @@
-# Contributing to Mistral4SmallClient
+# Contributing to mistralcli
 
 Thanks for considering a contribution.
 

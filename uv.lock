@@ -343,8 +343,27 @@ wheels = [
 ]
 
 [[package]]
-name = "mistral4cli"
-version = "2.0.4"
+name = "mistralai"
+version = "2.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "eval-type-backport" },
+    { name = "httpx" },
+    { name = "jsonpath-python" },
+    { name = "opentelemetry-api" },
+    { name = "opentelemetry-semantic-conventions" },
+    { name = "pydantic" },
+    { name = "python-dateutil" },
+    { name = "typing-inspection" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/18/c0/b3c48fed30e12881a519018662374da91242899fe7593478f0a2c44d566e/mistralai-2.4.3.tar.gz", hash = "sha256:82d671f29bfb161580ccd3f59eb0cf57c7bbc3c920d1ec436e55f82bf8d0034f", size = 417727, upload-time = "2026-04-27T12:55:41.312Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/8d/34/a29192f8dab07222dd02c5499886a56ff08f64062edc0aabbb26b491742e/mistralai-2.4.3-py3-none-any.whl", hash = "sha256:06355f6473b1bffbf8cc60e352b873c53f72a4e9298366e5430db07f0ebb5310", size = 982753, upload-time = "2026-04-27T12:55:39.372Z" },
+]
+
+[[package]]
+name = "mistralcli"
+version = "3.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "inquirerpy" },
@@ -379,25 +398,6 @@ dev = [
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.409,<1.2.0" },
     { name = "pytest", specifier = ">=8.3,<9.0" },
     { name = "ruff", specifier = ">=0.11,<0.12" },
-]
-
-[[package]]
-name = "mistralai"
-version = "2.4.3"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "eval-type-backport" },
-    { name = "httpx" },
-    { name = "jsonpath-python" },
-    { name = "opentelemetry-api" },
-    { name = "opentelemetry-semantic-conventions" },
-    { name = "pydantic" },
-    { name = "python-dateutil" },
-    { name = "typing-inspection" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/18/c0/b3c48fed30e12881a519018662374da91242899fe7593478f0a2c44d566e/mistralai-2.4.3.tar.gz", hash = "sha256:82d671f29bfb161580ccd3f59eb0cf57c7bbc3c920d1ec436e55f82bf8d0034f", size = 417727, upload-time = "2026-04-27T12:55:41.312Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8d/34/a29192f8dab07222dd02c5499886a56ff08f64062edc0aabbb26b491742e/mistralai-2.4.3-py3-none-any.whl", hash = "sha256:06355f6473b1bffbf8cc60e352b873c53f72a4e9298366e5430db07f0ebb5310", size = 982753, upload-time = "2026-04-27T12:55:39.372Z" },
 ]
 
 [[package]]

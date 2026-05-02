@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 from mistralai.client import Mistral
 
-from mistral4cli.local_mistral import DEFAULT_MODEL_ID
+from mistralcli.local_mistral import DEFAULT_MODEL_ID
 
 pytestmark = pytest.mark.integration
 

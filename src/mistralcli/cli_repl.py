@@ -9,9 +9,9 @@ import sys
 from collections.abc import Callable
 from typing import TextIO
 
-from mistral4cli.attachments import PathPicker
-from mistral4cli.cli_commands import _run_command
-from mistral4cli.cli_state import (
+from mistralcli.attachments import PathPicker
+from mistralcli.cli_commands import _run_command
+from mistralcli.cli_state import (
     _build_active_attachment_message,
     _InputHistory,
     _parse_command,
@@ -19,10 +19,14 @@ from mistral4cli.cli_state import (
     _repl_status_line,
     _ReplState,
 )
-from mistral4cli.local_mistral import LocalMistralConfig, MistralConfig
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.session import MistralSession
-from mistral4cli.ui import (
+from mistralcli.local_mistral import (
+    REMOTE_MODEL_ID,
+    LocalMistralConfig,
+    MistralConfig,
+)
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.session import MistralSession
+from mistralcli.ui import (
     CLEAR_SCREEN,
     InteractiveTTYRenderer,
     render_welcome_banner,
@@ -30,7 +34,7 @@ from mistral4cli.ui import (
     terminal_recommendation,
 )
 
-logger = logging.getLogger("mistral4cli.cli")
+logger = logging.getLogger("mistralcli.cli")
 
 BRACKETED_PASTE_ENABLE = "\x1b[?2004h"
 BRACKETED_PASTE_DISABLE = "\x1b[?2004l"
@@ -318,6 +322,7 @@ def _run_repl(
     *,
     local_config: LocalMistralConfig,
     client_factory: Callable[[MistralConfig], MistralClientProtocol],
+    remote_model_id: str = REMOTE_MODEL_ID,
     input_func: Callable[[str], str],
     stdin: TextIO,
     stdout: TextIO,
@@ -377,6 +382,7 @@ def _run_repl(
                 repl_state=repl_state,
                 local_config=local_config,
                 client_factory=client_factory,
+                remote_model_id=remote_model_id,
                 input_func=input_func,
                 stdin=stdin,
                 path_picker=path_picker,

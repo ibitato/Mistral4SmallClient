@@ -1,4 +1,4 @@
-"""Linux-only command-line entrypoint for the general Mistral Small 4 CLI."""
+"""Linux-only command-line entrypoint for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -8,17 +8,17 @@ import sys
 from collections.abc import Callable, Sequence
 from typing import Any, TextIO
 
-from mistral4cli import __version__
-from mistral4cli import cli_repl as _cli_repl_mod
-from mistral4cli.attachments import PathPicker
-from mistral4cli.cli_commands import (
+from mistralcli import __version__
+from mistralcli import cli_repl as _cli_repl_mod
+from mistralcli.attachments import PathPicker
+from mistralcli.cli_commands import (
     _maybe_resume_conversation,
     _parse_timeout_ms,
 )
-from mistral4cli.cli_commands import (
+from mistralcli.cli_commands import (
     _run_command as _dispatch_command,
 )
-from mistral4cli.cli_config import (
+from mistralcli.cli_config import (
     _build_session,
     _build_tool_bridge,
     _parse_metadata_pairs,
@@ -28,10 +28,11 @@ from mistral4cli.cli_config import (
     _resolve_local_configs,
     _resolve_logging_config,
     _resolve_reasoning_visibility,
+    _resolve_remote_model_id,
     _resolve_thinking_visibility,
     build_parser,
 )
-from mistral4cli.cli_repl import (
+from mistralcli.cli_repl import (
     _clear_screen_if_supported,
     _is_default_input_func,
     _linux_supported,
@@ -45,11 +46,11 @@ from mistral4cli.cli_repl import (
     _set_bracketed_paste,
     _write_tty_newline,
 )
-from mistral4cli.cli_repl import (
+from mistralcli.cli_repl import (
     _run_repl as _run_repl_impl,
 )
-from mistral4cli.cli_shortcuts import _normalize_inline_prompt
-from mistral4cli.cli_state import (
+from mistralcli.cli_shortcuts import _normalize_inline_prompt
+from mistralcli.cli_state import (
     _build_active_attachment_message,
     _InputHistory,
     _parse_command,
@@ -57,22 +58,22 @@ from mistral4cli.cli_state import (
     _repl_status_line,
     _ReplState,
 )
-from mistral4cli.local_mistral import (
+from mistralcli.local_mistral import (
     REMOTE_MODEL_ID,
     BackendKind,
     LocalMistralConfig,
     MistralConfig,
     build_client,
 )
-from mistral4cli.logging_config import configure_logging, render_logging_summary
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.session import (
+from mistralcli.logging_config import configure_logging, render_logging_summary
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.session import (
     MistralSession,
     PendingConversationSettings,
     render_defaults_summary,
 )
 
-logger = logging.getLogger("mistral4cli.cli")
+logger = logging.getLogger("mistralcli.cli")
 LINUX_ONLY_MESSAGE = "This client is currently supported on Linux only."
 
 
@@ -95,6 +96,7 @@ def _run_command(
     repl_state: _ReplState | None = None,
     local_config: LocalMistralConfig | None = None,
     client_factory: Callable[[MistralConfig], MistralClientProtocol] = build_client,
+    remote_model_id: str = REMOTE_MODEL_ID,
     input_func: Callable[[str], str] = input,
     stdin: TextIO = sys.stdin,
     path_picker: PathPicker | None = None,
@@ -109,6 +111,7 @@ def _run_command(
         repl_state=repl_state,
         local_config=local_config,
         client_factory=client_factory,
+        remote_model_id=remote_model_id,
         input_func=input_func,
         stdin=stdin,
         path_picker=path_picker,
@@ -150,7 +153,7 @@ def main(
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.version:
-        stdout.write(f"mistral4cli {__version__}\n")
+        stdout.write(f"mistralcli {__version__}\n")
         stdout.flush()
         return 0
     if not _ensure_supported_platform(stderr):
@@ -165,6 +168,12 @@ def main(
         stdin.isatty(),
     )
     config, generation, system_prompt = _resolve_local_configs(args)
+    try:
+        remote_model_id = _resolve_remote_model_id(args)
+    except ValueError as exc:
+        stderr.write(f"[remote] {exc}\n")
+        stderr.flush()
+        return 1
     conversations = _resolve_conversation_config(args)
     context = _resolve_context_config(args)
     reasoning_enabled = _resolve_reasoning_visibility(args)
@@ -189,7 +198,7 @@ def main(
         defaults_server: str | None = config.server_url
         if conversations.enabled:
             defaults_backend = BackendKind.REMOTE
-            defaults_model = REMOTE_MODEL_ID
+            defaults_model = remote_model_id
             defaults_server = None
         stdout.write(
             render_defaults_summary(
@@ -231,6 +240,7 @@ def main(
             context=context,
             conversation_registry=conversation_registry,
             pending_conversation=pending_conversation,
+            remote_model_id=remote_model_id,
         )
         _maybe_resume_conversation(
             session,
@@ -260,6 +270,7 @@ def main(
                 context=context,
                 conversation_registry=conversation_registry,
                 pending_conversation=pending_conversation,
+                remote_model_id=remote_model_id,
             )
             _maybe_resume_conversation(
                 session,
@@ -286,6 +297,7 @@ def main(
         context=context,
         conversation_registry=conversation_registry,
         pending_conversation=pending_conversation,
+        remote_model_id=remote_model_id,
     )
     _maybe_resume_conversation(
         session,
@@ -298,6 +310,7 @@ def main(
         session,
         local_config=config,
         client_factory=client_factory,
+        remote_model_id=remote_model_id,
         input_func=input_func,
         stdin=stdin,
         stdout=stdout,

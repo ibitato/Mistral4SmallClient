@@ -2,6 +2,23 @@
 
 All notable changes to this project are documented here.
 
+## 3.0.0 - 2026-05-02
+
+### Changed
+
+- **Major version bump** to v3.0.0: CLI officially supports **Mistral Small 4** (local via llama.cpp) and **Mistral Medium 3.5** (remote via Mistral Cloud).
+- Project rebranding: repository renamed to `MistralClient` and all references updated accordingly.
+
+### Added
+
+- New `/remote model [small|medium]` command to switch between remote models (`mistral-small-latest` and `mistral-medium-3.5`).
+
+### Fixed
+
+- `/conv on` now preserves the currently selected remote model (e.g., `mistral-medium-3.5`) instead of resetting to the default (`mistral-small-latest`).
+- `/remote on` now preserves the current session model when remote backend is already active.
+- `/remote` (without arguments) now displays the current session model instead of the default.
+
 ## 2.0.4 - 2026-04-29
 
 ### Fixed
@@ -60,7 +77,7 @@ All notable changes to this project are documented here.
   `MistralSession` facade stable.
 - Refactored the CLI layer into smaller modules for parser/config resolution,
   REPL orchestration, slash-command handling, shortcuts, and session state
-  rendering while keeping `mistral4cli.cli:main` and the existing REPL UX
+  rendering while keeping `mistralcli.cli:main` and the existing REPL UX
   intact.
 - Split the previous monolithic CLI test suite into focused test files by
   domain, with shared fixtures and fakes moved into `tests/cli_support.py`.
@@ -258,7 +275,7 @@ All notable changes to this project are documented here.
 ### Added
 
 - Standard CLI version flags `--version` and `-v`.
-- Package-level `mistral4cli.__version__` export for CLI and test coverage.
+- Package-level `mistralcli.__version__` export for CLI and test coverage.
 
 ### Changed
 

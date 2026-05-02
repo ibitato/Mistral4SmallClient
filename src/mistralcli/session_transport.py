@@ -11,8 +11,8 @@ from urllib.request import Request, urlopen
 
 from mistralai.client import Mistral
 
-from mistral4cli.local_mistral import BackendKind
-from mistral4cli.session_primitives import (
+from mistralcli.local_mistral import BackendKind
+from mistralcli.session_primitives import (
     _content_segments_from_value,
     _DeferredAnswerBuffer,
     _extract_tool_calls_from_text,

@@ -31,8 +31,8 @@ def default_registry_path() -> Path:
 
     xdg_state_home = os.environ.get("XDG_STATE_HOME", "").strip()
     if xdg_state_home:
-        return Path(xdg_state_home).expanduser() / "mistral4cli" / "conversations.json"
-    return Path.home() / ".local" / "state" / "mistral4cli" / "conversations.json"
+        return Path(xdg_state_home).expanduser() / "mistralcli" / "conversations.json"
+    return Path.home() / ".local" / "state" / "mistralcli" / "conversations.json"
 
 
 @dataclass(slots=True)

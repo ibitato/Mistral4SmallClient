@@ -1,4 +1,4 @@
-"""Always-on local Linux shell and workspace tools for the Mistral Small 4 CLI."""
+"""Always-on local Linux shell and workspace tools for the dual-model Mistral CLI."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mistral4cli.mcp_bridge import MCPToolResult
+from mistralcli.mcp_bridge import MCPToolResult
 
 DEFAULT_SHELL_MAX_LINES = 120
 DEFAULT_SEARCH_MAX_RESULTS = 25
 
-logger = logging.getLogger("mistral4cli.local_tools")
+logger = logging.getLogger("mistralcli.local_tools")
 
 
 @dataclass(frozen=True, slots=True)

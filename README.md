@@ -1,21 +1,22 @@
-# Mistral4Cli
+# MistralCli
 
-[![CI](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml)
+[![CI](https://github.com/david-lopez-b/MistralClient/actions/workflows/ci.yml/badge.svg)](https://github.com/david-lopez-b/MistralClient/actions/workflows/ci.yml)
 [![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
+[![Mistral Medium 3.5](https://img.shields.io/badge/model-Mistral%20Medium%203.5-8a2be2)](https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04)
 [![llama.cpp](https://img.shields.io/badge/runtime-llama.cpp-00a000)](https://github.com/ggerganov/llama.cpp)
 [![Docs](https://img.shields.io/badge/docs-generated-blue)](docs/reference.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
 
-Retro terminal CLI for using **Mistral Small 4** both locally against
-`llama.cpp` and remotely against Mistral cloud, with the official `mistralai`
-Python SDK.
+Retro terminal CLI for using and testing **Mistral Small 4** locally against
+`llama.cpp`, plus **Mistral Small 4** and **Mistral Medium 3.5** remotely
+through Mistral Cloud with the official `mistralai` Python SDK.
 
 The client is currently supported on **Linux only**.
 
 The repository is intentionally focused on one product:
 
-- use Mistral Small 4 locally with `llama.cpp` or remotely with Mistral cloud
+- use Mistral Small 4 locally with `llama.cpp` and test Mistral Small 4 or Mistral Medium 3.5 remotely with Mistral Cloud
 - handle image and document turns through backend-appropriate multimodal flows
 - keep local OS tools and MCP tools available when the task needs them
 - support coding, document work, research, OCR, and general assistant workflows
@@ -23,12 +24,13 @@ The repository is intentionally focused on one product:
 ## What this project includes
 
 - a dedicated interactive CLI with retro green/orange presentation
-- a general-purpose multimodal assistant experience for Mistral Small 4
+- a general-purpose multimodal assistant experience for Mistral Small 4 and Mistral Medium 3.5
 - always-on local tools: `shell`, `read_file`, `write_file`, `list_dir`, `search_text`
 - optional FireCrawl MCP tools loaded from `mcp.json` using
   `FIRECRAWL_API_KEY` from your environment
 - `/image` and `/doc` attachment commands with a terminal-native picker
 - `/remote on|off` to switch between local `llama.cpp` and Mistral cloud
+- `/remote model [small|medium]` to change the remote model (only when remote is on)
 - `/compact` to inspect, tune, or manually compact chat-completions context
 - tests for completion, streaming, cancellation recovery and multimodal payloads
 
@@ -36,7 +38,7 @@ The repository is intentionally focused on one product:
 
 ```bash
 make sync
-uv run python -m mistral4cli
+uv run python -m mistralcli
 ```
 
 For a complete command-by-command walkthrough, see the
@@ -56,15 +58,15 @@ For a complete command-by-command walkthrough, see the
 Useful one-shot smoke test:
 
 ```bash
-uv run python -m mistral4cli --version
-uv run python -m mistral4cli --once "Return only the word ok." --no-stream
+uv run python -m mistralcli --version
+uv run python -m mistralcli --once "Return only the word ok." --no-stream
 ```
 
 Reasoning can be requested or disabled at startup:
 
 ```bash
-uv run python -m mistral4cli --reasoning
-uv run python -m mistral4cli --no-reasoning
+uv run python -m mistralcli --reasoning
+uv run python -m mistralcli --no-reasoning
 ```
 
 ## Install without cloning the repo
@@ -77,35 +79,35 @@ make build
 
 This creates:
 
-- `dist/mistral4cli-<version>-py3-none-any.whl`
-- `dist/mistral4cli-<version>.tar.gz`
+- `dist/mistralcli-<version>-py3-none-any.whl`
+- `dist/mistralcli-<version>.tar.gz`
 
-Version tags such as `v2.0.4` also trigger a GitHub Actions release build that
+Version tags such as `v3.0.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets.
 
 Copy the wheel to the target server and install it with `uv`:
 
 ```bash
-uv tool install ./mistral4cli-<version>-py3-none-any.whl
+uv tool install ./mistralcli-<version>-py3-none-any.whl
 ```
 
 Then run:
 
 ```bash
-mistral4cli --version
-mistral4cli
+mistralcli --version
+mistralcli
 ```
 
 ## Code layout
 
-The public CLI behavior stays centered around `mistral4cli`, but the internal
+The public CLI behavior stays centered around `mistralcli`, but the internal
 implementation is now split into smaller domain modules:
 
-- `src/mistral4cli/session.py` is the thin `MistralSession` facade
+- `src/mistralcli/session.py` is the thin `MistralSession` facade
 - `session_runtime.py`, `session_transport.py`, `session_conversations.py`,
   `session_tools.py`, `session_context.py`, and `session_primitives.py` own the
   main session domains
-- `src/mistral4cli/cli.py` is the thin CLI entrypoint facade
+- `src/mistralcli/cli.py` is the thin CLI entrypoint facade
 - `cli_config.py`, `cli_repl.py`, `cli_commands.py`, `cli_shortcuts.py`, and
   `cli_state.py` own CLI-specific runtime responsibilities
 - `tests/cli_support.py` contains shared CLI fixtures and fakes, while the CLI
@@ -118,8 +120,8 @@ If you prefer an isolated virtual environment instead of a tool install:
 
 ```bash
 uv venv
-uv pip install ./mistral4cli-<version>-py3-none-any.whl
-uv run mistral4cli --print-defaults
+uv pip install ./mistralcli-<version>-py3-none-any.whl
+uv run mistralcli --print-defaults
 ```
 
 Inside the REPL:
@@ -137,6 +139,7 @@ Inside the REPL:
 - `/image` to pick and analyze images in the terminal
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
+- `/remote model [small|medium]` to change the remote model
 - `/conv ...` to manage Mistral Cloud Conversations and local bookmarks
 - `/reasoning [on|off|toggle]` to request or suppress backend reasoning
 - `/thinking [on|off|toggle]` to show or hide returned thinking blocks
@@ -145,7 +148,7 @@ Inside the REPL:
 
 Interactive TTY behavior:
 
-- the prompt is rendered as a retro green `M4S>` composer in TTY sessions
+- the prompt is rendered as a retro green `MC>` composer in TTY sessions
 - long prompts wrap in the composer instead of overflowing one raw line
 - multiline paste in the TTY composer is flattened into one editable text
   buffer; nothing is sent until you press Enter
@@ -193,7 +196,7 @@ Examples:
 Remote mode requirements:
 
 - export `MISTRAL_API_KEY` in your shell
-- remote mode uses `mistral-small-latest`
+- remote mode defaults to `mistral-small-latest` and `--remote-model` can switch to `mistral-medium-3.5`
 - backend switching resets the active conversation
 - optional Conversations mode uses `client.beta.conversations` and is off by default
 - `--conversations` starts in Conversations mode; `--conversation-store on|off`
@@ -207,7 +210,7 @@ Remote mode requirements:
 - `--thinking` and `--no-thinking` control whether returned thinking is rendered
 - `store=off` runs stateless one-shot Conversation calls, so it does not preserve
   `conversation_id` across turns
-- the CLI keeps a local registry at `~/.local/state/mistral4cli/conversations.json`
+- the CLI keeps a local registry at `~/.local/state/mistralcli/conversations.json`
   (or `$XDG_STATE_HOME/...`) for aliases, tags, notes, and last-active resume state
 - the default request timeout is `300000 ms` (5 minutes)
 
@@ -297,7 +300,7 @@ Recommended runtime defaults used by the CLI:
 
 Remote mode keeps the same sampling defaults, but it does not send
 `prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for
-`mistral-small-latest`, so the CLI uses the official SDK with
+`mistral-small-latest` or `mistral-medium-3.5`, so the CLI uses the official SDK with
 `reasoning_effort=high` when reasoning is enabled, and `reasoning_effort=none`
 when it is disabled. `/thinking` only affects terminal rendering.
 
@@ -365,7 +368,7 @@ actions so the app stays pinned to the top of the terminal.
 
 ## Repository layout
 
-- `src/mistral4cli/` - CLI, session, tools and attachment handling
+- `src/mistralcli/` - CLI, session, tools and attachment handling
 - `tests/` - unit and integration tests
 - `docs/user-guide.md` - practical end-user guide for the CLI
 - `docs/local-mistral-small-4.md` - detailed local deployment notes

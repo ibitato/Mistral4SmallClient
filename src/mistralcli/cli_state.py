@@ -7,14 +7,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mistral4cli.attachments import (
+from mistralcli.attachments import (
     build_document_message,
     build_image_message,
     build_remote_document_message,
     build_remote_image_message,
 )
-from mistral4cli.local_mistral import BackendKind
-from mistral4cli.session import (
+from mistralcli.local_mistral import BackendKind
+from mistralcli.session import (
     ContextStatus,
     MistralSession,
     SessionStatusSnapshot,
@@ -131,8 +131,8 @@ def _repl_prompt(repl_state: _ReplState) -> str:
     if repl_state.active_documents:
         tokens.append(f"doc:{len(repl_state.active_documents)}")
     if not tokens:
-        return "M4S> "
-    return f"M4S[{','.join(tokens)}]> "
+        return "MC> "
+    return f"MC[{','.join(tokens)}]> "
 
 
 def _format_estimated_context_for_status(

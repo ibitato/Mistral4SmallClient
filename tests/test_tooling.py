@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from mistral4cli.mcp_bridge import MCPToolResult
-from mistral4cli.tooling import CompositeToolBridge
+from mistralcli.mcp_bridge import MCPToolResult
+from mistralcli.tooling import CompositeToolBridge
 
 
 @dataclass(slots=True)

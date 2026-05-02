@@ -1,16 +1,17 @@
 [project]
-name = "mistral4cli"
-version = "2.0.4"
-description = "Retro multimodal CLI for using Mistral Small 4 locally and remotely"
+name = "mistralcli"
+version = "3.0.0"
+description = "Retro multimodal CLI for using and testing Mistral Small 4 and Mistral Medium 3.5"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
+    { name = "David R. Lopez B.", email = "davi.lopez@quiter-sc.com" }
 ]
 requires-python = ">=3.10,<3.11"
 keywords = [
     "mistral",
     "mistral-small-4",
+    "mistral-medium-3.5",
     "mistralai",
     "llama.cpp",
     "cli",
@@ -31,13 +32,13 @@ dependencies = [
 ]
 
 [project.scripts]
-mistral4cli = "mistral4cli.cli:main"
+mistralcli = "mistralcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ibitato/Mistral4SmallClient"
-Source = "https://github.com/ibitato/Mistral4SmallClient"
-Issues = "https://github.com/ibitato/Mistral4SmallClient/issues"
-Documentation = "https://github.com/ibitato/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
+Homepage = "https://github.com/david-lopez-b/MistralClient"
+Source = "https://github.com/david-lopez-b/MistralClient"
+Issues = "https://github.com/david-lopez-b/MistralClient/issues"
+Documentation = "https://github.com/david-lopez-b/MistralClient/blob/main/docs/local-mistral-small-4.md"
 
 [dependency-groups]
 dev = [

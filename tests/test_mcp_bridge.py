@@ -8,7 +8,7 @@ import pytest
 from mcp.shared.exceptions import McpError
 from mcp.types import ErrorData
 
-from mistral4cli.mcp_bridge import (
+from mistralcli.mcp_bridge import (
     MCPBridgeError,
     MCPConfig,
     MCPServerConfig,

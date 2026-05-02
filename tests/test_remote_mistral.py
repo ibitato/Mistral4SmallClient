@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from mistral4cli.local_mistral import RemoteMistralConfig, build_client
+from mistralcli.local_mistral import RemoteMistralConfig, build_client
 
 pytestmark = [pytest.mark.integration, pytest.mark.remote]
 

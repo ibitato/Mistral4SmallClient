@@ -1,4 +1,9 @@
 # ruff: noqa: F403, F405
+from mistralcli.local_mistral import (
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
+    normalize_remote_model_id,
+)
 from tests.cli_support import *
 
 
@@ -26,7 +31,7 @@ def test_version_flag_prints_package_version() -> None:
     )
 
     assert exit_code == 0
-    assert output.getvalue() == f"mistral4cli {__version__}\n"
+    assert output.getvalue() == f"mistralcli {__version__}\n"
 
 
 def test_short_version_flag_prints_package_version() -> None:
@@ -40,7 +45,7 @@ def test_short_version_flag_prints_package_version() -> None:
     )
 
     assert exit_code == 0
-    assert output.getvalue() == f"mistral4cli {__version__}\n"
+    assert output.getvalue() == f"mistralcli {__version__}\n"
 
 
 def test_main_rejects_non_linux_before_print_defaults(monkeypatch: Any) -> None:
@@ -53,7 +58,7 @@ def test_main_rejects_non_linux_before_print_defaults(monkeypatch: Any) -> None:
         client_factory_called = True
         return FakeClient()
 
-    monkeypatch.setattr("mistral4cli.cli.sys.platform", "darwin")
+    monkeypatch.setattr("mistralcli.cli.sys.platform", "darwin")
 
     exit_code = main(
         ["--print-defaults", "--no-mcp"],
@@ -79,7 +84,7 @@ def test_main_rejects_non_linux_before_once(monkeypatch: Any) -> None:
         client_factory_called = True
         return FakeClient()
 
-    monkeypatch.setattr("mistral4cli.cli.sys.platform", "win32")
+    monkeypatch.setattr("mistralcli.cli.sys.platform", "win32")
 
     exit_code = main(
         ["--once", "Return only ok.", "--no-mcp"],
@@ -99,7 +104,7 @@ def test_main_rejects_non_linux_before_interactive_start(monkeypatch: Any) -> No
     output = FakeTTYOutput()
     error = io.StringIO()
 
-    monkeypatch.setattr("mistral4cli.cli.sys.platform", "darwin")
+    monkeypatch.setattr("mistralcli.cli.sys.platform", "darwin")
 
     exit_code = main(
         ["--no-mcp"],
@@ -133,7 +138,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert exit_code == 0
     assert client_factory_called is False
     rendered = output.getvalue()
-    assert "Mistral Small 4 CLI" in rendered
+    assert "Mistral Small 4 + Medium 3.5 CLI" in rendered
     assert "| Backend" in rendered
     assert "local" in rendered
     assert "Local OS tools: ready" in rendered
@@ -151,6 +156,28 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert "| Logging" in rendered
     assert "debug=on" in rendered
     assert f"retention={DEFAULT_LOG_RETENTION_DAYS}d" in rendered
+
+
+def test_print_defaults_uses_selected_remote_model_in_conversations_mode() -> None:
+    output = io.StringIO()
+
+    exit_code = main(
+        [
+            "--print-defaults",
+            "--no-mcp",
+            "--conversations",
+            "--remote-model",
+            "medium",
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: FakeConversationClient(),
+    )
+
+    assert exit_code == 0
+    rendered = output.getvalue()
+    assert REMOTE_MEDIUM_MODEL_ID in rendered
+    assert "remote" in rendered
 
 
 def test_print_defaults_applies_context_cli_options() -> None:
@@ -253,6 +280,36 @@ def test_once_can_start_in_conversations_mode(
     assert fake_client.chat.complete_calls == []
 
 
+def test_once_can_start_in_conversations_mode_with_selected_remote_model(
+    monkeypatch: Any,
+    tmp_path: Path,
+) -> None:
+    output = io.StringIO()
+    fake_client = FakeConversationClient()
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+
+    exit_code = main(
+        [
+            "--conversations",
+            "--remote-model",
+            "medium",
+            "--once",
+            "Return only ok.",
+            "--no-stream",
+            "--no-mcp",
+            "--conversation-index",
+            str(tmp_path / "conversations.json"),
+        ],
+        stdin=FakeStdin(""),
+        stdout=output,
+        client_factory=lambda _config: fake_client,
+    )
+
+    assert exit_code == 0
+    call = fake_client.beta.conversations.start_calls[0]
+    assert call["model"] == REMOTE_MEDIUM_MODEL_ID
+
+
 def test_once_can_start_in_conversations_mode_with_reasoning_disabled(
     monkeypatch: Any,
     tmp_path: Path,
@@ -294,6 +351,11 @@ def test_print_defaults_includes_conversation_resume_policy() -> None:
 
     assert exit_code == 0
     assert "resume=last" in output.getvalue()
+
+
+def test_remote_model_aliases_normalize_to_supported_models() -> None:
+    assert normalize_remote_model_id("small") == REMOTE_MODEL_ID
+    assert normalize_remote_model_id("medium") == REMOTE_MEDIUM_MODEL_ID
 
 
 def test_once_conversations_applies_pending_creation_metadata(
@@ -381,12 +443,12 @@ def test_main_creates_debug_log_file_by_default(tmp_path: Path) -> None:
     )
 
     assert exit_code == 0
-    log_file = tmp_path / "mistral4cli.log"
+    log_file = tmp_path / "mistralcli.log"
     assert log_file.exists()
     rendered = log_file.read_text(encoding="utf-8")
-    assert "INFO mistral4cli Logging configured" in rendered
-    assert "INFO mistral4cli.cli CLI start" in rendered
-    assert "DEBUG mistral4cli.cli Built tool bridge count=1" in rendered
+    assert "INFO mistralcli Logging configured" in rendered
+    assert "INFO mistralcli.cli CLI start" in rendered
+    assert "DEBUG mistralcli.cli Built tool bridge count=1" in rendered
 
 
 def test_help_and_banner_are_actionable_and_retro() -> None:
@@ -405,7 +467,7 @@ def test_help_and_banner_are_actionable_and_retro() -> None:
         stream=output,
     )
 
-    assert "Mistral4Small multimodal console" in banner
+    assert "Mistral dual-model multimodal console" in banner
     assert "Type /help for actionable commands" in banner
     assert "Mistral cloud" in banner
     assert "+-" in banner

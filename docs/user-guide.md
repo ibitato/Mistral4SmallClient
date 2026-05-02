@@ -1,12 +1,12 @@
-# Mistral4Cli User Guide
+# MistralCli User Guide
 
-This guide explains how to run and test the `mistral4cli` command-line
+This guide explains how to run and test the `mistralcli` command-line
 assistant as an end user. It focuses on day-to-day CLI usage rather than
 developer internals.
 
 ## What The CLI Does
 
-`mistral4cli` is an interactive Linux terminal client for Mistral Small 4. It
+`mistralcli` is an interactive Linux terminal client for using and testing Mistral Small 4 and Mistral Medium 3.5. It
 can use:
 
 - a local `llama.cpp` server, which is the default backend
@@ -43,30 +43,30 @@ From a source checkout:
 
 ```bash
 make sync
-uv run python -m mistral4cli --version
-uv run python -m mistral4cli --print-defaults
-uv run python -m mistral4cli
+uv run python -m mistralcli --version
+uv run python -m mistralcli --print-defaults
+uv run python -m mistralcli
 ```
 
 Installed as a tool:
 
 ```bash
-mistral4cli --version
-mistral4cli --print-defaults
-mistral4cli
+mistralcli --version
+mistralcli --print-defaults
+mistralcli
 ```
 
 One-shot smoke test:
 
 ```bash
-uv run python -m mistral4cli --once "Return only the word ok." --no-stream
+uv run python -m mistralcli --once "Return only the word ok." --no-stream
 ```
 
 Reasoning flags:
 
 ```bash
-uv run python -m mistral4cli --reasoning
-uv run python -m mistral4cli --no-reasoning
+uv run python -m mistralcli --reasoning
+uv run python -m mistralcli --no-reasoning
 ```
 
 If thinking display is enabled, the local backend may print reasoning before
@@ -74,7 +74,7 @@ the final answer. Disable display when you want cleaner smoke output without
 changing backend reasoning requests:
 
 ```bash
-uv run python -m mistral4cli --once "Return only ok." --no-stream --no-thinking --system-prompt "Answer exactly as requested."
+uv run python -m mistralcli --once "Return only ok." --no-stream --no-thinking --system-prompt "Answer exactly as requested."
 ```
 
 Then inside the REPL:
@@ -162,6 +162,8 @@ Backend and runtime commands:
 /remote
 /remote on
 /remote off
+/remote model small
+/remote model medium
 /timeout
 /timeout 300000
 /reasoning
@@ -192,8 +194,8 @@ Local mode is the default. It expects an OpenAI-compatible `llama.cpp` server at
 Recommended local smoke tests:
 
 ```bash
-uv run python -m mistral4cli --print-defaults
-uv run python -m mistral4cli --once "Return only ok." --no-stream
+uv run python -m mistralcli --print-defaults
+uv run python -m mistralcli --once "Return only ok." --no-stream
 ```
 
 Useful REPL checks:
@@ -241,8 +243,19 @@ interactive session. Backend switching resets the active conversation.
 
 Remote mode uses:
 
-- model `mistral-small-latest`
+- model `mistral-small-latest` by default
+- `--remote-model medium` or `--remote-model mistral-medium-3.5` to switch to Medium 3.5
 - `reasoning_effort=high` when reasoning is on
+
+You can also change the remote model from within the REPL while remote mode is active:
+
+```text
+/remote on
+/remote model medium
+```
+
+Supported model names: `small`, `small4`, `small-4`, `mistral-small-latest`, `medium`, `medium3.5`, `medium-3.5`, `mistral-medium-3.5`.
+Changing the model resets the current conversation.
 - `reasoning_effort=none` when reasoning is off
 - `/thinking` only affects local rendering of returned `thinking` blocks
 - no local `prompt_mode=reasoning`, because Mistral Cloud rejects that setting
@@ -256,7 +269,7 @@ Start directly in Conversations mode:
 
 ```bash
 export MISTRAL_API_KEY=...
-uv run python -m mistral4cli --conversations
+uv run python -m mistralcli --conversations
 ```
 
 Enable or disable inside the REPL:
@@ -294,9 +307,9 @@ Conversations persistence model:
 
 Local registry:
 
-- default path: `~/.local/state/mistral4cli/conversations.json`
+- default path: `~/.local/state/mistralcli/conversations.json`
 - if `XDG_STATE_HOME` is set, the registry lives under
-  `$XDG_STATE_HOME/mistral4cli/conversations.json`
+  `$XDG_STATE_HOME/mistralcli/conversations.json`
 - `--conversation-index` overrides that path for one run
 
 Remote management commands:
@@ -439,10 +452,10 @@ Tune the policy inside the REPL:
 Start with custom settings:
 
 ```bash
-uv run python -m mistral4cli --compact-threshold 85
-uv run python -m mistral4cli --no-auto-compact
-uv run python -m mistral4cli --context-reserve-tokens 4096
-uv run python -m mistral4cli --context-keep-turns 4
+uv run python -m mistralcli --compact-threshold 85
+uv run python -m mistralcli --no-auto-compact
+uv run python -m mistralcli --context-reserve-tokens 4096
+uv run python -m mistralcli --context-keep-turns 4
 ```
 
 How compaction works:
@@ -558,9 +571,9 @@ retention. The default location is shown by `/defaults`.
 Useful flags:
 
 ```bash
-uv run python -m mistral4cli --log-dir /tmp/mistral4cli-logs
-uv run python -m mistral4cli --no-debug
-uv run python -m mistral4cli --log-retention-days 7
+uv run python -m mistralcli --log-dir /tmp/mistralcli-logs
+uv run python -m mistralcli --no-debug
+uv run python -m mistralcli --log-retention-days 7
 ```
 
 Use logs when checking backend errors, tool execution, cancellation behavior, or
@@ -571,7 +584,7 @@ context compaction decisions.
 Local server is not reachable:
 
 ```bash
-uv run python -m mistral4cli --once "Return only ok." --no-stream
+uv run python -m mistralcli --once "Return only ok." --no-stream
 ```
 
 Then verify the server separately:
@@ -650,10 +663,10 @@ export TERM=xterm-256color
 Use this sequence after installing or updating the CLI:
 
 ```bash
-uv run python -m mistral4cli --print-defaults
-uv run python -m mistral4cli --once "Return only ok." --no-stream
-uv run python -m mistral4cli --no-auto-compact --print-defaults
-uv run python -m mistral4cli --compact-threshold 85 --print-defaults
+uv run python -m mistralcli --print-defaults
+uv run python -m mistralcli --once "Return only ok." --no-stream
+uv run python -m mistralcli --no-auto-compact --print-defaults
+uv run python -m mistralcli --compact-threshold 85 --print-defaults
 ```
 
 Then open the REPL and run:
@@ -676,6 +689,7 @@ If `MISTRAL_API_KEY` is available, also test:
 ```text
 /remote on
 /defaults
+/remote off
 /conv on
 /conv current
 /conv list --page 0 --size 5

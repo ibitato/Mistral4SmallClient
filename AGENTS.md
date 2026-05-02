@@ -15,7 +15,7 @@ This repository uses Python 3.10, `uv` for environment and dependency management
   repository structure changes, including file additions, removals, renames, or
   directory reorganizations.
 - Validate against the local server at `http://127.0.0.1:8080` with the model `unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL`.
-- For CLI smoke tests, use `uv run python -m mistral4cli --print-defaults` and `uv run python -m mistral4cli --once "..." --no-stream`.
+- For CLI smoke tests, use `uv run python -m mistralcli --print-defaults` and `uv run python -m mistralcli --once "..." --no-stream`.
 - When working with images, always use an image of at least `2x2` pixels.
 - When working with MCP, use `mcp.json` at the repository root or `MISTRAL_LOCAL_MCP_CONFIG` to point to another configuration. Keep secrets out of the file and resolve them from environment variables such as `FIRECRAWL_API_KEY`.
 - The CLI must always expose local OS tools: `shell`, `read_file`, `write_file`, `list_dir`, and `search_text`.

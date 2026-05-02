@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from mistral4cli.conversation_registry import (
+from mistralcli.conversation_registry import (
     ConversationRegistry,
     default_registry_path,
 )
@@ -17,7 +17,7 @@ def test_default_registry_path_uses_state_directory(
     monkeypatch.setenv("XDG_STATE_HOME", "/tmp/m4s-state")
     path = default_registry_path()
 
-    assert path == Path("/tmp/m4s-state/mistral4cli/conversations.json")
+    assert path == Path("/tmp/m4s-state/mistralcli/conversations.json")
 
 
 def test_registry_round_trip_and_alias_resolution(tmp_path: Path) -> None:

@@ -10,8 +10,8 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TextIO
 
-from mistral4cli.conversation_registry import ConversationRegistry
-from mistral4cli.local_mistral import (
+from mistralcli.conversation_registry import ConversationRegistry
+from mistralcli.local_mistral import (
     DEFAULT_API_KEY,
     DEFAULT_MODEL_ID,
     DEFAULT_PROMPT_MODE,
@@ -19,6 +19,9 @@ from mistral4cli.local_mistral import (
     DEFAULT_TEMPERATURE,
     DEFAULT_TIMEOUT_MS,
     DEFAULT_TOP_P,
+    ENV_REMOTE_MODEL_ID,
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
     BackendKind,
     ContextConfig,
     ConversationConfig,
@@ -26,19 +29,20 @@ from mistral4cli.local_mistral import (
     LocalMistralConfig,
     MistralConfig,
     RemoteMistralConfig,
+    normalize_remote_model_id,
 )
-from mistral4cli.local_tools import LocalToolBridge
-from mistral4cli.logging_config import LoggingConfig
-from mistral4cli.mcp_bridge import MCPConfig, MCPToolBridge, discover_mcp_config_path
-from mistral4cli.mistral_client import MistralClientProtocol
-from mistral4cli.session import (
+from mistralcli.local_tools import LocalToolBridge
+from mistralcli.logging_config import LoggingConfig
+from mistralcli.mcp_bridge import MCPConfig, MCPToolBridge, discover_mcp_config_path
+from mistralcli.mistral_client import MistralClientProtocol
+from mistralcli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralSession,
     PendingConversationSettings,
 )
-from mistral4cli.tooling import CompositeToolBridge, ToolBridge
+from mistralcli.tooling import CompositeToolBridge, ToolBridge
 
-logger = logging.getLogger("mistral4cli.cli")
+logger = logging.getLogger("mistralcli.cli")
 
 
 def _optional_prompt_mode(value: str | None) -> str | None:
@@ -54,9 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
     """Build the command-line parser for the CLI."""
 
     parser = argparse.ArgumentParser(
-        prog="mistral4cli",
+        prog="mistralcli",
         description=(
-            "Interactive multimodal CLI for Mistral Small 4 local and remote backends."
+            "Interactive multimodal CLI for using and testing "
+            "Mistral Small 4 and Mistral Medium 3.5."
         ),
     )
     parser.add_argument(
@@ -74,6 +79,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--model",
         default=None,
         help=f"Model identifier (default: {DEFAULT_MODEL_ID}).",
+    )
+    parser.add_argument(
+        "--remote-model",
+        default=None,
+        help=(
+            "Remote Mistral Cloud model identifier or alias "
+            f"(default: {REMOTE_MODEL_ID}; supported: {REMOTE_MODEL_ID}, "
+            f"{REMOTE_MEDIUM_MODEL_ID}; env: {ENV_REMOTE_MODEL_ID})."
+        ),
     )
     parser.add_argument(
         "--api-key",
@@ -342,6 +356,12 @@ def _resolve_conversation_config(args: argparse.Namespace) -> ConversationConfig
     )
 
 
+def _resolve_remote_model_id(args: argparse.Namespace) -> str:
+    """Resolve the selected remote model id from CLI args and environment."""
+
+    return normalize_remote_model_id(args.remote_model)
+
+
 def _resolve_context_config(args: argparse.Namespace) -> ContextConfig:
     config = ContextConfig.from_env()
     return replace(
@@ -496,6 +516,7 @@ def _build_session(
     context: ContextConfig,
     conversation_registry: ConversationRegistry,
     pending_conversation: PendingConversationSettings,
+    remote_model_id: str,
 ) -> MistralSession:
     logger.debug(
         "Building session backend=%s model=%s stream=%s",
@@ -521,7 +542,10 @@ def _build_session(
     )
     session.pending_conversation = pending_conversation
     if conversations.enabled:
-        remote_config = RemoteMistralConfig.from_env(timeout_ms=config.timeout_ms)
+        remote_config = RemoteMistralConfig.from_env(
+            timeout_ms=config.timeout_ms,
+            model_id=remote_model_id,
+        )
         session.enable_conversations(
             client=client_factory(remote_config),
             model_id=remote_config.model_id,

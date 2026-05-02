@@ -16,13 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from mistral4cli import __version__
-from mistral4cli.attachments import (
+from mistralcli import __version__
+from mistralcli.attachments import (
     build_image_message,
     build_remote_document_message,
     build_remote_image_message,
 )
-from mistral4cli.cli import (
+from mistralcli.cli import (
     LINUX_ONLY_MESSAGE,
     _build_active_attachment_message,
     _clear_screen_if_supported,
@@ -40,9 +40,11 @@ from mistral4cli.cli import (
     _write_tty_newline,
     main,
 )
-from mistral4cli.conversation_registry import ConversationRegistry
-from mistral4cli.local_mistral import (
+from mistralcli.conversation_registry import ConversationRegistry
+from mistralcli.local_mistral import (
     DEFAULT_TIMEOUT_MS,
+    REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
     BackendKind,
     ContextConfig,
     ConversationConfig,
@@ -50,17 +52,18 @@ from mistral4cli.local_mistral import (
     LocalMistralConfig,
     RemoteMistralConfig,
     build_client,
+    normalize_remote_model_id,
 )
-from mistral4cli.local_tools import LocalToolBridge
-from mistral4cli.logging_config import DEFAULT_LOG_RETENTION_DAYS
-from mistral4cli.mcp_bridge import MCPToolResult
-from mistral4cli.session import (
+from mistralcli.local_tools import LocalToolBridge
+from mistralcli.logging_config import DEFAULT_LOG_RETENTION_DAYS
+from mistralcli.mcp_bridge import MCPToolResult
+from mistralcli.session import (
     DEFAULT_SYSTEM_PROMPT,
     MistralCodingSession,
     MistralSession,
     UsageSnapshot,
 )
-from mistral4cli.ui import (
+from mistralcli.ui import (
     CLEAR_SCREEN,
     CYAN,
     GREEN,
