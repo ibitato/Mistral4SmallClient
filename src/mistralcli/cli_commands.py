@@ -899,6 +899,7 @@ def _run_remote_command(
         model_arg = normalized[6:].strip().lower()
         # Normalize the model argument using existing helper
         from mistralcli.local_mistral import normalize_remote_model_id
+
         try:
             new_model_id = normalize_remote_model_id(model_arg)
         except ValueError:
@@ -908,7 +909,9 @@ def _run_remote_command(
 
         # Check if remote mode is active
         if session.backend_kind != BackendKind.REMOTE:
-            stdout.write("[remote] Remote mode is not active. Use '/remote on' first.\n")
+            stdout.write(
+                "[remote] Remote mode is not active. Use '/remote on' first.\n"
+            )
             stdout.flush()
             return False
 

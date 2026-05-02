@@ -1,8 +1,8 @@
 # ruff: noqa: F403, F405
 from mistralcli.local_mistral import (
-    BackendKind,
-    REMOTE_MODEL_ID,
     REMOTE_MEDIUM_MODEL_ID,
+    REMOTE_MODEL_ID,
+    BackendKind,
     RemoteMistralConfig,
 )
 from tests.cli_support import *
@@ -766,7 +766,10 @@ def test_remote_model_command_fails_if_not_remote_on(monkeypatch: Any) -> None:
 
     assert should_exit is False
     assert session.backend_kind is BackendKind.LOCAL  # Still in local mode
-    assert "[remote] Remote mode is not active. Use '/remote on' first." in output.getvalue()
+    assert (
+        "[remote] Remote mode is not active. Use '/remote on' first."
+        in output.getvalue()
+    )
 
 
 def test_remote_model_command_rejects_invalid_model(monkeypatch: Any) -> None:
@@ -812,11 +815,13 @@ def test_remote_model_command_rejects_invalid_model(monkeypatch: Any) -> None:
     assert session.model_id == REMOTE_MODEL_ID
 
 
-def test_conversations_command_preserves_selected_remote_model(monkeypatch: Any) -> None:
-    """Test that /conv preserves the current session model instead of resetting to default."""
+def test_conversations_command_preserves_selected_remote_model(
+    monkeypatch: Any,
+) -> None:
+    """Test that /conv preserves the current session model instead of resetting."""
     output = io.StringIO()
     conversations = FakeConversations()
-    
+
     # Start with medium model selected
     session = MistralSession(
         client=FakeConversationClient(conversations),
@@ -851,7 +856,7 @@ def test_remote_on_preserves_selected_model(monkeypatch: Any) -> None:
     """Test that /remote on preserves the current session model."""
     output = io.StringIO()
     conversations = FakeConversations()
-    
+
     # Start with medium model already selected in remote backend
     session = MistralSession(
         client=FakeConversationClient(conversations),
@@ -884,7 +889,7 @@ def test_remote_command_shows_current_model(monkeypatch: Any) -> None:
     """Test that /remote (no args) shows the current session model, not default."""
     output = io.StringIO()
     conversations = FakeConversations()
-    
+
     # Session with medium model
     session = MistralSession(
         client=FakeConversationClient(conversations),
