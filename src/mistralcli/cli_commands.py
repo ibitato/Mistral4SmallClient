@@ -268,10 +268,17 @@ def _run_conversations_command(
     def ensure_enabled(*, allow_resume: bool) -> bool:
         if session.conversations.enabled:
             return True
+        # Use the current session model if already on remote backend,
+        # otherwise fall back to the default remote_model_id
+        model_id = (
+            session.model_id
+            if session.backend_kind == BackendKind.REMOTE
+            else remote_model_id
+        )
         try:
             remote_config = RemoteMistralConfig.from_env(
                 timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
-                model_id=remote_model_id,
+                model_id=model_id,
             )
         except RemoteAPIKeyError as exc:
             stdout.write(f"[conversations] {exc}\n")
@@ -818,15 +825,28 @@ def _run_remote_command(
         )
         stdout.write(f"Backend: {session.backend_kind.value}\n")
         stdout.write(f"Remote mode: {availability}\n")
-        stdout.write(f"Remote model: {remote_model_id}\n")
+        # Show the current session model if on remote backend, otherwise the default
+        current_model = (
+            session.model_id
+            if session.backend_kind == BackendKind.REMOTE
+            else remote_model_id
+        )
+        stdout.write(f"Remote model: {current_model}\n")
         stdout.flush()
         return False
 
     if normalized == "on":
+        # Use the current session model if already on remote backend,
+        # otherwise fall back to the default remote_model_id
+        model_id = (
+            session.model_id
+            if session.backend_kind == BackendKind.REMOTE
+            else remote_model_id
+        )
         try:
             remote_config = RemoteMistralConfig.from_env(
                 timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
-                model_id=remote_model_id,
+                model_id=model_id,
             )
         except RemoteAPIKeyError as exc:
             stdout.write(f"[remote] {exc}\n")
