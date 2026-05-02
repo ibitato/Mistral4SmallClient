@@ -35,10 +35,10 @@ dependencies = [
 mistralcli = "mistralcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/david-lopez-b/mistralcli"
-Source = "https://github.com/david-lopez-b/mistralcli"
-Issues = "https://github.com/david-lopez-b/mistralcli/issues"
-Documentation = "https://github.com/david-lopez-b/mistralcli/blob/main/docs/local-mistral-small-4.md"
+Homepage = "https://github.com/david-lopez-b/MistralClient"
+Source = "https://github.com/david-lopez-b/MistralClient"
+Issues = "https://github.com/david-lopez-b/MistralClient/issues"
+Documentation = "https://github.com/david-lopez-b/MistralClient/blob/main/docs/local-mistral-small-4.md"
 
 [dependency-groups]
 dev = [

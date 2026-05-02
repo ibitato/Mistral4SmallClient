@@ -1,6 +1,6 @@
 # MistralCli
 
-[![CI](https://github.com/david-lopez-b/mistralcli/actions/workflows/ci.yml/badge.svg)](https://github.com/david-lopez-b/mistralcli/actions/workflows/ci.yml)
+[![CI](https://github.com/david-lopez-b/MistralClient/actions/workflows/ci.yml/badge.svg)](https://github.com/david-lopez-b/MistralClient/actions/workflows/ci.yml)
 [![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
 [![Mistral Medium 3.5](https://img.shields.io/badge/model-Mistral%20Medium%203.5-8a2be2)](https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04)
 [![llama.cpp](https://img.shields.io/badge/runtime-llama.cpp-00a000)](https://github.com/ggerganov/llama.cpp)
