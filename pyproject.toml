@@ -5,7 +5,7 @@ description = "Retro multimodal CLI for using and testing Mistral Small 4 and Mi
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
+    { name = "David R. Lopez B.", email = "davi.lopez@quiter-sc.com" }
 ]
 requires-python = ">=3.10,<3.11"
 keywords = [
@@ -35,10 +35,10 @@ dependencies = [
 mistralcli = "mistralcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/david-lopez-b/Mistral4SmallClient"
-Source = "https://github.com/david-lopez-b/Mistral4SmallClient"
-Issues = "https://github.com/david-lopez-b/Mistral4SmallClient/issues"
-Documentation = "https://github.com/david-lopez-b/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
+Homepage = "https://github.com/david-lopez-b/mistralcli"
+Source = "https://github.com/david-lopez-b/mistralcli"
+Issues = "https://github.com/david-lopez-b/mistralcli/issues"
+Documentation = "https://github.com/david-lopez-b/mistralcli/blob/main/docs/local-mistral-small-4.md"
 
 [dependency-groups]
 dev = [
