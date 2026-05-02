@@ -1,4 +1,4 @@
-"""Module entrypoint for `python -m mistral4cli`."""
+"""Module entrypoint for `python -m mistralcli`."""
 
 from __future__ import annotations
 

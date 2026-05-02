@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mistral4cli.local_tools import LocalToolBridge
+from mistralcli.local_tools import LocalToolBridge
 
 
 def test_local_tool_descriptions_harden_shell_vs_search_text() -> None:

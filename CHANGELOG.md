@@ -60,7 +60,7 @@ All notable changes to this project are documented here.
   `MistralSession` facade stable.
 - Refactored the CLI layer into smaller modules for parser/config resolution,
   REPL orchestration, slash-command handling, shortcuts, and session state
-  rendering while keeping `mistral4cli.cli:main` and the existing REPL UX
+  rendering while keeping `mistralcli.cli:main` and the existing REPL UX
   intact.
 - Split the previous monolithic CLI test suite into focused test files by
   domain, with shared fixtures and fakes moved into `tests/cli_support.py`.
@@ -258,7 +258,7 @@ All notable changes to this project are documented here.
 ### Added
 
 - Standard CLI version flags `--version` and `-v`.
-- Package-level `mistral4cli.__version__` export for CLI and test coverage.
+- Package-level `mistralcli.__version__` export for CLI and test coverage.
 
 ### Changed
 

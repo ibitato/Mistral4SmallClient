@@ -1,8 +1,8 @@
-# Mistral4Cli API Reference
+# MistralCli API Reference
 
 This file is generated from public docstrings.
 
-## `mistral4cli.attachments`
+## `mistralcli.attachments`
 
 Attachment helpers for image and document turns.
 
@@ -50,7 +50,7 @@ Load a supported document from disk as text.
 
 Render a supported document into image blocks for the model.
 
-## `mistral4cli.cli`
+## `mistralcli.cli`
 
 Linux-only command-line entrypoint for the dual-model Mistral CLI.
 
@@ -58,7 +58,7 @@ Linux-only command-line entrypoint for the dual-model Mistral CLI.
 
 Run the CLI.
 
-## `mistral4cli.local_mistral`
+## `mistralcli.local_mistral`
 
 Configuration and client helpers for the dual-model Mistral CLI.
 
@@ -156,7 +156,7 @@ Return whether the remote Mistral cloud API key is available.
 
 Update the effective timeout on a Mistral client in place.
 
-## `mistral4cli.local_tools`
+## `mistralcli.local_tools`
 
 Always-on local Linux shell and workspace tools for the dual-model Mistral CLI.
 
@@ -186,7 +186,7 @@ Local Linux filesystem and shell tools that are always available.
 
 Shape of one local tool exposed to the model.
 
-## `mistral4cli.mcp_bridge`
+## `mistralcli.mcp_bridge`
 
 MCP bridge helpers for FireCrawl-style remote tools.
 
@@ -258,7 +258,7 @@ A tool exposed to the Mistral chat-completion API.
 
 Resolve the MCP config path from CLI, env or repo defaults.
 
-## `mistral4cli.session`
+## `mistralcli.session`
 
 Interactive session facade for the dual-model Mistral CLI.
 
@@ -266,7 +266,7 @@ Interactive session facade for the dual-model Mistral CLI.
 
 Stateful conversation helper for the dual-model Mistral CLI.
 
-## `mistral4cli.tooling`
+## `mistralcli.tooling`
 
 Tool bridge composition for the dual-model Mistral CLI.
 
@@ -318,7 +318,7 @@ Minimal interface shared by local and MCP tool bridges.
 
   Return tools shaped for the official Mistral SDK.
 
-## `mistral4cli.ui`
+## `mistralcli.ui`
 
 Terminal rendering helpers for the dual-model Mistral CLI.
 

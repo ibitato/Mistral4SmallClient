@@ -22,7 +22,7 @@ reorganized in the repository.
 |   |-- check_docs.py
 |   `-- generate_reference.py
 |-- src
-|   `-- mistral4cli
+|   `-- mistralcli
 |       |-- __init__.py
 |       |-- __main__.py
 |       |-- attachments.py

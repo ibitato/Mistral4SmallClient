@@ -1,5 +1,5 @@
 [project]
-name = "mistral4cli"
+name = "mistralcli"
 version = "2.0.4"
 description = "Retro multimodal CLI for using and testing Mistral Small 4 and Mistral Medium 3.5"
 readme = "README.md"
@@ -32,13 +32,13 @@ dependencies = [
 ]
 
 [project.scripts]
-mistral4cli = "mistral4cli.cli:main"
+mistralcli = "mistralcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ibitato/Mistral4SmallClient"
-Source = "https://github.com/ibitato/Mistral4SmallClient"
-Issues = "https://github.com/ibitato/Mistral4SmallClient/issues"
-Documentation = "https://github.com/ibitato/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
+Homepage = "https://github.com/david-lopez-b/Mistral4SmallClient"
+Source = "https://github.com/david-lopez-b/Mistral4SmallClient"
+Issues = "https://github.com/david-lopez-b/Mistral4SmallClient/issues"
+Documentation = "https://github.com/david-lopez-b/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
 
 [dependency-groups]
 dev = [

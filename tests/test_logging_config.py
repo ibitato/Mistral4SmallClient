@@ -3,7 +3,7 @@ from __future__ import annotations
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
 
-from mistral4cli.logging_config import (
+from mistralcli.logging_config import (
     DEFAULT_LOG_RETENTION_DAYS,
     LoggingConfig,
     configure_logging,
@@ -32,8 +32,8 @@ def test_configure_logging_uses_daily_rotation_and_retention(tmp_path: Path) -> 
     assert Path(handler.baseFilename) == config.file_path
 
     rendered = config.file_path.read_text(encoding="utf-8")
-    assert "INFO mistral4cli Logging configured" in rendered
-    assert "DEBUG mistral4cli debug trace" in rendered
+    assert "INFO mistralcli Logging configured" in rendered
+    assert "DEBUG mistralcli debug trace" in rendered
 
 
 def test_configure_logging_can_disable_debug_output(tmp_path: Path) -> None:
@@ -45,4 +45,4 @@ def test_configure_logging_can_disable_debug_output(tmp_path: Path) -> None:
 
     rendered = config.file_path.read_text(encoding="utf-8")
     assert "suppressed" not in rendered
-    assert "INFO mistral4cli info trace" in rendered
+    assert "INFO mistralcli info trace" in rendered

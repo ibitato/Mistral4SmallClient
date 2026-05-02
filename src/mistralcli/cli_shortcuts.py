@@ -7,7 +7,7 @@ import shlex
 from collections.abc import Callable
 from typing import TextIO
 
-from mistral4cli.attachments import (
+from mistralcli.attachments import (
     DOCUMENT_FILETYPES,
     DOCUMENT_SUFFIXES,
     IMAGE_FILETYPES,
@@ -20,9 +20,9 @@ from mistral4cli.attachments import (
     choose_paths,
     format_selection_summary,
 )
-from mistral4cli.cli_state import _PendingAttachment, _ReplState, _set_active_attachment
-from mistral4cli.local_mistral import BackendKind
-from mistral4cli.session import MistralSession
+from mistralcli.cli_state import _PendingAttachment, _ReplState, _set_active_attachment
+from mistralcli.local_mistral import BackendKind
+from mistralcli.session import MistralSession
 
 
 def _split_shortcut_argument(argument: str) -> tuple[str, str | None]:
