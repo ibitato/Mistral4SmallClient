@@ -894,7 +894,6 @@ def _run_remote_command(
 
         # Switch to the new remote model
         try:
-            from mistralcli.session_transport import RemoteMistralConfig
             remote_config = RemoteMistralConfig.from_env(
                 timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
                 model_id=new_model_id,
