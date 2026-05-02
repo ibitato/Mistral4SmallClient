@@ -38,7 +38,7 @@ ASCII_BANNER = (
     "\n"
     r"|_|  |_|_/__/\__|_| \__,_|_\_\_|  |_||_||_.__/\__,_|_|_|"
     "\n"
-    r"                    [ MistralDual ]                     "
+    r"                    [ MistralDual ]                    "
 )
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
