@@ -162,6 +162,8 @@ Backend and runtime commands:
 /remote
 /remote on
 /remote off
+/remote model small
+/remote model medium
 /timeout
 /timeout 300000
 /reasoning
@@ -244,6 +246,16 @@ Remote mode uses:
 - model `mistral-small-latest` by default
 - `--remote-model medium` or `--remote-model mistral-medium-3.5` to switch to Medium 3.5
 - `reasoning_effort=high` when reasoning is on
+
+You can also change the remote model from within the REPL while remote mode is active:
+
+```text
+/remote on
+/remote model medium
+```
+
+Supported model names: `small`, `small4`, `small-4`, `mistral-small-latest`, `medium`, `medium3.5`, `medium-3.5`, `mistral-medium-3.5`.
+Changing the model resets the current conversation.
 - `reasoning_effort=none` when reasoning is off
 - `/thinking` only affects local rendering of returned `thinking` blocks
 - no local `prompt_mode=reasoning`, because Mistral Cloud rejects that setting

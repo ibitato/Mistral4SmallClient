@@ -874,7 +874,54 @@ def _run_remote_command(
         stdout.flush()
         return False
 
-    stdout.write("Usage: /remote [on|off]\n")
+    # Handle /remote model [small|medium]
+    if normalized.startswith("model "):
+        model_arg = normalized[6:].strip().lower()
+        # Normalize the model argument using existing helper
+        from mistralcli.local_mistral import normalize_remote_model_id
+        try:
+            new_model_id = normalize_remote_model_id(model_arg)
+        except ValueError:
+            stdout.write("Usage: /remote model [small|medium]\n")
+            stdout.flush()
+            return False
+
+        # Check if remote mode is active
+        if session.backend_kind != BackendKind.REMOTE:
+            stdout.write("[remote] Remote mode is not active. Use '/remote on' first.\n")
+            stdout.flush()
+            return False
+
+        # Switch to the new remote model
+        try:
+            from mistralcli.session_transport import RemoteMistralConfig
+            remote_config = RemoteMistralConfig.from_env(
+                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
+                model_id=new_model_id,
+            )
+        except RemoteAPIKeyError as exc:
+            stdout.write(f"[remote] {exc}\n")
+            stdout.flush()
+            return False
+
+        session.switch_backend(
+            client=client_factory(remote_config),
+            backend_kind=BackendKind.REMOTE,
+            model_id=new_model_id,
+            server_url=None,
+        )
+        _clear_attachments(
+            repl_state,
+            clear_images=True,
+            clear_documents=True,
+            clear_pending=True,
+        )
+        refresh_repl_screen(stdout, session)
+        stdout.write(f"Remote model changed to {new_model_id}. Conversation reset.\n")
+        stdout.flush()
+        return False
+
+    stdout.write("Usage: /remote [on|off|model small|model medium]\n")
     stdout.flush()
     return False
 

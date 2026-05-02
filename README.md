@@ -30,6 +30,7 @@ The repository is intentionally focused on one product:
   `FIRECRAWL_API_KEY` from your environment
 - `/image` and `/doc` attachment commands with a terminal-native picker
 - `/remote on|off` to switch between local `llama.cpp` and Mistral cloud
+- `/remote model [small|medium]` to change the remote model (only when remote is on)
 - `/compact` to inspect, tune, or manually compact chat-completions context
 - tests for completion, streaming, cancellation recovery and multimodal payloads
 
@@ -138,6 +139,7 @@ Inside the REPL:
 - `/image` to pick and analyze images in the terminal
 - `/doc` to pick and analyze documents in the terminal
 - `/remote on|off` to switch cloud mode
+- `/remote model [small|medium]` to change the remote model
 - `/conv ...` to manage Mistral Cloud Conversations and local bookmarks
 - `/reasoning [on|off|toggle]` to request or suppress backend reasoning
 - `/thinking [on|off|toggle]` to show or hide returned thinking blocks
