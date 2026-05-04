@@ -1,10 +1,10 @@
-# Mistral Small 4 + Medium 3.5 Local and Remote CLI
+# MistralClient Backends and Runtime
 
-This repository provides a general Mistral Small 4 + Medium 3.5 CLI built on top of the
-official `mistralai` Python SDK against two backends:
+This repository provides a Mistral-focused multimodal CLI built on top of the
+official `mistralai` Python SDK against two backend classes:
 
 - a local `llama.cpp` deployment
-- the hosted Mistral cloud models exposed as `mistral-small-latest` and `mistral-medium-3.5`
+- hosted Mistral Cloud models exposed through the official SDK
 
 The CLI is designed to switch between those backends without changing the main
 REPL workflow, attachments, or tool availability.
@@ -66,9 +66,9 @@ The integration test uses a `2x2` PNG fixture to avoid that crash.
 
 ## CLI
 
-The repository ships a dedicated `mistralcli` REPL for using and testing Mistral Small 4 and Mistral Medium 3.5. It
-uses the official `mistralai` SDK directly and can target either the local or
-remote backend at runtime.
+The repository ships a dedicated `mistralcli` REPL for working with Mistral
+models across local and remote backends. It uses the official `mistralai` SDK
+directly and can target either backend at runtime.
 
 The REPL has a retro green/orange presentation, an ASCII welcome banner, and
 an actionable help system:

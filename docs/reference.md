@@ -1,4 +1,4 @@
-# MistralCli API Reference
+# MistralClient API Reference
 
 This file is generated from public docstrings.
 
@@ -92,7 +92,7 @@ Runtime defaults for Mistral Cloud Conversations mode.
 
 ### Class `LocalGenerationConfig`
 
-Sampling defaults for the local Mistral Small 4 deployment.
+Sampling defaults for the local llama.cpp deployment.
 
 #### Methods
 
@@ -324,7 +324,7 @@ Minimal interface shared by local and MCP tool bridges.
 
 ## `mistralcli.ui`
 
-Terminal rendering helpers for the dual-model Mistral CLI.
+Terminal rendering helpers for the Mistral multimodal CLI.
 
 ### Class `InteractiveTTYRenderer`
 

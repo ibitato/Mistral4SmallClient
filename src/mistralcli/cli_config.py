@@ -60,8 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mistralcli",
         description=(
-            "Interactive multimodal CLI for using and testing "
-            "Mistral Small 4 and Mistral Medium 3.5."
+            "Interactive multimodal CLI for Mistral models across "
+            "local llama.cpp and Mistral Cloud backends."
         ),
     )
     parser.add_argument(

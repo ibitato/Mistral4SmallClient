@@ -31,7 +31,7 @@ def build_reference_markdown() -> str:
     """Build Markdown API reference for the public package surface."""
 
     lines: list[str] = [
-        "# MistralCli API Reference",
+        "# MistralClient API Reference",
         "",
         "This file is generated from public docstrings.",
         "",

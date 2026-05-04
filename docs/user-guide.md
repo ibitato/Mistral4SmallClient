@@ -1,4 +1,4 @@
-# MistralCli User Guide
+# MistralClient User Guide
 
 This guide explains how to run and test the `mistralcli` command-line
 assistant as an end user. It focuses on day-to-day CLI usage rather than
@@ -6,7 +6,8 @@ developer internals.
 
 ## What The CLI Does
 
-`mistralcli` is an interactive Linux terminal client for using and testing Mistral Small 4 and Mistral Medium 3.5. It
+`mistralcli` is an interactive Linux terminal client for working with Mistral
+models across local `llama.cpp` and remote Mistral Cloud backends. It
 can use:
 
 - a local `llama.cpp` server, which is the default backend
@@ -52,7 +53,7 @@ Install directly from a GitHub release asset:
 
 ```bash
 uv tool install \
-  "https://github.com/ibitato/Mistral4SmallClient/releases/download/v3.0.0/mistralcli-3.0.0-py3-none-any.whl"
+  "https://github.com/ibitato/MistralClient/releases/download/v3.1.0/mistralcli-3.1.0-py3-none-any.whl"
 ```
 
 Upgrade or reinstall from a newer wheel:
@@ -286,6 +287,9 @@ Changing the model resets the current conversation.
 - `reasoning_effort=none` when reasoning is off
 - `/thinking` only affects local rendering of returned `thinking` blocks
 - no local `prompt_mode=reasoning`, because Mistral Cloud rejects that setting
+
+For the backend-specific runtime profile and the validated local `llama.cpp`
+launch command, see [backends-and-runtime.md](backends-and-runtime.md).
 
 ## Conversations Mode
 

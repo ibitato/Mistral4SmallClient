@@ -18,8 +18,9 @@ from mistralcli.ui import render_runtime_summary
 DEFAULT_SYSTEM_PROMPT = "\n".join(
     [
         (
-            "You are the assistant inside the MistralCli Linux terminal "
-            "client for using and testing Mistral Small 4 and Mistral Medium 3.5."
+            "You are the assistant inside the MistralClient Linux terminal "
+            "client for working with Mistral models across local llama.cpp "
+            "and Mistral Cloud backends."
         ),
         (
             "Respond directly, stay focused on the user's goal, and prefer "

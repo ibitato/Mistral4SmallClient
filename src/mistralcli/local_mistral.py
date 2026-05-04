@@ -142,7 +142,7 @@ class RemoteMistralConfig:
 
 @dataclass(frozen=True, slots=True)
 class LocalGenerationConfig:
-    """Sampling defaults for the local Mistral Small 4 deployment."""
+    """Sampling defaults for the local llama.cpp deployment."""
 
     temperature: float = DEFAULT_TEMPERATURE
     top_p: float = DEFAULT_TOP_P

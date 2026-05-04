@@ -13,7 +13,7 @@ reorganized in the repository.
 |   |   `-- release.yml
 |   `-- PULL_REQUEST_TEMPLATE.md
 |-- docs
-|   |-- local-mistral-small-4.md
+|   |-- backends-and-runtime.md
 |   |-- project-tree.md
 |   |-- reference.md
 |   `-- user-guide.md

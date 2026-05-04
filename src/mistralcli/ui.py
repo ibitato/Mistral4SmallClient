@@ -1,4 +1,4 @@
-"""Terminal rendering helpers for the dual-model Mistral CLI."""
+"""Terminal rendering helpers for the Mistral multimodal CLI."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ ASCII_BANNER = (
     "\n"
     r"|_|  |_|_/__/\__|_| \__,_|_\_\_|  |_||_||_.__/\__,_|_|_|"
     "\n"
-    r"                    [ MistralCli  ]                    "
+    r"                  [ MistralClient ]                   "
 )
 
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -641,7 +641,7 @@ def render_runtime_summary(
         ("Logging", logging_summary),
     ]
     return _render_table(
-        "Mistral Small 4 + Medium 3.5 CLI",
+        "MistralClient CLI",
         rows,
         stream=stream,
     )

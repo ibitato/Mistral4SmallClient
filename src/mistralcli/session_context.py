@@ -284,7 +284,7 @@ class SessionContextMixin:
             {
                 "role": "system",
                 "content": (
-                    "You compact chat history for MistralCli. Summarize durable "
+                    "You compact chat history for MistralClient. Summarize durable "
                     "facts, decisions, file paths, commands and outputs, tool "
                     "results, user preferences, and open tasks. Keep the summary "
                     "concise, factual, and in English. Do not invent details."

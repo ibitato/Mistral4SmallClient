@@ -119,7 +119,7 @@ def test_main_rejects_non_linux_before_interactive_start(monkeypatch: Any) -> No
     assert error.getvalue() == LINUX_ONLY_MESSAGE + "\n"
 
 
-def test_print_defaults_shows_mistral_small_4_defaults() -> None:
+def test_print_defaults_shows_runtime_defaults() -> None:
     output = io.StringIO()
     client_factory_called = False
 
@@ -138,7 +138,7 @@ def test_print_defaults_shows_mistral_small_4_defaults() -> None:
     assert exit_code == 0
     assert client_factory_called is False
     rendered = output.getvalue()
-    assert "Mistral Small 4 + Medium 3.5 CLI" in rendered
+    assert "MistralClient CLI" in rendered
     assert "| Backend" in rendered
     assert "local" in rendered
     assert "Local OS tools: ready" in rendered

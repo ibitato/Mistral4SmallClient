@@ -1,22 +1,22 @@
-# MistralCli
+# MistralClient
 
-[![CI](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml)
-[![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
-[![Mistral Medium 3.5](https://img.shields.io/badge/model-Mistral%20Medium%203.5-8a2be2)](https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04)
+[![CI](https://github.com/ibitato/MistralClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/MistralClient/actions/workflows/ci.yml)
+[![Mistral](https://img.shields.io/badge/models-Mistral-ff6f00)](https://docs.mistral.ai/)
 [![llama.cpp](https://img.shields.io/badge/runtime-llama.cpp-00a000)](https://github.com/ggerganov/llama.cpp)
+[![Mistral Cloud](https://img.shields.io/badge/backend-Mistral%20Cloud-2457ff)](https://docs.mistral.ai/)
 [![Docs](https://img.shields.io/badge/docs-generated-blue)](docs/reference.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Python: >=3.10](https://img.shields.io/badge/python-%3E%3D3.10-orange.svg)](https://www.python.org/downloads/)
 
-Retro terminal CLI for using and testing **Mistral Small 4** locally against
-`llama.cpp`, plus **Mistral Small 4** and **Mistral Medium 3.5** remotely
-through Mistral Cloud with the official `mistralai` Python SDK.
+Retro terminal CLI for working with **Mistral models** through two backends:
+local `llama.cpp` deployments and remote **Mistral Cloud** through the
+official `mistralai` Python SDK.
 
 The client is currently supported on **Linux only**.
 
-The repository is intentionally focused on one product:
+The repository is intentionally focused on one product surface:
 
-- use Mistral Small 4 locally with `llama.cpp` and test Mistral Small 4 or Mistral Medium 3.5 remotely with Mistral Cloud
+- use local `llama.cpp` and remote Mistral Cloud from one consistent REPL
 - handle image and document turns through backend-appropriate multimodal flows
 - keep local OS tools and MCP tools available when the task needs them
 - support coding, document work, research, OCR, and general assistant workflows
@@ -24,7 +24,7 @@ The repository is intentionally focused on one product:
 ## What this project includes
 
 - a dedicated interactive CLI with retro green/orange presentation
-- a general-purpose multimodal assistant experience for Mistral Small 4 and Mistral Medium 3.5
+- a general-purpose multimodal assistant experience for Mistral models
 - always-on local tools: `shell`, `read_file`, `write_file`, `list_dir`, `search_text`
 - optional FireCrawl MCP tools loaded from `mcp.json` using
   `FIRECRAWL_API_KEY` from your environment
@@ -85,7 +85,7 @@ This creates:
 - `dist/mistralcli-<version>-py3-none-any.whl`
 - `dist/mistralcli-<version>.tar.gz`
 
-Version tags such as `v3.0.0` also trigger a GitHub Actions release build that
+Version tags such as `v3.1.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets after passing
 the normal repo checks and a wheel-install smoke test.
 
@@ -105,7 +105,7 @@ Install directly from a GitHub release asset without cloning the repo:
 
 ```bash
 uv tool install \
-  "https://github.com/ibitato/Mistral4SmallClient/releases/download/v3.0.0/mistralcli-3.0.0-py3-none-any.whl"
+  "https://github.com/ibitato/MistralClient/releases/download/v3.1.0/mistralcli-3.1.0-py3-none-any.whl"
 ```
 
 An optional convenience wrapper is available in [`scripts/install.sh`](scripts/install.sh).
@@ -257,7 +257,7 @@ Context management:
 - default chat completions are client-managed and send the full local history
 - the CLI estimates context before each non-Conversations request because the
   SDK does not expose a backend tokenizer for this path
-- local mode defaults to the configured Mistral Small 4 window of `262144`
+- local mode defaults to the configured local model window of `262144`
   tokens; remote chat completions default to `256000` tokens
 - auto-compaction is enabled by default at `90%` of the configured window and
   reserves `8192` tokens for the next response
@@ -284,10 +284,10 @@ Attachment picker flow:
 - `Enter` selects the highlighted entry and `Ctrl-C` cancels
 - if the picker cannot run, the CLI falls back to manual path entry
 
-## Local Mistral Small 4 setup
+## Local llama.cpp setup
 
-The local model is expected to be running outside this repo with `llama.cpp`.
-The documented launch profile is:
+The local runtime is expected to be running outside this repo with `llama.cpp`.
+The validated launch profile for the current test stack is:
 
 ```bash
 llama-server \
@@ -340,8 +340,8 @@ local setup it is effectively required if you want reasoning requested by
 default, because it sets `reasoning_effort=high` in the llama.cpp chat
 template.
 
-For the detailed local runbook, see
-[docs/local-mistral-small-4.md](docs/local-mistral-small-4.md).
+For the detailed backend and runtime runbook, see
+[docs/backends-and-runtime.md](docs/backends-and-runtime.md).
 For day-to-day CLI usage, see [docs/user-guide.md](docs/user-guide.md).
 
 ## Testing
@@ -386,7 +386,7 @@ actions so the app stays pinned to the top of the terminal.
 - `src/mistralcli/` - CLI, session, tools and attachment handling
 - `tests/` - unit and integration tests
 - `docs/user-guide.md` - practical end-user guide for the CLI
-- `docs/local-mistral-small-4.md` - detailed local deployment notes
+- `docs/backends-and-runtime.md` - backend-specific deployment and runtime notes
 - `docs/reference.md` - generated API reference from public docstrings
 - `mistral-small-4-reasoning.jinja` - versioned llama.cpp reasoning template
 - `mcp.json` - optional FireCrawl MCP config that expands

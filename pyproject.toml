@@ -1,7 +1,7 @@
 [project]
 name = "mistralcli"
-version = "3.0.0"
-description = "Retro multimodal CLI for using and testing Mistral Small 4 and Mistral Medium 3.5"
+version = "3.1.0"
+description = "Retro multimodal CLI for Mistral models, with local llama.cpp and Mistral Cloud backends"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
@@ -10,8 +10,6 @@ authors = [
 requires-python = ">=3.10"
 keywords = [
     "mistral",
-    "mistral-small-4",
-    "mistral-medium-3.5",
     "mistralai",
     "llama.cpp",
     "cli",
@@ -21,6 +19,8 @@ keywords = [
     "vision",
     "documents",
     "ocr",
+    "terminal",
+    "local-inference",
 ]
 dependencies = [
     "InquirerPy>=0.3.4,<0.4.0",
@@ -35,10 +35,10 @@ dependencies = [
 mistralcli = "mistralcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/ibitato/Mistral4SmallClient"
-Source = "https://github.com/ibitato/Mistral4SmallClient"
-Issues = "https://github.com/ibitato/Mistral4SmallClient/issues"
-Documentation = "https://github.com/ibitato/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
+Homepage = "https://github.com/ibitato/MistralClient"
+Source = "https://github.com/ibitato/MistralClient"
+Issues = "https://github.com/ibitato/MistralClient/issues"
+Documentation = "https://github.com/ibitato/MistralClient/blob/main/docs/backends-and-runtime.md"
 
 [dependency-groups]
 dev = [

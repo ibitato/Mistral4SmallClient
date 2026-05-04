@@ -2,12 +2,20 @@
 
 All notable changes to this project are documented here.
 
+## 3.1.0 - 2026-05-04
+
+### Changed
+
+- Completed the public rebrand to `MistralClient` across repository metadata, documentation, install surfaces, and in-product branding while keeping the published package and command name as `mistralcli`.
+- Repositioned the project as a Mistral multimodal CLI that spans local `llama.cpp` and remote Mistral Cloud backends instead of branding it around only two specific models.
+- Updated the main backend/runtime guide, release asset URLs, and install helper metadata to use the canonical `ibitato/MistralClient` repository slug.
+
 ## 3.0.0 - 2026-05-02
 
 ### Changed
 
 - **Major version bump** to v3.0.0: CLI officially supports **Mistral Small 4** (local via llama.cpp) and **Mistral Medium 3.5** (remote via Mistral Cloud).
-- Project rebranding: repository renamed to `MistralClient` and all references updated accordingly.
+- Started the repository rebrand toward `MistralClient`, while the published package and command remained `mistralcli`.
 
 ### Added
 

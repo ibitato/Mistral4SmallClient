@@ -4,7 +4,7 @@
 #   ./scripts/install.sh
 #   ./scripts/install.sh /path/to/mistralcli-<version>-py3-none-any.whl
 #   ./scripts/install.sh https://.../mistralcli-<version>-py3-none-any.whl
-#   ./scripts/install.sh v3.0.0
+#   ./scripts/install.sh v3.1.0
 
 set -euo pipefail
 
@@ -14,7 +14,7 @@ HOME_DIR="$(cd ~ && pwd)"
 BIN_DIR="${HOME_DIR}/.local/bin"
 LEGACY_INSTALL_DIR="${HOME_DIR}/.local/mistralcli"
 LEGACY_WRAPPER="${BIN_DIR}/mistralcli"
-GITHUB_REPO="david-lopez-b/MistralClient"
+GITHUB_REPO="ibitato/MistralClient"
 UV_INSTALL_URL="https://astral.sh/uv/install.sh"
 
 RED='\033[0;31m'
