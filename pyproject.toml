@@ -5,7 +5,7 @@ description = "Retro multimodal CLI for Mistral models, with local llama.cpp and
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "David R. Lopez B.", email = "davi.lopez@quiter-sc.com" }
+    { name = "David R. Lopez B.", email = "ibitato@gmail.com" }
 ]
 requires-python = ">=3.10"
 keywords = [

@@ -6,7 +6,7 @@ Do not open a public issue for a suspected security vulnerability.
 
 Instead, report it privately to:
 
-- `davi.lopez@quiter-sc.com`
+- `ibitato@gmail.com`
 
 Please include:
 

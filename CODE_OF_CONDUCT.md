@@ -33,4 +33,4 @@ Project maintainers may edit, remove, or close content that violates these expec
 
 If you need to report conduct issues, contact:
 
-- `davi.lopez@quiter-sc.com`
+- `ibitato@gmail.com`
