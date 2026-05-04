@@ -30,19 +30,19 @@ jobs:
           sudo apt-get install -y poppler-utils
 
       - name: Sync environment
-        run: uv sync --group dev --locked
+        run: make sync
 
-      - name: Check formatting
-        run: uv run ruff format --check .
+      - name: Run repo checks
+        run: make check
 
-      - name: Run lint
-        run: uv run ruff check .
+      - name: Run test suite
+        run: make test
 
-      - name: Run type checks
-        run: uv run mypy src
+      - name: Build release artifacts
+        run: make build
 
-      - name: Check generated docs
-        run: uv run python scripts/check_docs.py
-
-      - name: Run unit tests
-        run: uv run pytest -m "not integration" -q
+      - name: Smoke test uv tool install from wheel
+        run: |
+          uv tool install --force ./dist/*.whl
+          mistralcli --version
+          mistralcli --print-defaults

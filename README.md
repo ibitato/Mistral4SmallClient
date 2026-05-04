@@ -1,12 +1,12 @@
 # MistralCli
 
-[![CI](https://github.com/david-lopez-b/MistralClient/actions/workflows/ci.yml/badge.svg)](https://github.com/david-lopez-b/MistralClient/actions/workflows/ci.yml)
+[![CI](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml/badge.svg)](https://github.com/ibitato/Mistral4SmallClient/actions/workflows/ci.yml)
 [![Mistral Small 4](https://img.shields.io/badge/model-Mistral%20Small%204-ff6f00)](https://docs.mistral.ai/models/mistral-small-4-0-26-03)
 [![Mistral Medium 3.5](https://img.shields.io/badge/model-Mistral%20Medium%203.5-8a2be2)](https://docs.mistral.ai/models/model-cards/mistral-medium-3-5-26-04)
 [![llama.cpp](https://img.shields.io/badge/runtime-llama.cpp-00a000)](https://github.com/ggerganov/llama.cpp)
 [![Docs](https://img.shields.io/badge/docs-generated-blue)](docs/reference.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Python: 3.10](https://img.shields.io/badge/python-3.10-orange.svg)](https://www.python.org/downloads/release/python-3100/)
+[![Python: >=3.10](https://img.shields.io/badge/python-%3E%3D3.10-orange.svg)](https://www.python.org/downloads/)
 
 Retro terminal CLI for using and testing **Mistral Small 4** locally against
 `llama.cpp`, plus **Mistral Small 4** and **Mistral Medium 3.5** remotely
@@ -46,7 +46,7 @@ For a complete command-by-command walkthrough, see the
 
 ## Requirements
 
-- Python `3.10`
+- Python `>=3.10` (tested on 3.10, 3.11, 3.12, 3.13, 3.14)
 - Linux
 - `uv`
 - a local `llama.cpp` server at `http://127.0.0.1:8080` if you want local mode
@@ -71,6 +71,9 @@ uv run python -m mistralcli --no-reasoning
 
 ## Install without cloning the repo
 
+The supported install path for workstations and servers is a built wheel plus
+`uv tool install`.
+
 Build distributable artifacts on one machine:
 
 ```bash
@@ -83,18 +86,38 @@ This creates:
 - `dist/mistralcli-<version>.tar.gz`
 
 Version tags such as `v3.0.0` also trigger a GitHub Actions release build that
-publishes the wheel and source archive as GitHub release assets.
+publishes the wheel and source archive as GitHub release assets after passing
+the normal repo checks and a wheel-install smoke test.
 
-Copy the wheel to the target server and install it with `uv`:
+Install from a local wheel:
 
 ```bash
 uv tool install ./mistralcli-<version>-py3-none-any.whl
 ```
 
-Then run:
+Reinstall or upgrade from a newer wheel:
+
+```bash
+uv tool install --force ./mistralcli-<version>-py3-none-any.whl
+```
+
+Install directly from a GitHub release asset without cloning the repo:
+
+```bash
+uv tool install \
+  "https://github.com/ibitato/Mistral4SmallClient/releases/download/v3.0.0/mistralcli-3.0.0-py3-none-any.whl"
+```
+
+An optional convenience wrapper is available in [`scripts/install.sh`](scripts/install.sh).
+It still uses `uv tool install` under the hood, and its job is only to help
+with local wheel discovery, optional release URLs, and cleanup of legacy
+repo-local installs.
+
+After installation:
 
 ```bash
 mistralcli --version
+mistralcli --print-defaults
 mistralcli
 ```
 
@@ -115,14 +138,6 @@ implementation is now split into smaller domain modules:
 
 This keeps individual Python units easier to navigate without changing the
 user-facing command surface.
-
-If you prefer an isolated virtual environment instead of a tool install:
-
-```bash
-uv venv
-uv pip install ./mistralcli-<version>-py3-none-any.whl
-uv run mistralcli --print-defaults
-```
 
 Inside the REPL:
 

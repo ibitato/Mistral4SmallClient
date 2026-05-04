@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, cast
@@ -13,6 +16,8 @@ from urllib.request import urlopen
 from mistralai.client import Mistral
 
 from mistralcli.mistral_client import MistralClientProtocol
+
+logger = logging.getLogger("mistralcli.local_mistral")
 
 DEFAULT_API_KEY = "local-test"
 DEFAULT_MODEL_ID = "unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL"
@@ -336,6 +341,85 @@ def set_client_timeout_ms(
     sdk_configuration = getattr(client, "sdk_configuration", None)
     if sdk_configuration is not None:
         sdk_configuration.timeout_ms = timeout_ms
+
+
+def _install_noop_close(sync_client: object) -> None:
+    """Neutralize a closed sync client so SDK finalizers become harmless."""
+
+    try:
+        cast(Any, sync_client).close = lambda: None
+    except Exception:
+        logger.debug("Could not replace sync client close()", exc_info=True)
+
+
+def _install_noop_aclose(async_client: object) -> None:
+    """Neutralize a closed async client so SDK finalizers become harmless."""
+
+    async def _noop_aclose() -> None:
+        return None
+
+    try:
+        cast(Any, async_client).aclose = _noop_aclose
+    except Exception:
+        logger.debug("Could not replace async client aclose()", exc_info=True)
+
+
+def _close_async_client(async_client: object) -> None:
+    """Close one async HTTP client outside the SDK finalizer path."""
+
+    aclose = getattr(async_client, "aclose", None)
+    if not callable(aclose):
+        return
+    close_awaitable = cast(Coroutine[Any, Any, None], aclose())
+    try:
+        asyncio.run(close_awaitable)
+        return
+    except RuntimeError:
+        # Fall back to a dedicated loop if the current thread already owns one.
+        pass
+    except Exception:
+        logger.debug("Closing async client failed", exc_info=True)
+        return
+
+    try:
+        loop = asyncio.new_event_loop()
+        try:
+            loop.run_until_complete(close_awaitable)
+        finally:
+            loop.close()
+    except Exception:
+        logger.debug("Closing async client with a dedicated loop failed", exc_info=True)
+
+
+def close_client(client: MistralClientProtocol | object) -> None:
+    """Close SDK-owned HTTP clients before discarding one Mistral wrapper."""
+
+    sdk_configuration = getattr(client, "sdk_configuration", None)
+    if sdk_configuration is None:
+        return
+
+    sync_client = getattr(sdk_configuration, "client", None)
+    async_client = getattr(sdk_configuration, "async_client", None)
+    sync_client_supplied = bool(getattr(sdk_configuration, "client_supplied", True))
+    async_client_supplied = bool(
+        getattr(sdk_configuration, "async_client_supplied", True)
+    )
+
+    if sync_client is not None and not sync_client_supplied:
+        close = getattr(sync_client, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:
+                logger.debug("Closing sync client failed", exc_info=True)
+        _install_noop_close(sync_client)
+
+    if async_client is not None and not async_client_supplied:
+        _close_async_client(async_client)
+        _install_noop_aclose(async_client)
+
+    sdk_configuration.client = None
+    sdk_configuration.async_client = None
 
 
 def build_client(config: MistralConfig | None = None) -> Mistral:

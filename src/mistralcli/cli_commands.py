@@ -350,13 +350,15 @@ def _run_conversations_command(
         return False
 
     if action == "off":
+        had_previous_backend = session._previous_backend_state is not None
         session.disable_conversations()
-        if (
-            local_config is not None
-            and session.backend_kind is BackendKind.LOCAL
-            and session.server_url == local_config.server_url
-        ):
-            session.client = client_factory(local_config)
+        if not had_previous_backend and local_config is not None:
+            session.switch_backend(
+                client=client_factory(local_config),
+                backend_kind=BackendKind.LOCAL,
+                model_id=local_config.model_id,
+                server_url=local_config.server_url,
+            )
         _clear_attachments(
             repl_state,
             clear_images=True,
@@ -843,6 +845,23 @@ def _run_remote_command(
             if session.backend_kind == BackendKind.REMOTE
             else remote_model_id
         )
+        if session.backend_kind == BackendKind.REMOTE and session.server_url is None:
+            session.switch_backend(
+                client=session.client,
+                backend_kind=BackendKind.REMOTE,
+                model_id=model_id,
+                server_url=None,
+            )
+            _clear_attachments(
+                repl_state,
+                clear_images=True,
+                clear_documents=True,
+                clear_pending=True,
+            )
+            refresh_repl_screen(stdout, session)
+            stdout.write(f"Remote backend enabled ({model_id}). Conversation reset.\n")
+            stdout.flush()
+            return False
         try:
             remote_config = RemoteMistralConfig.from_env(
                 timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
@@ -915,19 +934,8 @@ def _run_remote_command(
             stdout.flush()
             return False
 
-        # Switch to the new remote model
-        try:
-            remote_config = RemoteMistralConfig.from_env(
-                timeout_ms=get_client_timeout_ms(session.client, DEFAULT_TIMEOUT_MS),
-                model_id=new_model_id,
-            )
-        except RemoteAPIKeyError as exc:
-            stdout.write(f"[remote] {exc}\n")
-            stdout.flush()
-            return False
-
         session.switch_backend(
-            client=client_factory(remote_config),
+            client=session.client,
             backend_kind=BackendKind.REMOTE,
             model_id=new_model_id,
             server_url=None,

@@ -20,7 +20,8 @@ reorganized in the repository.
 |-- scripts
 |   |-- cancel_probe.py
 |   |-- check_docs.py
-|   `-- generate_reference.py
+|   |-- generate_reference.py
+|   `-- install.sh
 |-- src
 |   `-- mistralcli
 |       |-- __init__.py

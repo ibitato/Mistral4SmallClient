@@ -242,14 +242,17 @@ def main(
             pending_conversation=pending_conversation,
             remote_model_id=remote_model_id,
         )
-        _maybe_resume_conversation(
-            session,
-            stdin=stdin,
-            stdout=stdout,
-            input_func=input_func,
-            interactive=False,
-        )
-        session.send(args.once, stream=stream)
+        try:
+            _maybe_resume_conversation(
+                session,
+                stdin=stdin,
+                stdout=stdout,
+                input_func=input_func,
+                interactive=False,
+            )
+            session.send(args.once, stream=stream)
+        finally:
+            session.close()
         return 0
 
     if not stdin.isatty():
@@ -272,14 +275,17 @@ def main(
                 pending_conversation=pending_conversation,
                 remote_model_id=remote_model_id,
             )
-            _maybe_resume_conversation(
-                session,
-                stdin=stdin,
-                stdout=stdout,
-                input_func=input_func,
-                interactive=False,
-            )
-            session.send(piped_prompt, stream=stream)
+            try:
+                _maybe_resume_conversation(
+                    session,
+                    stdin=stdin,
+                    stdout=stdout,
+                    input_func=input_func,
+                    interactive=False,
+                )
+                session.send(piped_prompt, stream=stream)
+            finally:
+                session.close()
         return 0
 
     session = _build_session(
@@ -299,24 +305,27 @@ def main(
         pending_conversation=pending_conversation,
         remote_model_id=remote_model_id,
     )
-    _maybe_resume_conversation(
-        session,
-        stdin=stdin,
-        stdout=stdout,
-        input_func=input_func,
-        interactive=stdin.isatty(),
-    )
-    return _run_repl(
-        session,
-        local_config=config,
-        client_factory=client_factory,
-        remote_model_id=remote_model_id,
-        input_func=input_func,
-        stdin=stdin,
-        stdout=stdout,
-        stream=stream,
-        path_picker=path_picker,
-    )
+    try:
+        _maybe_resume_conversation(
+            session,
+            stdin=stdin,
+            stdout=stdout,
+            input_func=input_func,
+            interactive=stdin.isatty(),
+        )
+        return _run_repl(
+            session,
+            local_config=config,
+            client_factory=client_factory,
+            remote_model_id=remote_model_id,
+            input_func=input_func,
+            stdin=stdin,
+            stdout=stdout,
+            stream=stream,
+            path_picker=path_picker,
+        )
+    finally:
+        session.close()
 
 
 if __name__ == "__main__":

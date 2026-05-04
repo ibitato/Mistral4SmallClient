@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import os
 
 import pytest
 
-from mistralcli.local_mistral import RemoteMistralConfig, build_client
+from mistralcli.local_mistral import RemoteMistralConfig, build_client, close_client
 
 pytestmark = [pytest.mark.integration, pytest.mark.remote]
 
@@ -13,6 +14,52 @@ def _field(value: object, name: str) -> object:
     if isinstance(value, dict):
         return value.get(name)
     return getattr(value, name)
+
+
+class _FakeSyncHttpClient:
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    def close(self) -> None:
+        self.close_calls += 1
+
+
+class _FakeAsyncHttpClient:
+    def __init__(self) -> None:
+        self.close_calls = 0
+
+    async def aclose(self) -> None:
+        self.close_calls += 1
+
+
+class _FakeSDKConfiguration:
+    def __init__(self) -> None:
+        self.client = _FakeSyncHttpClient()
+        self.client_supplied = False
+        self.async_client = _FakeAsyncHttpClient()
+        self.async_client_supplied = False
+
+
+class _FakeSDKClient:
+    def __init__(self) -> None:
+        self.sdk_configuration = _FakeSDKConfiguration()
+
+
+def test_close_client_closes_sdk_managed_http_clients() -> None:
+    client = _FakeSDKClient()
+    sync_client = client.sdk_configuration.client
+    async_client = client.sdk_configuration.async_client
+
+    close_client(client)
+
+    assert sync_client.close_calls == 1
+    assert async_client.close_calls == 1
+    assert client.sdk_configuration.client is None
+    assert client.sdk_configuration.async_client is None
+    sync_client.close()
+    asyncio.run(async_client.aclose())
+    assert sync_client.close_calls == 1
+    assert async_client.close_calls == 1
 
 
 @pytest.mark.skipif(

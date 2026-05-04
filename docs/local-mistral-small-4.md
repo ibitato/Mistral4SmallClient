@@ -11,9 +11,12 @@ REPL workflow, attachments, or tool availability.
 
 The client is currently supported on Linux only.
 
+Released wheels are meant to be installed with `uv tool install`; development
+checkouts use `make sync` and `uv run ...` inside the repository.
+
 ## Runtime requirements
 
-- Python `3.10`
+- Python `>=3.10` (tested on 3.10, 3.11, 3.12, 3.13, 3.14)
 - Linux
 - `uv`
 - local mode: a running `llama.cpp` server at `http://127.0.0.1:8080`

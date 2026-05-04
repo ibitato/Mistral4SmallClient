@@ -33,8 +33,28 @@ jobs:
           python-version: "3.10"
           enable-cache: true
 
+      - name: Install PDF rendering dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+
+      - name: Sync environment
+        run: make sync
+
+      - name: Run repo checks
+        run: make check
+
+      - name: Run test suite
+        run: make test
+
       - name: Build source distribution and wheel
-        run: uv build
+        run: make build
+
+      - name: Smoke test uv tool install from wheel
+        run: |
+          uv tool install --force ./dist/*.whl
+          mistralcli --version
+          mistralcli --print-defaults
 
       - name: Publish artifacts to GitHub release
         env:

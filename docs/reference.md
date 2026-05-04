@@ -128,6 +128,10 @@ Configuration for the remote Mistral cloud endpoint.
 
 Construct an official `mistralai` client for the selected backend.
 
+#### `close_client(client: 'MistralClientProtocol | object') -> 'None'`
+
+Close SDK-owned HTTP clients before discarding one Mistral wrapper.
+
 #### `get_client_timeout_ms(client: 'MistralClientProtocol | object', default: 'int' = 300000) -> 'int'`
 
 Return the effective timeout configured on a Mistral client.

@@ -23,7 +23,7 @@ enabled explicitly.
 ## Requirements
 
 - Linux
-- Python `3.10`
+- Python `>=3.10` (tested on 3.10, 3.11, 3.12, 3.13, 3.14)
 - `uv`
 - local mode: a running `llama.cpp` server at `http://127.0.0.1:8080`
 - remote mode: `MISTRAL_API_KEY` in your environment
@@ -36,6 +36,33 @@ For the intended terminal palette, use:
 ```bash
 export TERM=xterm-256color
 ```
+
+## Install A Released Wheel
+
+For non-development machines, the supported install path is `uv tool install`
+against a released wheel.
+
+Install from a local wheel:
+
+```bash
+uv tool install ./mistralcli-<version>-py3-none-any.whl
+```
+
+Install directly from a GitHub release asset:
+
+```bash
+uv tool install \
+  "https://github.com/ibitato/Mistral4SmallClient/releases/download/v3.0.0/mistralcli-3.0.0-py3-none-any.whl"
+```
+
+Upgrade or reinstall from a newer wheel:
+
+```bash
+uv tool install --force ./mistralcli-<version>-py3-none-any.whl
+```
+
+If you have an older repo-local install or wrapper script, remove it before
+switching to the supported `uv tool` flow.
 
 ## First Run
 

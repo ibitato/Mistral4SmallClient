@@ -12,6 +12,7 @@ from typing import Any, cast
 from mistralcli.local_mistral import (
     BackendKind,
     ConversationConfig,
+    close_client,
     get_client_timeout_ms,
     set_client_timeout_ms,
 )
@@ -124,6 +125,7 @@ class SessionRuntimeMixin:
     ) -> None:
         """Swap the active model backend and reset the conversation."""
 
+        previous_client = self.client
         self.client = client
         self.backend_kind = backend_kind
         self.model_id = model_id
@@ -131,6 +133,8 @@ class SessionRuntimeMixin:
         self.conversations = ConversationConfig(enabled=False, store=True)
         self.conversation_id = None
         self._previous_backend_state = None
+        if previous_client is not client:
+            close_client(previous_client)
         logger.info(
             "Backend switched backend=%s model=%s server=%s",
             backend_kind.value,
@@ -149,6 +153,8 @@ class SessionRuntimeMixin:
     ) -> None:
         """Enable Mistral Cloud Conversations mode and reset the active chat."""
 
+        previous_client = self.client
+        close_previous_client = self.conversations.enabled
         if not self.conversations.enabled:
             self._previous_backend_state = _BackendState(
                 client=self.client,
@@ -165,6 +171,8 @@ class SessionRuntimeMixin:
             store=store,
             resume_policy=self.conversations.resume_policy,
         )
+        if close_previous_client and previous_client is not client:
+            close_client(previous_client)
         logger.info("Conversations enabled model=%s store=%s", model_id, store)
         self.reset()
 
@@ -172,6 +180,7 @@ class SessionRuntimeMixin:
         """Disable Conversations mode and restore the previous backend if known."""
 
         previous = self._previous_backend_state
+        active_client = self.client
         self.conversations = ConversationConfig(
             enabled=False,
             store=True,
@@ -185,8 +194,22 @@ class SessionRuntimeMixin:
             self.backend_kind = previous.backend_kind
             self.model_id = previous.model_id
             self.server_url = previous.server_url
+            if active_client is not self.client:
+                close_client(active_client)
         logger.info("Conversations disabled backend=%s", self.backend_kind.value)
         self.reset()
+
+    def close(self) -> None:
+        """Close owned SDK clients so the CLI does not rely on SDK finalizers."""
+
+        closed_ids: set[int] = set()
+        active_client = self.client
+        close_client(active_client)
+        closed_ids.add(id(active_client))
+
+        previous = self._previous_backend_state
+        if previous is not None and id(previous.client) not in closed_ids:
+            close_client(previous.client)
 
     def set_conversation_store(self, store: bool) -> None:
         """Update Conversations storage policy and start a fresh conversation."""

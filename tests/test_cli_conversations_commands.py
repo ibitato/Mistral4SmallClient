@@ -730,9 +730,7 @@ def test_remote_model_command_changes_model(monkeypatch: Any) -> None:
     )
 
     assert should_exit is False
-    assert len(captured) == 1
-    assert isinstance(captured[0], RemoteMistralConfig)
-    assert captured[0].model_id == REMOTE_MEDIUM_MODEL_ID
+    assert captured == []
     assert session.model_id == REMOTE_MEDIUM_MODEL_ID
     assert session.backend_kind is BackendKind.REMOTE
     assert (

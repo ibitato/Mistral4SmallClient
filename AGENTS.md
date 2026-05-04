@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Goal
-This repository uses Python 3.10, `uv` for environment and dependency management, and `Makefile` as the single interface for development tasks.
+This repository uses Python >=3.10, `uv` for environment and dependency management, and `Makefile` as the single interface for development tasks.
 
 ## Operating rules
 - Use `make sync` to create or update `.venv`.
@@ -28,7 +28,7 @@ This repository uses Python 3.10, `uv` for environment and dependency management
 - All repository text, comments, prompts, and documentation should remain in English.
 - Do not use `pip`, `poetry`, `pipenv`, or global installations for the normal project workflow.
 - Always execute code within the `uv` environment with `uv run ...` or via `make ...`.
-- Keep the code compatible with Python 3.10.
+- Keep the code compatible with Python >=3.10 (tested on 3.10, 3.11, 3.12, 3.13, 3.14).
 
 ## Development style
 - Prefer the `src/` layout for application code.

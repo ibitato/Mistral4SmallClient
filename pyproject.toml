@@ -7,7 +7,7 @@ license = { file = "LICENSE" }
 authors = [
     { name = "David R. Lopez B.", email = "davi.lopez@quiter-sc.com" }
 ]
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.10"
 keywords = [
     "mistral",
     "mistral-small-4",
@@ -35,10 +35,10 @@ dependencies = [
 mistralcli = "mistralcli.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/david-lopez-b/MistralClient"
-Source = "https://github.com/david-lopez-b/MistralClient"
-Issues = "https://github.com/david-lopez-b/MistralClient/issues"
-Documentation = "https://github.com/david-lopez-b/MistralClient/blob/main/docs/local-mistral-small-4.md"
+Homepage = "https://github.com/ibitato/Mistral4SmallClient"
+Source = "https://github.com/ibitato/Mistral4SmallClient"
+Issues = "https://github.com/ibitato/Mistral4SmallClient/issues"
+Documentation = "https://github.com/ibitato/Mistral4SmallClient/blob/main/docs/local-mistral-small-4.md"
 
 [dependency-groups]
 dev = [
