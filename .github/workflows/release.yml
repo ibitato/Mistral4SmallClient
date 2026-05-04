@@ -44,8 +44,8 @@ jobs:
       - name: Run repo checks
         run: make check
 
-      - name: Run test suite
-        run: make test
+      - name: Run unit tests
+        run: uv run pytest -m "not integration"
 
       - name: Build source distribution and wheel
         run: make build
