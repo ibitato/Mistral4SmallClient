@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## 3.2.3 - 2026-05-07
+
+### Fixed
+
+- Reworked repeated identical tool-call handling so the CLI now reuses the prior tool result instead of aborting the whole turn with an error when a model asks twice for the same MCP or local tool call.
+- Preserved the loop guard against exact tool-call repetition while making normal research conversations resilient to harmless duplicate scrape requests.
+
 ## 3.2.2 - 2026-05-07
 
 ### Fixed

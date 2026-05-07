@@ -64,6 +64,7 @@ class SessionToolsMixin:
         self._set_status("thinking")
         try:
             seen_tool_calls: set[str] = set()
+            prior_tool_results: dict[str, MCPToolResult] = {}
             tool_rounds_executed = 0
             tools = [] if disable_tools else self._resolve_tools()
             if not tools:
@@ -138,56 +139,34 @@ class SessionToolsMixin:
                         if signature in seen_tool_calls:
                             logger.warning(
                                 (
-                                    "Blocked repeated identical tool call "
-                                    "name=%s arguments=%s"
+                                    "Reused prior result for repeated identical "
+                                    "tool call name=%s arguments=%s"
                                 ),
                                 name,
                                 self._summarize_tool_arguments(arguments),
                             )
-                            self.messages.append(
-                                self._tool_message(
-                                    call=call,
-                                    result=MCPToolResult(
-                                        text=(
-                                            "[tool-error] repeated identical tool call "
-                                            "blocked; use the prior tool result"
-                                        ),
-                                        is_error=True,
-                                        structured_content={
-                                            "status": "error",
-                                            "tool": name,
-                                            "code": "repeated_identical_tool_call",
-                                            "arguments": arguments,
-                                        },
-                                    ),
-                                )
+                            result = self._reused_tool_result(
+                                name=name,
+                                arguments=arguments,
+                                prior_result=prior_tool_results[signature],
                             )
-                            self._mark_context_status_dirty()
-                            self._print(
-                                "[error] repeated identical tool call blocked\n"
+                        else:
+                            seen_tool_calls.add(signature)
+                            logger.debug(
+                                "Executing tool name=%s arguments=%s",
+                                name,
+                                self._summarize_tool_arguments(arguments),
                             )
-                            self._turn_usage_accumulator = None
-                            self._set_status("error")
-                            return TurnResult(
-                                content="",
-                                finish_reason="error",
-                                cancelled=False,
+                            self._set_status("tool", detail=name)
+                            result = self._call_tool_bridge(name, arguments)
+                            self._set_status("thinking")
+                            prior_tool_results[signature] = result
+                            logger.debug(
+                                "Tool result name=%s error=%s structured=%s",
+                                name,
+                                result.is_error,
+                                result.structured_content is not None,
                             )
-                        seen_tool_calls.add(signature)
-                        logger.debug(
-                            "Executing tool name=%s arguments=%s",
-                            name,
-                            self._summarize_tool_arguments(arguments),
-                        )
-                        self._set_status("tool", detail=name)
-                        result = self._call_tool_bridge(name, arguments)
-                        self._set_status("thinking")
-                        logger.debug(
-                            "Tool result name=%s error=%s structured=%s",
-                            name,
-                            result.is_error,
-                            result.structured_content is not None,
-                        )
                     self.messages.append(self._tool_message(call=call, result=result))
                     self._mark_context_status_dirty()
                 tool_rounds_executed += 1
@@ -257,6 +236,7 @@ class SessionToolsMixin:
         pending_tool_inputs: list[dict[str, Any]] = []
         try:
             seen_tool_calls: set[str] = set()
+            prior_tool_results: dict[str, MCPToolResult] = {}
             inputs = self._conversation_user_inputs(content)
             tools = [] if disable_tools else self._resolve_tools()
             for _ in range(self.max_tool_rounds + 1):
@@ -306,37 +286,25 @@ class SessionToolsMixin:
                     else:
                         signature = self._tool_call_signature(name, arguments)
                         if signature in seen_tool_calls:
-                            result = MCPToolResult(
-                                text=(
-                                    "[tool-error] repeated identical tool call "
-                                    "blocked; use the prior tool result"
+                            logger.warning(
+                                (
+                                    "Reused prior result for repeated identical "
+                                    "tool call name=%s arguments=%s"
                                 ),
-                                is_error=True,
-                                structured_content={
-                                    "status": "error",
-                                    "tool": name,
-                                    "code": "repeated_identical_tool_call",
-                                    "arguments": arguments,
-                                },
+                                name,
+                                self._summarize_tool_arguments(arguments),
                             )
-                            self.messages.append(
-                                self._tool_message(call=call, result=result)
+                            result = self._reused_tool_result(
+                                name=name,
+                                arguments=arguments,
+                                prior_result=prior_tool_results[signature],
                             )
-                            self._mark_context_status_dirty()
-                            self._print(
-                                "[error] repeated identical tool call blocked\n"
-                            )
-                            self._turn_usage_accumulator = None
-                            self._set_status("error")
-                            return TurnResult(
-                                content="",
-                                finish_reason="error",
-                                cancelled=False,
-                            )
-                        seen_tool_calls.add(signature)
-                        self._set_status("tool", detail=name)
-                        result = self._call_tool_bridge(name, arguments)
-                        self._set_status("thinking")
+                        else:
+                            seen_tool_calls.add(signature)
+                            self._set_status("tool", detail=name)
+                            result = self._call_tool_bridge(name, arguments)
+                            self._set_status("thinking")
+                            prior_tool_results[signature] = result
                     self.messages.append(self._tool_message(call=call, result=result))
                     self._mark_context_status_dirty()
                     tool_inputs.append(
@@ -794,6 +762,28 @@ class SessionToolsMixin:
             return self.tool_bridge.call_tool(public_name, arguments)
         except MCPBridgeError as exc:
             return MCPToolResult(text=f"[tool-error] {exc}", is_error=True)
+
+    def _reused_tool_result(
+        self,
+        *,
+        name: str,
+        arguments: dict[str, Any],
+        prior_result: MCPToolResult,
+    ) -> MCPToolResult:
+        structured = dict(prior_result.structured_content or {})
+        structured.update(
+            {
+                "tool": name,
+                "code": "reused_identical_tool_result",
+                "reused": True,
+                "arguments": arguments,
+            }
+        )
+        return MCPToolResult(
+            text=prior_result.text,
+            is_error=prior_result.is_error,
+            structured_content=structured,
+        )
 
     def _tool_call_signature(self, name: str, arguments: dict[str, Any]) -> str:
         return json.dumps(

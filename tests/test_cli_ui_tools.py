@@ -486,7 +486,7 @@ def test_textual_json_tool_call_fallback_executes_search_text_tool(
     }
 
 
-def test_repeated_identical_tool_call_is_blocked(tmp_path: Path) -> None:
+def test_repeated_identical_tool_call_reuses_prior_result(tmp_path: Path) -> None:
     output = io.StringIO()
     tool_call = FakeToolCall(
         function=FakeToolFunction(
@@ -512,6 +512,14 @@ def test_repeated_identical_tool_call_is_blocked(tmp_path: Path) -> None:
                     )
                 ]
             ),
+            FakeResponse(
+                choices=[
+                    FakeChoice(
+                        message=FakeMessage(content="write tool executed"),
+                        finish_reason="stop",
+                    )
+                ]
+            ),
         ]
     )
     session = MistralSession(
@@ -523,11 +531,13 @@ def test_repeated_identical_tool_call_is_blocked(tmp_path: Path) -> None:
 
     result = session.send("Write a file.", stream=False)
 
-    assert result.finish_reason == "error"
+    assert result.finish_reason == "stop"
     assert result.cancelled is False
+    assert result.content == "write tool executed"
     assert (tmp_path / "notes.txt").read_text(encoding="utf-8") == "hello"
-    assert "repeated identical tool call blocked" in output.getvalue()
-    assert '"code": "repeated_identical_tool_call"' in session.messages[-1]["content"]
+    assert "repeated identical tool call blocked" not in output.getvalue()
+    assert '"code": "reused_identical_tool_result"' in session.messages[-2]["content"]
+    assert '"reused": true' in session.messages[-2]["content"]
 
 
 def test_tool_loop_limit_forces_final_answer_after_last_tool(tmp_path: Path) -> None:
