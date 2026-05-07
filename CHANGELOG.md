@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## 3.2.2 - 2026-05-07
+
+### Fixed
+
+- Corrected the raw-mode TTY composer to emit `CRLF` line breaks while repainting wrapped input, preventing continuation lines from drifting to the right and breaking overlay redraw when typing long prompts.
+- Added regression coverage for wrapped input redraw in the interactive TTY renderer.
+
 ## 3.2.1 - 2026-05-07
 
 ### Fixed

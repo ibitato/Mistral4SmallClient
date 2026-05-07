@@ -611,6 +611,27 @@ def test_render_input_omits_status_bar_while_user_is_typing(
     assert GREEN in rendered
 
 
+def test_render_input_uses_crlf_for_wrapped_tty_composer(
+    monkeypatch: Any,
+) -> None:
+    output = FakeTTYOutput()
+    renderer = InteractiveTTYRenderer(
+        stream=output,
+        status_provider=(lambda: "idle | local | model | est:- | last:- | usage:-"),
+    )
+    monkeypatch.setattr(
+        "mistralcli.ui.shutil.get_terminal_size",
+        lambda: os.terminal_size((24, 24)),
+    )
+
+    renderer.render_input(
+        "MC> ",
+        "This is a deliberately long prompt buffer that must wrap.",
+    )
+
+    assert "\r\n" in output.getvalue()
+
+
 def test_renderer_flushes_pending_reasoning_before_answer(
     monkeypatch: Any,
 ) -> None:

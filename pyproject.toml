@@ -1,6 +1,6 @@
 [project]
 name = "mistralcli"
-version = "3.2.1"
+version = "3.2.2"
 description = "Retro multimodal CLI for Mistral models, with local llama.cpp and Mistral Cloud backends"
 readme = "README.md"
 license = { file = "LICENSE" }

@@ -441,7 +441,7 @@ class InteractiveTTYRenderer:
         )
         self.clear_overlay()
         painted = paint_prompt_lines(lines, prompt=prompt, stream=self.stream)
-        self.stream.write("\n".join(painted) + "\n")
+        self.stream.write("\r\n".join(painted) + "\r\n")
         self.stream.flush()
 
     def clear_overlay(self) -> None:
@@ -523,7 +523,7 @@ class InteractiveTTYRenderer:
         if not rendered:
             return
         self.stream.write("\r")
-        self.stream.write("\n".join(f"{line}\x1b[K" for line in rendered))
+        self.stream.write("\r\n".join(f"{line}\x1b[K" for line in rendered))
         self.stream.flush()
         self._overlay_lines = len(rendered)
 
