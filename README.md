@@ -85,7 +85,7 @@ This creates:
 - `dist/mistralcli-<version>-py3-none-any.whl`
 - `dist/mistralcli-<version>.tar.gz`
 
-Version tags such as `v3.1.0` also trigger a GitHub Actions release build that
+Version tags such as `v3.2.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets after passing
 the normal repo checks and a wheel-install smoke test.
 
@@ -105,7 +105,7 @@ Install directly from a GitHub release asset without cloning the repo:
 
 ```bash
 uv tool install \
-  "https://github.com/ibitato/MistralClient/releases/download/v3.1.0/mistralcli-3.1.0-py3-none-any.whl"
+  "https://github.com/ibitato/MistralClient/releases/download/v3.2.0/mistralcli-3.2.0-py3-none-any.whl"
 ```
 
 An optional convenience wrapper is available in [`scripts/install.sh`](scripts/install.sh).

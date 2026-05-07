@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## 3.2.0 - 2026-05-07
+
+### Changed
+
+- Tightened the default assistant system prompt so local tools and MCP are routed more explicitly by source of truth: local machine and workspace facts stay on local tools, while external web and service lookups are delegated to MCP.
+- Added stronger prompt guidance for evidence handling, including explicit separation of verified tool-backed facts from inference, and clearer follow-up behavior when paginated tool output indicates that more relevant lines are available.
+- Narrowed attachment-turn instructions so the assistant treats attachments from the current user message as the active evidence for that turn instead of over-relying on older attachments from earlier turns.
+
 ## 3.1.0 - 2026-05-04
 
 ### Changed

@@ -502,11 +502,21 @@ def test_default_system_prompt_hardens_tool_selection_rules() -> None:
     assert (
         "search_text is only for searching text inside files" in DEFAULT_SYSTEM_PROMPT
     )
+    assert "Use local tools for local machine and workspace facts." in (
+        DEFAULT_SYSTEM_PROMPT
+    )
+    assert "When you relied on tool output, say so briefly." in DEFAULT_SYSTEM_PROMPT
+    assert "shell and search_text may return paginated output." in (
+        DEFAULT_SYSTEM_PROMPT
+    )
     assert '"Check running nginx processes" -> shell.' in DEFAULT_SYSTEM_PROMPT
     assert '"Find files mentioning timeout in src/" -> search_text with path=src.' in (
         DEFAULT_SYSTEM_PROMPT
     )
     assert "Tool results are authoritative." in DEFAULT_SYSTEM_PROMPT
+    assert "Treat attachments in the current user message as the active" in (
+        DEFAULT_SYSTEM_PROMPT
+    )
 
 
 def test_session_backward_compatibility_alias_points_to_canonical_class() -> None:
