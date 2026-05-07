@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here.
 
+## 3.2.1 - 2026-05-07
+
+### Fixed
+
+- Hardened the interactive TTY composer so typing past the right margin no longer lets the terminal auto-wrap the prompt overlay into repeated screen redraws.
+- Kept one visible column free in the wrapped input composer to preserve correct overlay repainting during long single-line input.
+
 ## 3.2.0 - 2026-05-07
 
 ### Changed

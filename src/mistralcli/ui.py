@@ -204,7 +204,14 @@ def iter_typewriter_chunks(text: str, *, visible_chars: int) -> list[str]:
 def wrap_prompt_buffer(prompt: str, buffer: str, *, width: int) -> list[str]:
     """Wrap one logical REPL buffer into prompt-display lines."""
 
-    available_width = max(width, len(prompt) + 8, len(PROMPT_CONTINUATION_PREFIX) + 8)
+    # Keep one visible column free so the terminal does not auto-wrap the
+    # composer and desynchronize the overlay redraw logic.
+    content_width = max(1, width - 1)
+    available_width = max(
+        content_width,
+        len(prompt) + 8,
+        len(PROMPT_CONTINUATION_PREFIX) + 8,
+    )
     content = buffer.replace("\r\n", "\n").replace("\r", "\n").replace("\n", " ")
     wrapped = textwrap.wrap(
         content,

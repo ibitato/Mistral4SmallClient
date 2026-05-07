@@ -53,7 +53,7 @@ Install directly from a GitHub release asset:
 
 ```bash
 uv tool install \
-  "https://github.com/ibitato/MistralClient/releases/download/v3.2.0/mistralcli-3.2.0-py3-none-any.whl"
+  "https://github.com/ibitato/MistralClient/releases/download/v3.2.1/mistralcli-3.2.1-py3-none-any.whl"
 ```
 
 Upgrade or reinstall from a newer wheel:

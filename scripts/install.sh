@@ -4,7 +4,7 @@
 #   ./scripts/install.sh
 #   ./scripts/install.sh /path/to/mistralcli-<version>-py3-none-any.whl
 #   ./scripts/install.sh https://.../mistralcli-<version>-py3-none-any.whl
-#   ./scripts/install.sh v3.2.0
+#   ./scripts/install.sh v3.2.1
 
 set -euo pipefail
 

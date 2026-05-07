@@ -291,6 +291,17 @@ def test_wrap_prompt_buffer_breaks_long_unbroken_tokens() -> None:
     assert all(len(line) <= 24 for line in lines)
 
 
+def test_wrap_prompt_buffer_leaves_one_column_to_avoid_terminal_autowrap() -> None:
+    lines = wrap_prompt_buffer(
+        "MC> ",
+        "A" * 80,
+        width=20,
+    )
+
+    assert len(lines) >= 2
+    assert all(len(line) <= 19 for line in lines)
+
+
 def test_normalize_pasted_text_flattens_multiline_clipboard_payload() -> None:
     assert (
         _normalize_pasted_text("  hola\r\nmundo\tbien \n otra\tcosa  ")
