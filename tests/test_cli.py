@@ -144,7 +144,7 @@ def test_print_defaults_shows_runtime_defaults() -> None:
     assert "Local OS tools: ready" in rendered
     assert "| Timeout" in rendered
     assert f"{DEFAULT_TIMEOUT_MS} ms" in rendered
-    assert "temperature=0.7" in rendered
+    assert "temperature=0.3" in rendered
     assert "top_p=0.95" in rendered
     assert "prompt_mode=reasoning" in rendered
     assert "reasoning=on" in rendered
@@ -239,7 +239,7 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     assert output.getvalue() == "ok\n"
     assert len(fake_client.chat.complete_calls) == 1
     call = fake_client.chat.complete_calls[0]
-    assert call["temperature"] == 0.7
+    assert call["temperature"] == 0.3
     assert call["top_p"] == 0.95
     assert call["prompt_mode"] == "reasoning"
     assert "max_tokens" not in call
@@ -505,7 +505,13 @@ def test_default_system_prompt_hardens_tool_selection_rules() -> None:
     assert "Use local tools for local machine and workspace facts." in (
         DEFAULT_SYSTEM_PROMPT
     )
+    assert "For factual external questions" in DEFAULT_SYSTEM_PROMPT
     assert "When you relied on tool output, say so briefly." in DEFAULT_SYSTEM_PROMPT
+    assert "answer is unverified instead of filling gaps from memory" in (
+        DEFAULT_SYSTEM_PROMPT
+    )
+    assert "Do not invent URLs, citations, file paths" in DEFAULT_SYSTEM_PROMPT
+    assert "Inspect search result titles, snippets, and URLs" in DEFAULT_SYSTEM_PROMPT
     assert "shell and search_text may return paginated output." in (
         DEFAULT_SYSTEM_PROMPT
     )

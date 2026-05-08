@@ -19,6 +19,7 @@ The repository is intentionally focused on one product surface:
 - use local `llama.cpp` and remote Mistral Cloud from one consistent REPL
 - handle image and document turns through backend-appropriate multimodal flows
 - keep local OS tools and MCP tools available when the task needs them
+- prefer source-backed answers for factual questions when MCP/web tools are available
 - support coding, document work, research, OCR, and general assistant workflows
 
 ## What this project includes
@@ -85,7 +86,7 @@ This creates:
 - `dist/mistralcli-<version>-py3-none-any.whl`
 - `dist/mistralcli-<version>.tar.gz`
 
-Version tags such as `v3.2.3` also trigger a GitHub Actions release build that
+Version tags such as `v3.3.0` also trigger a GitHub Actions release build that
 publishes the wheel and source archive as GitHub release assets after passing
 the normal repo checks and a wheel-install smoke test.
 
@@ -105,7 +106,7 @@ Install directly from a GitHub release asset without cloning the repo:
 
 ```bash
 uv tool install \
-  "https://github.com/ibitato/MistralClient/releases/download/v3.2.3/mistralcli-3.2.3-py3-none-any.whl"
+  "https://github.com/ibitato/MistralClient/releases/download/v3.3.0/mistralcli-3.3.0-py3-none-any.whl"
 ```
 
 An optional convenience wrapper is available in [`scripts/install.sh`](scripts/install.sh).
@@ -297,14 +298,14 @@ llama-server \
   --chat-template-file ./mistral-small-4-reasoning.jinja \
   --ctx-size 262144 \
   -ngl 99 \
-  --temp 0.7 --top-p 0.95 --top-k 40 --min-p 0.0 \
+  --temp 0.3 --top-p 0.95 --top-k 40 --min-p 0.0 \
   --parallel 1 --ctx-checkpoints 32 --cache-prompt \
   --threads "$(nproc)"
 ```
 
 Recommended runtime defaults used by the CLI:
 
-- `temperature=0.7`
+- `temperature=0.3`
 - `top_p=0.95`
 - `prompt_mode=reasoning`
 - `timeout_ms=300000`
@@ -312,6 +313,11 @@ Recommended runtime defaults used by the CLI:
 - `max_tokens` unset unless you override it
 - Conversations mode off by default; `store=on` when enabled
 - auto context compaction on at `90%`, preserving 6 recent turns
+
+The lower default temperature is intentional: Mistral's API guidance describes
+lower values as more focused and deterministic, which is a better default for
+this CLI's factual, tool-assisted workflow. Raise it with `--temperature` or
+`MISTRAL_LOCAL_TEMPERATURE` when you explicitly want more creative variation.
 
 Remote mode keeps the same sampling defaults, but it does not send
 `prompt_mode=reasoning`. The live Mistral cloud API rejects that setting for

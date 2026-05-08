@@ -43,7 +43,7 @@ llama-server \
   --chat-template-file ./mistral-small-4-reasoning.jinja \
   --ctx-size 262144 \
   -ngl 99 \
-  --temp 0.7 --top-p 0.95 --top-k 40 --min-p 0.0 \
+  --temp 0.3 --top-p 0.95 --top-k 40 --min-p 0.0 \
   --parallel 1 --ctx-checkpoints 32 --cache-prompt \
   --threads "$(nproc)"
 ```
@@ -189,7 +189,7 @@ dumping everything at once.
 
 Runtime defaults:
 
-- temperature: `0.7`
+- temperature: `0.3`
 - top-p: `0.95`
 - prompt mode: `reasoning`
 - timeout: `300000 ms` (`5m`)
@@ -197,6 +197,11 @@ Runtime defaults:
 - streaming: on
 - Conversations: off by default; `store=on` when enabled
 - MCP: FireCrawl auto-tools on when `mcp.json` is present
+
+The default temperature is intentionally conservative for factual work. The
+assistant system prompt also tells the model to use local tools for local state,
+MCP/web tools for external facts when available, and to mark answers as
+unverified instead of inventing missing evidence.
 
 Remote mode:
 

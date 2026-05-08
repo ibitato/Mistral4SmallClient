@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here.
 
+## 3.3.0 - 2026-05-08
+
+### Changed
+
+- Lowered the default sampling temperature from `0.7` to `0.3` to favor more focused and deterministic factual answers, while keeping `--temperature` and `MISTRAL_LOCAL_TEMPERATURE` available for creative or exploratory runs.
+- Strengthened the default assistant system prompt with explicit grounding rules for factual, recent, web, documentation, release, legal, pricing, and other tool-verifiable questions.
+- Added stricter uncertainty handling so the assistant should mark answers as unverified when required tools or sources are unavailable instead of filling evidence gaps from memory.
+
 ## 3.2.3 - 2026-05-07
 
 ### Fixed
