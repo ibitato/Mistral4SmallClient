@@ -72,7 +72,7 @@ def test_remote_chat_completion_smoke() -> None:
 
     response = client.chat.complete(
         model=config.model_id,
-        messages=[{"role": "user", "content": "Return only the word ok."}],
+        messages=[{"role": "user", "content": "Return only the word ok."}],  # type: ignore[arg-type]
         temperature=0,
         top_p=1.0,
         max_tokens=64,
@@ -82,6 +82,7 @@ def test_remote_chat_completion_smoke() -> None:
 
     choice = response.choices[0]
     assert choice.finish_reason == "stop"
+    assert choice.message is not None
     assert isinstance(choice.message.content, list)
     first_chunk = choice.message.content[0]
     last_chunk = choice.message.content[-1]
@@ -100,7 +101,7 @@ def test_remote_chat_completion_without_reasoning_smoke() -> None:
 
     response = client.chat.complete(
         model=config.model_id,
-        messages=[{"role": "user", "content": "Return only the word ok."}],
+        messages=[{"role": "user", "content": "Return only the word ok."}],  # type: ignore[arg-type]
         temperature=0,
         top_p=1.0,
         max_tokens=64,
@@ -110,6 +111,7 @@ def test_remote_chat_completion_without_reasoning_smoke() -> None:
 
     choice = response.choices[0]
     assert choice.finish_reason == "stop"
+    assert choice.message is not None
     content = choice.message.content
     if isinstance(content, list):
         assert all(_field(chunk, "type") != "thinking" for chunk in content)
@@ -118,3 +120,28 @@ def test_remote_chat_completion_without_reasoning_smoke() -> None:
         assert str(_field(last_chunk, "text")).strip().lower() == "ok"
     else:
         assert str(content).strip().lower() == "ok"
+
+
+@pytest.mark.skipif(
+    not os.environ.get("MISTRAL_API_KEY"),
+    reason="Set MISTRAL_API_KEY to enable remote Mistral tests.",
+)
+def test_remote_without_max_tokens_uses_server_default() -> None:
+    """Remote backend should work without explicit max_tokens."""
+    config = RemoteMistralConfig.from_env()
+    client = build_client(config)
+
+    response = client.chat.complete(
+        model=config.model_id,
+        messages=[{"role": "user", "content": "Return only the word ok."}],  # type: ignore[arg-type]
+        temperature=0,
+        reasoning_effort="none",
+    )
+
+    choice = response.choices[0]
+    assert choice.finish_reason == "stop"
+    assert choice.message is not None
+    content = choice.message.content
+    if isinstance(content, list):
+        content = str(content[-1])
+    assert "ok" in str(content).lower()

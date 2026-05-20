@@ -168,14 +168,14 @@ def test_chat_streaming_returns_expected_text(
     stream = local_client.chat.stream(
         model=DEFAULT_MODEL_ID,
         messages=[
-            {"role": "user", "content": "Return only the word ok."},
+            {"role": "user", "content": "Return only the word ok."},  # type: ignore[arg-type]
         ],
         temperature=0,
         top_p=1.0,
         random_seed=11,
         max_tokens=128,
         response_format={"type": "text"},
-        prompt_mode=prompt_mode,
+        prompt_mode=prompt_mode,  # type: ignore[arg-type]
     )
 
     text = ""
@@ -197,7 +197,7 @@ def test_stream_cancel_then_followup_request_succeeds(local_client: Mistral) -> 
     stream = local_client.chat.stream(
         model=DEFAULT_MODEL_ID,
         messages=[
-            {
+            {  # type: ignore[arg-type]
                 "role": "user",
                 "content": (
                     "Write a long text of several paragraphs about why distributed "
@@ -257,8 +257,8 @@ def test_tool_call_arguments_are_structured(local_client: Mistral) -> None:
 
     response = local_client.chat.complete(
         model=DEFAULT_MODEL_ID,
-        messages=[{"role": "user", "content": "Use the tool to add 2 and 3."}],
-        tools=tools,
+        messages=[{"role": "user", "content": "Use the tool to add 2 and 3."}],  # type: ignore[arg-type]
+        tools=tools,  # type: ignore[arg-type]
         temperature=0,
         max_tokens=128,
         stream=False,
@@ -266,8 +266,11 @@ def test_tool_call_arguments_are_structured(local_client: Mistral) -> None:
 
     choice = response.choices[0]
     assert choice.finish_reason == "tool_calls"
+    assert choice.message is not None
     assert choice.message.tool_calls is not None
-    arguments = json.loads(choice.message.tool_calls[0].function.arguments)
+    tool_calls = choice.message.tool_calls
+    assert isinstance(tool_calls, list)
+    arguments = json.loads(tool_calls[0].function.arguments)  # type: ignore[arg-type]
     assert arguments == {"a": 2, "b": 3}
 
 
@@ -278,7 +281,7 @@ def test_multimodal_image_request_is_accepted(local_client: Mistral) -> None:
     response = local_client.chat.complete(
         model=DEFAULT_MODEL_ID,
         messages=[
-            {
+            {  # type: ignore[arg-type]
                 "role": "user",
                 "content": [
                     {
@@ -303,4 +306,70 @@ def test_multimodal_image_request_is_accepted(local_client: Mistral) -> None:
 
     choice = response.choices[0]
     assert choice.finish_reason in {"stop", "length"}
+    assert choice.message is not None
     assert isinstance(choice.message.content, str)
+
+
+def test_default_max_tokens_produces_complete_answer(local_client: Mistral) -> None:
+    """With DEFAULT_LOCAL_MAX_TOKENS, model should produce a full answer."""
+    from mistralcli.local_mistral import DEFAULT_LOCAL_MAX_TOKENS
+
+    response = local_client.chat.complete(
+        model=DEFAULT_MODEL_ID,
+        messages=[{"role": "user", "content": "Return only the word ok."}],  # type: ignore[arg-type]
+        temperature=0,
+        max_tokens=DEFAULT_LOCAL_MAX_TOKENS,
+        stream=False,
+    )
+
+    choice = response.choices[0]
+    assert choice.finish_reason == "stop"
+    assert choice.message is not None
+    assert "ok" in str(choice.message.content).lower()
+
+
+def test_default_max_tokens_prevents_reasoning_truncation(
+    local_client: Mistral,
+) -> None:
+    """DEFAULT_LOCAL_MAX_TOKENS must be large enough for reasoning + answer.
+
+    This test verifies the fix for the issue where the model would exhaust its
+    generation budget on reasoning blocks and never produce a final answer.
+    With a small max_tokens (e.g. 32), reasoning consumes all tokens and the
+    response is truncated (finish_reason='length'). With DEFAULT_LOCAL_MAX_TOKENS
+    (16384), the model has enough budget for both reasoning and a final answer.
+    """
+    from mistralcli.local_mistral import DEFAULT_LOCAL_MAX_TOKENS
+
+    # With default budget: reasoning + answer should complete
+    response = local_client.chat.complete(
+        model=DEFAULT_MODEL_ID,
+        messages=[
+            {"role": "user", "content": "What is 2+2? Answer with just the number."}
+        ],  # type: ignore[arg-type]
+        temperature=0,
+        max_tokens=DEFAULT_LOCAL_MAX_TOKENS,
+        prompt_mode="reasoning",
+        stream=False,
+    )
+
+    choice = response.choices[0]
+    assert choice.finish_reason == "stop", (
+        f"Model was truncated (finish_reason={choice.finish_reason}). "
+        f"DEFAULT_LOCAL_MAX_TOKENS={DEFAULT_LOCAL_MAX_TOKENS} is too small."
+    )
+    assert choice.message is not None
+    assert choice.message.content is not None
+    assert len(str(choice.message.content).strip()) > 0
+
+    # Contrast: with tiny budget, reasoning exhausts tokens
+    truncated = local_client.chat.complete(
+        model=DEFAULT_MODEL_ID,
+        messages=[{"role": "user", "content": "Explain quantum computing in detail."}],  # type: ignore[arg-type]
+        temperature=0,
+        max_tokens=32,
+        prompt_mode="reasoning",
+        stream=False,
+    )
+
+    assert truncated.choices[0].finish_reason == "length"

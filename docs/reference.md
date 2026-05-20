@@ -394,7 +394,7 @@ Render a concise but actionable help screen.
 
 Render one visible reasoning fragment for the terminal.
 
-#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_enabled: 'bool', thinking_visible: 'bool', conversations: 'ConversationConfig', context: 'ContextConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', stream: 'TextIO') -> 'str'`
+#### `render_runtime_summary(backend_kind: 'BackendKind', model_id: 'str', server_url: 'str | None', timeout_ms: 'int', generation: 'LocalGenerationConfig', stream_enabled: 'bool', reasoning_enabled: 'bool', thinking_visible: 'bool', conversations: 'ConversationConfig', context: 'ContextConfig', conversation_id: 'str | None', tool_summary: 'str', logging_summary: 'str', config_source: 'str' = 'defaults', stream: 'TextIO') -> 'str'`
 
 Render a formatted runtime summary.
 

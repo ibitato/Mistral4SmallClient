@@ -373,3 +373,63 @@ modes are:
 - appending malformed content after an interrupted stream
 
 Use `make cancel-probe` to reproduce the local recovery checks from this repo.
+
+## Configuration file support (v3.4.0+)
+
+As of version 3.4.0, MistralCLI supports file-based configuration in addition to
+command-line arguments and environment variables. This allows you to persist
+settings across sessions and manage different configurations for different
+projects or environments.
+
+### Quick start
+
+Generate a sample configuration file:
+
+```bash
+mistralcli --generate-config
+```
+
+This creates a configuration file at `~/.config/mistralcli/config.yaml` with all
+default values. You can then edit this file to customize your settings.
+
+### Usage
+
+Use a specific configuration file:
+
+```bash
+mistralcli --config-path /path/to/config.yaml
+```
+
+Or set the `MISTRAL_CONFIG_PATH` environment variable:
+
+```bash
+MISTRAL_CONFIG_PATH=/path/to/config.yaml mistralcli
+```
+
+If no configuration file is specified, MistralCLI searches for:
+- `$MISTRAL_CONFIG_PATH` environment variable
+- `~/.config/mistralcli/config.yaml`
+- `~/.mistralcli.{yaml,json,toml}`
+- `./mistralcli.{yaml,json,toml}` (current directory)
+
+### Configuration precedence
+
+When multiple configuration sources are available, values are resolved with
+the following precedence (highest to lowest):
+
+1. Command-line arguments (e.g., `--model`, `--temperature`)
+2. Environment variables (e.g., `MISTRAL_LOCAL_MODEL_ID`)
+3. Configuration file
+4. Default values
+
+This means command-line arguments always override file-based configuration.
+
+### Supported formats
+
+Configuration files can be written in YAML (recommended), JSON, or TOML formats.
+
+See [configuration.md](configuration.md) for complete documentation on:
+- Configuration file schema
+- All available options
+- Format examples
+- Migration guides

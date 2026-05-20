@@ -253,9 +253,13 @@ class SessionContextMixin:
         return True
 
     def _effective_context_reserve(self) -> int:
-        if self.generation.max_tokens is None:
-            return self.context.reserve_tokens
-        return max(self.context.reserve_tokens, self.generation.max_tokens)
+        if self.generation.max_tokens is not None:
+            return max(self.context.reserve_tokens, self.generation.max_tokens)
+        if self.backend_kind is BackendKind.LOCAL:
+            from mistralcli.local_mistral import DEFAULT_LOCAL_MAX_TOKENS
+
+            return max(self.context.reserve_tokens, DEFAULT_LOCAL_MAX_TOKENS)
+        return self.context.reserve_tokens
 
     def _split_compactable_history(
         self,

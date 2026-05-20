@@ -590,13 +590,18 @@ def render_runtime_summary(
     conversation_id: str | None,
     tool_summary: str,
     logging_summary: str,
+    config_source: str = "defaults",
     stream: TextIO,
 ) -> str:
     """Render a formatted runtime summary."""
 
-    max_tokens = (
-        "unset" if generation.max_tokens is None else str(generation.max_tokens)
-    )
+    if generation.max_tokens is not None:
+        max_tokens = str(generation.max_tokens)
+    elif backend_kind is BackendKind.LOCAL:
+        max_tokens = "16384 (default)"
+    else:
+        max_tokens = "unset (server default)"
+
     prompt_mode = generation.prompt_mode or "unset"
     stream_mode = "on" if stream_enabled else "off"
     reasoning_mode = "on" if reasoning_enabled else "off"
@@ -608,6 +613,7 @@ def render_runtime_summary(
     context_auto = "on" if context.auto_compact else "off"
     context_threshold = round(context.threshold * 100)
     rows = [
+        ("Config", config_source),
         ("Backend", backend_kind.value),
         ("Server", server_url or REMOTE_SERVER_LABEL),
         ("Model", model_id),

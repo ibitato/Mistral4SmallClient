@@ -129,7 +129,7 @@ def test_print_defaults_shows_runtime_defaults() -> None:
         return FakeClient()
 
     exit_code = main(
-        ["--print-defaults", "--no-mcp"],
+        ["--print-defaults", "--no-mcp", "--config-path", "/dev/null"],
         stdin=FakeStdin(""),
         stdout=output,
         client_factory=client_factory,
@@ -242,7 +242,7 @@ def test_once_uses_effective_defaults_and_prints_answer() -> None:
     assert call["temperature"] == 0.3
     assert call["top_p"] == 0.95
     assert call["prompt_mode"] == "reasoning"
-    assert "max_tokens" not in call
+    assert call["max_tokens"] == 16384
 
 
 def test_once_can_start_in_conversations_mode(

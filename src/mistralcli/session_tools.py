@@ -448,6 +448,12 @@ class SessionToolsMixin:
         )
         self._mark_context_status_dirty()
         logger.warning("Inserted local raw-chat placeholder assistant: %s", reason)
+        if self.stdout is not None:
+            self.stdout.write(
+                "\n[note] The model finished reasoning without producing a final"
+                " answer. You can ask it to continue or rephrase.\n"
+            )
+            self.stdout.flush()
 
     def _repair_local_raw_history(self) -> None:
         """Repair stale local raw-chat history before sending the next prompt."""

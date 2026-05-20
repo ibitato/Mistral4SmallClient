@@ -14,6 +14,7 @@ reorganized in the repository.
 |   `-- PULL_REQUEST_TEMPLATE.md
 |-- docs
 |   |-- backends-and-runtime.md
+|   |-- configuration.md
 |   |-- project-tree.md
 |   |-- reference.md
 |   `-- user-guide.md
@@ -33,6 +34,7 @@ reorganized in the repository.
 |       |-- cli_repl.py
 |       |-- cli_shortcuts.py
 |       |-- cli_state.py
+|       |-- config.py
 |       |-- conversation_registry.py
 |       |-- local_mistral.py
 |       |-- local_tools.py
@@ -63,6 +65,7 @@ reorganized in the repository.
 |   |-- test_cli_runtime_attachments.py
 |   |-- test_cli_tty_status.py
 |   |-- test_cli_ui_tools.py
+|   |-- test_config.py
 |   |-- test_conversation_registry.py
 |   |-- test_local_mistral.py
 |   |-- test_local_tools.py

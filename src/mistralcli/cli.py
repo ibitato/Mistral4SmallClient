@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import shutil  # noqa: F401
 import sys
 from collections.abc import Callable, Sequence
 from typing import Any, TextIO
@@ -21,11 +20,11 @@ from mistralcli.cli_commands import (
 from mistralcli.cli_config import (
     _build_session,
     _build_tool_bridge,
+    _generate_app_config,
+    _load_app_config,
+    _merge_config_with_args,
     _parse_metadata_pairs,
-    _resolve_context_config,
-    _resolve_conversation_config,
     _resolve_conversation_registry,
-    _resolve_local_configs,
     _resolve_logging_config,
     _resolve_reasoning_visibility,
     _resolve_remote_model_id,
@@ -158,24 +157,36 @@ def main(
         return 0
     if not _ensure_supported_platform(stderr):
         return 1
+
+    # Handle --generate-config
+    if args.generate_config is not None:
+        return _generate_app_config(args, stdout, stderr)
+
+    # Load application configuration from file
+    app_config, config_source = _load_app_config(args)
+
+    # Configure logging
     logging_config = _resolve_logging_config(args)
     configure_logging(logging_config)
     logger.info(
-        "CLI start print_defaults=%s once=%s stream=%s tty=%s",
+        "CLI start print_defaults=%s once=%s stream=%s tty=%s config_source=%s",
         args.print_defaults,
         args.once is not None,
         not args.no_stream,
         stdin.isatty(),
+        config_source,
     )
-    config, generation, system_prompt = _resolve_local_configs(args)
+
+    # Merge configuration from file with CLI arguments
+    config, generation, system_prompt, conversations, context = _merge_config_with_args(
+        args, app_config
+    )
     try:
         remote_model_id = _resolve_remote_model_id(args)
     except ValueError as exc:
         stderr.write(f"[remote] {exc}\n")
         stderr.flush()
         return 1
-    conversations = _resolve_conversation_config(args)
-    context = _resolve_context_config(args)
     reasoning_enabled = _resolve_reasoning_visibility(args)
     thinking_visible = _resolve_thinking_visibility(args)
     try:
@@ -214,6 +225,7 @@ def main(
                 context=context,
                 tool_summary=tool_bridge.runtime_summary(),
                 logging_summary=logging_summary,
+                config_source=config_source,
                 stream=stdout,
             )
             + "\nSystem prompt:\n"

@@ -152,7 +152,7 @@ def test_auto_compact_runs_before_over_threshold_turn() -> None:
         context=ContextConfig(
             threshold=0.1,
             reserve_tokens=0,
-            local_window_tokens=10_000,
+            local_window_tokens=50_000,
             keep_recent_turns=1,
         ),
         stdout=output,

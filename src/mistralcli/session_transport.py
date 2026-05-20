@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 
 from mistralai.client import Mistral
 
-from mistralcli.local_mistral import BackendKind
+from mistralcli.local_mistral import DEFAULT_LOCAL_MAX_TOKENS, BackendKind
 from mistralcli.session_primitives import (
     _content_segments_from_value,
     _DeferredAnswerBuffer,
@@ -45,6 +45,8 @@ class SessionTransportMixin:
         }
         if self.generation.max_tokens is not None:
             kwargs["max_tokens"] = self.generation.max_tokens
+        elif self.backend_kind is BackendKind.LOCAL:
+            kwargs["max_tokens"] = DEFAULT_LOCAL_MAX_TOKENS
         if self.backend_kind is BackendKind.REMOTE:
             kwargs["reasoning_effort"] = "high" if self.show_reasoning else "none"
         else:

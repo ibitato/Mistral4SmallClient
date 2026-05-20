@@ -1,6 +1,6 @@
 [project]
 name = "mistralcli"
-version = "3.3.0"
+version = "3.4.2"
 description = "Retro multimodal CLI for Mistral models, with local llama.cpp and Mistral Cloud backends"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -29,6 +29,7 @@ dependencies = [
     "pillow>=11.0,<12.0",
     "pypdf>=5.4,<6.0",
     "python-docx>=1.1,<2.0",
+    "pyyaml>=6.0",
 ]
 
 [project.scripts]
@@ -46,6 +47,7 @@ dev = [
     "pyright[nodejs]>=1.1.409,<1.2.0",
     "pytest>=8.3,<9.0",
     "ruff>=0.11,<0.12",
+    "pyyaml>=6.0",
 ]
 
 [build-system]
@@ -84,21 +86,10 @@ module = ["tests.*"]
 disallow_incomplete_defs = false
 disallow_untyped_defs = false
 
-[[tool.mypy.overrides]]
-module = [
-    "tests.test_local_mistral",
-    "tests.test_remote_conversations",
-    "tests.test_remote_mistral",
-]
-ignore_errors = true
-
 [tool.pyright]
 include = ["src", "tests"]
 exclude = [
     "**/__pycache__",
-    "tests/test_local_mistral.py",
-    "tests/test_remote_conversations.py",
-    "tests/test_remote_mistral.py",
 ]
 pythonVersion = "3.10"
 typeCheckingMode = "standard"

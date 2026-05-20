@@ -138,6 +138,90 @@ runtime configuration. `/status` reports the current phase, active
 backend/server/model, current Conversations state, context estimate, most
 recent backend usage, cumulative usage, and active attachments.
 
+## Configuration Files (v3.4.0+)
+
+MistralCLI now supports persistent configuration files. This is useful for:
+
+- Persisting settings across sessions
+- Managing different configurations for different projects
+- Sharing consistent settings with team members
+
+### Generate a configuration file
+
+```bash
+# Print default configuration to stdout
+mistralcli --generate-config -
+
+# Save to default location (~/.config/mistralcli/config.yaml)
+mistralcli --generate-config
+
+# Save to a specific path
+mistralcli --generate-config ~/my-mistral-config.yaml
+```
+
+### Use a configuration file
+
+```bash
+# Use explicit path
+mistralcli --config-path ~/my-mistral-config.yaml
+
+# Or set environment variable
+MISTRAL_CONFIG_PATH=~/my-mistral-config.yaml mistralcli
+```
+
+### Configuration search order
+
+If you don't specify a path, MistralCLI searches for configuration in:
+
+1. `$MISTRAL_CONFIG_PATH` environment variable
+2. `~/.config/mistralcli/config.yaml`
+3. `~/.mistralcli.{yaml,json,toml}`
+4. `./mistralcli.{yaml,json,toml}` (current directory)
+
+The first file found is used. See [configuration.md](configuration.md) for the
+complete search order and format details.
+
+### Configuration precedence
+
+When the same setting is defined in multiple places, the order of precedence is:
+
+1. Command-line arguments (highest)
+2. Environment variables
+3. Configuration file
+4. Default values (lowest)
+
+Example: If you have `model_id` in your config file but also pass `--model` on
+the command line, the command-line value wins.
+
+### Example configuration file
+
+```yaml
+# ~/.config/mistralcli/config.yaml
+version: "3.4"
+local:
+  model_id: "unsloth/Mistral-Small-4-119B-2603-GGUF:UD-Q5_K_XL"
+  server_url: "http://127.0.0.1:8080"
+generation:
+  temperature: 0.3
+  top_p: 0.95
+ui:
+  stream_enabled: true
+  show_reasoning: true
+context:
+  auto_compact: true
+  threshold: 0.9
+```
+
+### Supported formats
+
+Configuration files can be written in:
+- **YAML** (recommended) - `.yaml` or `.yml`
+- **JSON** - `.json`
+- **TOML** - `.toml` (requires Python 3.11+ or `pip install tomli`)
+
+For complete documentation on all configuration options, see
+[configuration.md](configuration.md).
+
 During active turns, the bottom TTY status bar exposes three different token
 signals:
 

@@ -174,6 +174,7 @@ def render_defaults_summary(
     conversation_id: str | None = None,
     tool_summary: str,
     logging_summary: str,
+    config_source: str = "defaults",
     stream: TextIO,
 ) -> str:
     """Render the active runtime defaults as human-readable text."""
@@ -192,6 +193,7 @@ def render_defaults_summary(
         conversation_id=conversation_id,
         tool_summary=tool_summary,
         logging_summary=logging_summary,
+        config_source=config_source,
         stream=stream,
     )
 
